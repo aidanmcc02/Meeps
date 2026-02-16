@@ -246,6 +246,13 @@ function App() {
         const data = JSON.parse(event.data);
         if (data.type === "message" && data.payload) {
           setMessages((prev) => [...prev, data.payload]);
+        } else if (data.type === "message:updated" && data.payload) {
+          const payload = data.payload;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === payload.id ? { ...m, ...payload } : m))
+          );
+        } else if (data.type === "message:deleted" && data.payload?.id != null) {
+          setMessages((prev) => prev.filter((m) => m.id !== data.payload.id));
         } else if (data.type === "profileUpdated" && data.payload) {
           const profile = data.payload;
           setProfiles((prev) => ({
@@ -555,6 +562,20 @@ function App() {
     console.log("Sending message:", payload);
     socket.send(JSON.stringify(payload));
     setInputValue("");
+  };
+
+  const handleEditMessage = (messageId, content) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const senderName = currentUser?.displayName || DEFAULT_USER_NAME;
+    socket.send(JSON.stringify({ type: "message:edit", messageId, content, senderName }));
+  };
+
+  const handleDeleteMessage = (messageId) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const senderName = currentUser?.displayName || DEFAULT_USER_NAME;
+    socket.send(JSON.stringify({ type: "message:delete", messageId, senderName }));
   };
 
   const handleSelectGif = (gif) => {
@@ -1018,6 +1039,8 @@ function App() {
             currentUserId={currentUser?.id}
             profiles={profiles}
             senderNameToAvatar={senderNameToAvatar}
+            onEditMessage={handleEditMessage}
+            onDeleteMessage={handleDeleteMessage}
           />
 
           <div className="flex-shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">

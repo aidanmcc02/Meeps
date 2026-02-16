@@ -39,40 +39,59 @@ You can later extend this to handle rooms, presence, and typing indicators.
 
 ## Running locally
 
+### Option A: PostgreSQL with Docker Compose (recommended)
+
+1. **Start PostgreSQL** (from project root):
+
+   ```bash
+   docker compose up -d
+   ```
+
+   This runs Postgres 16 on `localhost:5432` with database `meeps`, user `postgres`, password `postgres`. The backend will create tables on first run.
+
+2. **Environment**: Use the root `.env` (the backend loads it automatically), or copy `backend/.env.example` to `backend/.env`:
+
+   ```bash
+   # From project root – one .env for frontend + backend
+   cp .env.example .env
+   # Edit .env if you need to change JWT_SECRET or DB credentials
+   ```
+
+3. **Install and run the backend**:
+
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+
+   By default it listens on `http://localhost:4000`.
+
+### Option B: Existing PostgreSQL (no Docker)
+
 1. **Create a PostgreSQL database** (example uses `meeps`):
 
    ```bash
    createdb meeps
    ```
 
-2. **Apply the example users table migration**:
+2. **Create your `.env` file** (root or backend):
 
    ```bash
-   psql meeps < src/models/userModel.sql
-   ```
-
-3. **Create your `.env` file**:
-
-   ```bash
-   cd backend
    cp .env.example .env
-   # then edit .env with your local DB credentials and a strong JWT_SECRET
+   # or in backend: cp .env.example .env
+   # Edit with your local DB credentials and a strong JWT_SECRET
    ```
 
-4. **Install dependencies**:
+3. **Install and run**:
 
    ```bash
    cd backend
    npm install
-   ```
-
-5. **Start the backend in development mode**:
-
-   ```bash
    npm run dev
    ```
 
-   By default it listens on `http://localhost:4000`.
+   Tables are created automatically on first run (see `config/initDb.js`).
 
 ## Deploying / connecting to Railway
 

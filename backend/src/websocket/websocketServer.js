@@ -47,6 +47,10 @@ function startWebSocketServer(httpServer) {
 
       if (parsed.type === "message") {
         await handleIncomingChatMessage(parsed, wss);
+      } else if (parsed.type === "message:edit") {
+        await handleMessageEdit(parsed, socket, wss);
+      } else if (parsed.type === "message:delete") {
+        await handleMessageDelete(parsed, socket, wss);
       } else if (parsed.type === "presence:hello") {
         handlePresenceHello(socket, parsed);
       } else if (parsed.type === "presence:activity") {
@@ -179,6 +183,116 @@ async function handleIncomingChatMessage(parsed, wss) {
     if (client.readyState === client.OPEN) {
       client.send(outbound);
     }
+  }
+}
+
+async function handleMessageEdit(parsed, socket, wss) {
+  const messageId = parsed.messageId != null ? Number(parsed.messageId) : null;
+  const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+  const userId = socket.userId != null ? Number(socket.userId) : null;
+  const senderName = typeof parsed.senderName === "string" ? parsed.senderName.trim() : null;
+
+  if (!messageId || !content) return;
+
+  try {
+    let getResult;
+    try {
+      getResult = await db.query(
+        "SELECT id, sender_id, sender_name FROM messages WHERE id = $1",
+        [messageId]
+      );
+    } catch (selectErr) {
+      if (selectErr.code === "42703" || selectErr.message?.includes("sender_id")) {
+        getResult = await db.query(
+          "SELECT id, sender_name FROM messages WHERE id = $1",
+          [messageId]
+        );
+      } else {
+        throw selectErr;
+      }
+    }
+    const row = getResult.rows[0];
+    if (!row) return;
+    const rowSenderId = row.sender_id != null ? Number(row.sender_id) : null;
+    const ownedByUserId = rowSenderId !== null && rowSenderId === userId;
+    const ownedBySenderName = (rowSenderId === null || row.sender_id === undefined) && senderName && row.sender_name === senderName;
+    if (!ownedByUserId && !ownedBySenderName) return;
+
+    let result;
+    try {
+      result = await db.query(
+        "UPDATE messages SET content = $2 WHERE id = $1 RETURNING id, channel, sender_name, sender_id, content, created_at",
+        [messageId, content]
+      );
+    } catch (updateErr) {
+      if (updateErr.code === "42703" || updateErr.message?.includes("sender_id")) {
+        result = await db.query(
+          "UPDATE messages SET content = $2 WHERE id = $1 RETURNING id, channel, sender_name, content, created_at",
+          [messageId, content]
+        );
+      } else {
+        throw updateErr;
+      }
+    }
+    const updated = result.rows[0];
+    const payload = {
+      id: updated.id,
+      channel: updated.channel,
+      sender: updated.sender_name,
+      senderId: updated.sender_id ?? undefined,
+      content: updated.content,
+      createdAt: updated.created_at
+    };
+    const outbound = JSON.stringify({ type: "message:updated", payload });
+    for (const client of wss.clients) {
+      if (client.readyState === client.OPEN) client.send(outbound);
+    }
+  } catch (err) {
+    console.error("Message edit failed:", err.message);
+  }
+}
+
+async function handleMessageDelete(parsed, socket, wss) {
+  const messageId = parsed.messageId != null ? Number(parsed.messageId) : null;
+  const userId = socket.userId != null ? Number(socket.userId) : null;
+  const senderName = typeof parsed.senderName === "string" ? parsed.senderName.trim() : null;
+
+  if (!messageId) return;
+
+  try {
+    let getResult;
+    try {
+      getResult = await db.query(
+        "SELECT id, sender_id, sender_name FROM messages WHERE id = $1",
+        [messageId]
+      );
+    } catch (selectErr) {
+      if (selectErr.code === "42703" || selectErr.message?.includes("sender_id")) {
+        getResult = await db.query(
+          "SELECT id, sender_name FROM messages WHERE id = $1",
+          [messageId]
+        );
+      } else {
+        throw selectErr;
+      }
+    }
+    const row = getResult.rows[0];
+    if (!row) return;
+    const rowSenderId = row.sender_id != null ? Number(row.sender_id) : null;
+    const ownedByUserId = rowSenderId !== null && rowSenderId === userId;
+    const ownedBySenderName = (rowSenderId === null || row.sender_id === undefined) && senderName && row.sender_name === senderName;
+    if (!ownedByUserId && !ownedBySenderName) return;
+
+    await db.query("DELETE FROM messages WHERE id = $1", [messageId]);
+    const outbound = JSON.stringify({
+      type: "message:deleted",
+      payload: { id: messageId }
+    });
+    for (const client of wss.clients) {
+      if (client.readyState === client.OPEN) client.send(outbound);
+    }
+  } catch (err) {
+    console.error("Message delete failed:", err.message);
   }
 }
 

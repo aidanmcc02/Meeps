@@ -1,4 +1,7 @@
-require("dotenv").config();
+const path = require("path");
+// Load root .env first so one file works for full-stack local dev
+require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+require("dotenv").config(); // backend/.env overrides if present
 
 const http = require("http");
 const app = require("./app");
