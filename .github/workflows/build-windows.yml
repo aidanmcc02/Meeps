@@ -40,5 +40,9 @@ jobs:
           VITE_BACKEND_WS_URL: ${{ vars.VITE_BACKEND_WS_URL }}
         with:
           tauriScript: npm run tauri
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: "Meeps-Windows"
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Meeps-Windows
+          path: src-tauri/target/release/bundle/
