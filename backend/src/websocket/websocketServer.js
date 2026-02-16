@@ -405,9 +405,8 @@ function handleVoiceLeave(_socket, payload) {
   members.delete(userId);
   if (members.size === 0) {
     voiceRooms.delete(roomId);
-  } else {
-    broadcastVoiceParticipants(roomId);
   }
+  broadcastVoiceParticipants(roomId);
 }
 
 function getVoiceRoomParticipants(roomId) {

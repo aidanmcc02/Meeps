@@ -947,8 +947,9 @@ function App() {
 
   const leaveVoiceChannel = () => {
     const socket = socketRef.current;
-    if (joinedVoiceChannelId && socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "voice:leave", roomId: joinedVoiceChannelId, userId: currentUser?.id ?? CURRENT_USER_ID }));
+    const roomIdToLeave = joinedVoiceChannelIdRef.current ?? joinedVoiceChannelId;
+    if (roomIdToLeave && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "voice:leave", roomId: roomIdToLeave, userId: currentUser?.id ?? CURRENT_USER_ID }));
     }
     joinedVoiceChannelIdRef.current = null;
     setJoinedVoiceChannelId(null);

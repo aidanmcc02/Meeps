@@ -3,6 +3,20 @@ import ReactMarkdown from "react-markdown";
 
 const SCROLL_THRESHOLD = 100;
 
+function formatMessageTime(createdAt) {
+  if (!createdAt) return null;
+  const d = new Date(createdAt);
+  const now = new Date();
+  const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
+  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return timeStr;
+  if (isYesterday) return `Yesterday, ${timeStr}`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined }) + ", " + timeStr;
+}
+
 function MessageList({
   messages,
   currentUserName,
@@ -125,11 +139,11 @@ function MessageList({
                   )}
                 </span>
                 {msg.createdAt && (
-                  <span className="text-[10px] text-gray-500 dark:text-gray-500">
-                    {new Date(msg.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
+                  <span
+                    className="text-xs text-gray-500 dark:text-gray-400"
+                    title={new Date(msg.createdAt).toLocaleString()}
+                  >
+                    {formatMessageTime(msg.createdAt)}
                   </span>
                 )}
                 {canManage && (
