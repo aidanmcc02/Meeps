@@ -102,29 +102,28 @@ jobs:
     steps:
       - name: Check why build-notify would run or skip
         env:
-          BACKEND_URL: ${{ vars.BACKEND_URL || vars.VITE_BACKEND_HTTP_URL }}
+          BACKEND_URL: ${{ secrets.VITE_BACKEND_HTTP_SECRET }}
           BUILD_SECRET: ${{ secrets.BUILD_WEBHOOK_SECRET }}
         run: |
-          echo "=== Build-notify check (these must be in GITHUB repo Settings → Actions, not in Railway) ==="
-          echo "1. BACKEND_URL (GitHub Variable VITE_BACKEND_HTTP_URL or BACKEND_URL): $([ -n "$BACKEND_URL" ] && echo 'SET' || echo 'MISSING')"
+          echo "=== Build-notify check (GitHub repo Settings → Actions → Secrets) ==="
+          echo "1. BACKEND_URL (from secret VITE_BACKEND_HTTP_SECRET): $([ -n "$BACKEND_URL" ] && echo 'SET' || echo 'MISSING')"
           if [ -n "$BACKEND_URL" ]; then
             echo "   Value: $BACKEND_URL"
           fi
-          echo "2. BUILD_SECRET (GitHub Secret BUILD_WEBHOOK_SECRET): $([ -n "$BUILD_SECRET" ] && echo 'SET' || echo 'MISSING')"
+          echo "2. BUILD_SECRET (from secret BUILD_WEBHOOK_SECRET): $([ -n "$BUILD_SECRET" ] && echo 'SET' || echo 'MISSING')"
           if [ -z "$BACKEND_URL" ]; then
-            echo ">>> Add VITE_BACKEND_HTTP_URL in GitHub: repo Settings → Secrets and variables → Actions → Variables (e.g. https://meeps-production.up.railway.app)."
+            echo ">>> Add secret VITE_BACKEND_HTTP_SECRET with value = backend URL (e.g. https://meeps-production.up.railway.app)."
           fi
           if [ -z "$BUILD_SECRET" ]; then
-            echo ">>> Add BUILD_WEBHOOK_SECRET in GitHub: repo Settings → Secrets and variables → Actions → Secrets (same value as on Railway)."
+            echo ">>> Add secret BUILD_WEBHOOK_SECRET (same value as BUILD_WEBHOOK_SECRET on backend)."
           fi
           if [ -n "$BACKEND_URL" ] && [ -n "$BUILD_SECRET" ]; then
-            echo ">>> Both set in GitHub - build-notify will run."
+            echo ">>> Both set - build-notify will run."
           fi
 
       - name: Notify Builds channel
         env:
-          # These must be set in GITHUB: repo → Settings → Secrets and variables → Actions (Variables + Secrets), NOT in Railway.
-          BACKEND_URL: ${{ vars.BACKEND_URL || vars.VITE_BACKEND_HTTP_URL }}
+          BACKEND_URL: ${{ secrets.VITE_BACKEND_HTTP_SECRET }}
           BUILD_SECRET: ${{ secrets.BUILD_WEBHOOK_SECRET }}
           TEST_RESULT: ${{ needs.test.result }}
           BUILD_RESULT: ${{ needs.build-windows.result }}
@@ -132,11 +131,11 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           if [ -z "$BACKEND_URL" ]; then
-            echo "Skipping: BACKEND_URL not set in GitHub. Go to repo Settings → Secrets and variables → Actions → Variables and add VITE_BACKEND_HTTP_URL (value: https://your-backend.up.railway.app)."
+            echo "Skipping: VITE_BACKEND_HTTP_SECRET not set. Add secret with backend URL (e.g. https://meeps-production.up.railway.app)."
             exit 0
           fi
           if [ -z "$BUILD_SECRET" ]; then
-            echo "Skipping: BUILD_WEBHOOK_SECRET not set in GitHub. Go to repo Settings → Secrets and variables → Actions → Secrets and add BUILD_WEBHOOK_SECRET (same value as on Railway)."
+            echo "Skipping: BUILD_WEBHOOK_SECRET not set. Add secret (same value as on backend)."
             exit 0
           fi
           case "$BACKEND_URL" in
@@ -157,7 +156,7 @@ jobs:
             -d "{\"status\":\"$STATUS\",\"workflow\":\"Build for Windows\",\"runUrl\":\"$RUN_URL\",\"branch\":\"$BRANCH\",\"message\":\"$MESSAGE\"}")
           echo "Response HTTP $HTTP: $(cat /tmp/build-notify-out)"
           if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
-            echo "Build notify failed (check backend has BUILD_WEBHOOK_SECRET set and matches GitHub secret)."
+            echo "Build notify failed (check backend BUILD_WEBHOOK_SECRET matches GitHub BUILD_WEBHOOK_SECRET)."
             exit 1
           fi
           echo "Builds channel notified successfully."
