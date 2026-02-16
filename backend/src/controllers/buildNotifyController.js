@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { broadcastMessagePayload } = require("../websocket/websocketServer");
 
 const BUILDS_CHANNEL = "Builds";
 const SENDER_NAME = "GitHub Actions";
@@ -33,10 +34,20 @@ exports.notify = async (req, res, next) => {
   const content = parts.join("\n");
 
   try {
-    await db.query(
+    const result = await db.query(
       "INSERT INTO messages (channel, sender_name, content) VALUES ($1, $2, $3) RETURNING id, created_at",
       [BUILDS_CHANNEL, SENDER_NAME, content]
     );
+    const row = result.rows[0];
+    const payload = {
+      id: row.id,
+      channel: BUILDS_CHANNEL,
+      sender: SENDER_NAME,
+      senderId: undefined,
+      content,
+      createdAt: row.created_at
+    };
+    broadcastMessagePayload(payload);
     return res.status(201).json({ ok: true, channel: BUILDS_CHANNEL });
   } catch (err) {
     return next(err);

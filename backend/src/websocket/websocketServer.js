@@ -524,4 +524,14 @@ function broadcastPresenceUpdate(presence) {
   }
 }
 
-module.exports = { startWebSocketServer, broadcastProfileUpdate };
+function broadcastMessagePayload(payload) {
+  if (!wssInstance) return;
+  const outbound = JSON.stringify({ type: "message", payload });
+  for (const client of wssInstance.clients) {
+    if (client.readyState === client.OPEN) {
+      client.send(outbound);
+    }
+  }
+}
+
+module.exports = { startWebSocketServer, broadcastProfileUpdate, broadcastMessagePayload };

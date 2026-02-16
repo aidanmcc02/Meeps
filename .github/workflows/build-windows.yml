@@ -100,7 +100,8 @@ jobs:
     steps:
       - name: Notify Builds channel
         env:
-          BACKEND_URL: ${{ vars.VITE_BACKEND_HTTP_URL }}
+          # Use BACKEND_URL if set, otherwise same URL as frontend (VITE_BACKEND_HTTP_URL)
+          BACKEND_URL: ${{ vars.BACKEND_URL || vars.VITE_BACKEND_HTTP_URL }}
           BUILD_SECRET: ${{ secrets.BUILD_WEBHOOK_SECRET }}
           TEST_RESULT: ${{ needs.test.result }}
           BUILD_RESULT: ${{ needs.build-windows.result }}
@@ -108,7 +109,7 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           if [ -z "$BACKEND_URL" ] || [ -z "$BUILD_SECRET" ]; then
-            echo "Skipping Builds channel notify: BACKEND_URL or BUILD_WEBHOOK_SECRET not set."
+            echo "Skipping Builds channel notify: set VITE_BACKEND_HTTP_URL or BACKEND_URL (variable) and BUILD_WEBHOOK_SECRET (secret) in repo Settings → Actions to enable."
             exit 0
           fi
           if [ "$TEST_RESULT" = "success" ] && [ "$BUILD_RESULT" = "success" ]; then
@@ -118,7 +119,14 @@ jobs:
             STATUS="failure"
             MESSAGE="Test result: $TEST_RESULT. Build result: $BUILD_RESULT."
           fi
-          curl -sS -X POST "$BACKEND_URL/api/build-notify" \
+          echo "Posting build result ($STATUS) to Builds channel..."
+          HTTP=$(curl -sS -w "%{http_code}" -o /tmp/build-notify-out -X POST "$BACKEND_URL/api/build-notify" \
             -H "Content-Type: application/json" \
             -H "X-Build-Secret: $BUILD_SECRET" \
-            -d "{\"status\":\"$STATUS\",\"workflow\":\"Build for Windows\",\"runUrl\":\"$RUN_URL\",\"branch\":\"$BRANCH\",\"message\":\"$MESSAGE\"}"
+            -d "{\"status\":\"$STATUS\",\"workflow\":\"Build for Windows\",\"runUrl\":\"$RUN_URL\",\"branch\":\"$BRANCH\",\"message\":\"$MESSAGE\"}")
+          echo "Response HTTP $HTTP: $(cat /tmp/build-notify-out)"
+          if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
+            echo "Build notify failed (check backend has BUILD_WEBHOOK_SECRET set and matches GitHub secret)."
+            exit 1
+          fi
+          echo "Builds channel notified successfully."

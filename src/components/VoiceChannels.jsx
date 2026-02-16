@@ -22,16 +22,23 @@ function VoiceChannels({
   const participants = channelParticipants[ch.id] || [];
   const count = participants.length;
 
+  const handleCardClick = () => {
+    if (!isJoined) {
+      onJoinChannel?.(ch.id);
+    }
+    onOpenChannelView?.(ch.id);
+  };
+
   return (
     <div
-      onClick={() => onOpenChannelView?.(ch.id)}
+      onClick={handleCardClick}
       className="voice-channel-card group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-transparent bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-cyan-500/20 p-[2px] transition-all duration-300 hover:from-violet-500/40 hover:via-fuchsia-500/20 hover:to-cyan-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:from-violet-400/25 dark:via-fuchsia-400/15 dark:to-cyan-400/25 dark:hover:from-violet-400/35 dark:hover:via-fuchsia-400/25 dark:hover:to-cyan-400/35 dark:focus-visible:ring-offset-gray-900"
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onOpenChannelView?.(ch.id);
+          handleCardClick();
         }
       }}
     >
