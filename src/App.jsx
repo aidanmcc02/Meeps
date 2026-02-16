@@ -8,6 +8,7 @@ import GifPickerModal from "./components/GifPickerModal";
 import AuthModal from "./components/AuthModal";
 import ProfileSetupPage from "./components/ProfileSetupPage";
 import VoiceSettingsModal from "./components/VoiceSettingsModal";
+import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
 import { playConnectSound, playUserJoinedSound, playUserLeftSound } from "./utils/voiceSounds";
 
@@ -19,10 +20,7 @@ const TEXT_CHANNELS = [
   { id: "dev", name: "dev-chat" },
   { id: "random", name: "random" }
 ];
-const VOICE_CHANNELS = [
-  { id: "lounge", name: "Lounge" },
-  { id: "standup", name: "Daily Standup" }
-];
+const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 
 const API_BASE =
   import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
@@ -43,6 +41,8 @@ function App() {
   const lastActivitySentRef = useRef(0);
   const [joinedVoiceChannelId, setJoinedVoiceChannelId] = useState(null);
   const [voiceParticipants, setVoiceParticipants] = useState([]);
+  const [voiceChannelParticipants, setVoiceChannelParticipants] = useState({}); // roomId -> participants[]
+  const [voiceChannelModalRoomId, setVoiceChannelModalRoomId] = useState(null);
   const [voiceSettings, setVoiceSettings] = useState({
     inputDeviceId: null,
     outputDeviceId: null,
@@ -66,6 +66,81 @@ function App() {
   const micPermissionRequestedRef = useRef(false);
   const voiceParticipantCountRef = useRef(0);
   const justJoinedVoiceRef = useRef(false);
+  const joinedVoiceChannelIdRef = useRef(null);
+  const pendingIceCandidatesRef = useRef({}); // peerUserId -> RTCIceCandidate[]
+  const [speakingUserIds, setSpeakingUserIds] = useState([]);
+  const voiceAudioContextRef = useRef(null);
+  const voiceAnalysersRef = useRef({}); // userId -> { source, analyser }
+  const voiceSpeakingIntervalRef = useRef(null);
+  const previousSpeakingRef = useRef(new Set());
+
+  // Keep ref in sync so WebSocket onmessage always sees current voice channel (avoids stale closure).
+  useEffect(() => {
+    joinedVoiceChannelIdRef.current = joinedVoiceChannelId;
+  }, [joinedVoiceChannelId]);
+
+  // Detect who is speaking (local + remote) via Web Audio analyser; update speakingUserIds.
+  const SPEAK_THRESHOLD = 0.028;
+  const SILENCE_THRESHOLD = 0.018;
+  useEffect(() => {
+    if (!joinedVoiceChannelId) {
+      setSpeakingUserIds([]);
+      return;
+    }
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    voiceAudioContextRef.current = ctx;
+    const analysers = voiceAnalysersRef.current;
+
+    const addStream = (userId, stream) => {
+      if (!stream || typeof stream.getAudioTracks !== "function") return;
+      const audioTracks = stream.getAudioTracks();
+      if (!audioTracks.length) return;
+      try {
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.6;
+        source.connect(analyser);
+        analysers[userId] = { source, analyser };
+      } catch (_) {}
+    };
+
+    const myId = String(currentUser?.id ?? CURRENT_USER_ID);
+    if (localStreamRef.current) addStream(myId, localStreamRef.current);
+    Object.entries(remoteStreams).forEach(([uid, stream]) => {
+      addStream(uid, stream);
+    });
+
+    const dataArray = new Uint8Array(128);
+    voiceSpeakingIntervalRef.current = setInterval(() => {
+      const next = new Set();
+      Object.entries(analysers).forEach(([userId, { analyser: a }]) => {
+        a.getByteFrequencyData(dataArray);
+        const sum = dataArray.reduce((s, v) => s + v, 0);
+        const level = sum / (dataArray.length * 255);
+        const wasSpeaking = previousSpeakingRef.current.has(userId);
+        if (level >= SPEAK_THRESHOLD) next.add(userId);
+        else if (wasSpeaking && level >= SILENCE_THRESHOLD) next.add(userId);
+      });
+      previousSpeakingRef.current = next;
+      setSpeakingUserIds((prev) => {
+        const arr = Array.from(next);
+        if (arr.length !== prev.length || arr.some((id, i) => id !== prev[i])) return arr;
+        return prev;
+      });
+    }, 100);
+
+    return () => {
+      if (voiceSpeakingIntervalRef.current) clearInterval(voiceSpeakingIntervalRef.current);
+      voiceSpeakingIntervalRef.current = null;
+      Object.values(analysers).forEach(({ source }) => {
+        try { source.disconnect(); } catch (_) {}
+      });
+      voiceAnalysersRef.current = {};
+      try { ctx.close(); } catch (_) {}
+      voiceAudioContextRef.current = null;
+    };
+  }, [joinedVoiceChannelId, remoteStreams]);
 
   // Request microphone permission once when main app is shown (desktop/Tauri often
   // only shows the system prompt when getUserMedia is called, not when opening a modal).
@@ -146,6 +221,13 @@ function App() {
         displayName
       };
       socket.send(JSON.stringify(hello));
+      // Request current voice channel participants so we show who's in each channel before joining
+      socket.send(
+        JSON.stringify({
+          type: "voice:get_participants",
+          roomIds: VOICE_CHANNELS.map((c) => c.id)
+        })
+      );
     };
 
     socket.onclose = () => {
@@ -193,8 +275,9 @@ function App() {
           });
         } else if (data.type === "voice:participants" && data.payload) {
           const { roomId, participants } = data.payload;
-          if (roomId === joinedVoiceChannelId) {
-            const list = participants || [];
+          const list = participants || [];
+          setVoiceChannelParticipants((prev) => ({ ...prev, [roomId]: list }));
+          if (roomId === joinedVoiceChannelIdRef.current) {
             const newCount = list.length;
             const oldCount = voiceParticipantCountRef.current;
             if (justJoinedVoiceRef.current) {
@@ -218,6 +301,35 @@ function App() {
       socket.close();
     };
   }, [isAuthenticated, currentUser?.id, currentUser?.displayName]);
+
+  // Request voice channel participants when socket is connected (with delay so server is ready)
+  const requestVoiceParticipants = () => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(
+      JSON.stringify({
+        type: "voice:get_participants",
+        roomIds: VOICE_CHANNELS.map((c) => c.id)
+      })
+    );
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || socketStatus !== "connected") return;
+    const t = setTimeout(requestVoiceParticipants, 400);
+    return () => clearTimeout(t);
+  }, [isAuthenticated, socketStatus]);
+
+  // When opening the voice channel modal, request current participants so we show who's in the channel
+  useEffect(() => {
+    if (!voiceChannelModalRoomId || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    socketRef.current.send(
+      JSON.stringify({
+        type: "voice:get_participants",
+        roomId: voiceChannelModalRoomId
+      })
+    );
+  }, [voiceChannelModalRoomId]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -292,6 +404,28 @@ function App() {
         .catch(() => {});
     });
   }, [selectedChannelId, isAuthenticated, messages, profiles]);
+
+  // Preload profiles for voice channel participants so avatars show in sidebar and modal
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const participantIds = new Set();
+    Object.values(voiceChannelParticipants).forEach((list) => {
+      (list || []).forEach((p) => {
+        if (p.id != null) participantIds.add(p.id);
+      });
+    });
+    participantIds.forEach((userId) => {
+      if (profiles[userId]) return;
+      fetch(`${API_BASE}/api/profile/${userId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setProfiles((prev) => ({ ...prev, [data.id]: data }));
+          }
+        })
+        .catch(() => {});
+    });
+  }, [isAuthenticated, voiceChannelParticipants, profiles]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -499,11 +633,12 @@ function App() {
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
       const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      const roomId = joinedVoiceChannelIdRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN || !roomId) return;
       socket.send(
         JSON.stringify({
           type: "voice:signal",
-          roomId: joinedVoiceChannelId,
+          roomId,
           fromUserId: currentUser?.id ?? CURRENT_USER_ID,
           toUserId: peerUserId,
           signalType: "ice-candidate",
@@ -532,17 +667,31 @@ function App() {
     return pc;
   };
 
+  const drainIceCandidates = async (pc, peerUserId) => {
+    const queue = pendingIceCandidatesRef.current[peerUserId];
+    if (!queue?.length) return;
+    delete pendingIceCandidatesRef.current[peerUserId];
+    for (const candidate of queue) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const handleIncomingVoiceSignal = async ({
     roomId,
     fromUserId,
     signalType,
     data
   }) => {
-    if (roomId !== joinedVoiceChannelId) return;
+    if (roomId !== joinedVoiceChannelIdRef.current) return;
     const pc = await createPeerConnection(fromUserId);
 
     if (signalType === "offer") {
       await pc.setRemoteDescription(new RTCSessionDescription(data));
+      await drainIceCandidates(pc, fromUserId);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       const socket = socketRef.current;
@@ -550,7 +699,7 @@ function App() {
         socket.send(
           JSON.stringify({
             type: "voice:signal",
-            roomId: joinedVoiceChannelId,
+            roomId: joinedVoiceChannelIdRef.current,
             fromUserId: currentUser?.id ?? CURRENT_USER_ID,
             toUserId: fromUserId,
             signalType: "answer",
@@ -560,11 +709,19 @@ function App() {
       }
     } else if (signalType === "answer") {
       await pc.setRemoteDescription(new RTCSessionDescription(data));
+      await drainIceCandidates(pc, fromUserId);
     } else if (signalType === "ice-candidate") {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(data));
-      } catch {
-        // ignore invalid candidates
+      const candidate = new RTCIceCandidate(data);
+      if (!pc.remoteDescription) {
+        const queue = pendingIceCandidatesRef.current[fromUserId] ?? [];
+        queue.push(candidate);
+        pendingIceCandidatesRef.current[fromUserId] = queue;
+      } else {
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch {
+          // ignore invalid candidates
+        }
       }
     }
   };
@@ -583,6 +740,7 @@ function App() {
         const pc = peerConnectionsRef.current[peerId];
         if (pc && pc.signalingState !== "closed") pc.close();
         delete peerConnectionsRef.current[peerId];
+        delete pendingIceCandidatesRef.current[peerId];
         voiceOfferSentToRef.current.delete(id);
         toRemove.push(id);
       }
@@ -664,9 +822,11 @@ function App() {
     if (!isAuthenticated) return;
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    joinedVoiceChannelIdRef.current = roomId;
     setJoinedVoiceChannelId(roomId);
     setVoiceParticipants([]);
     peerConnectionsRef.current = {};
+    pendingIceCandidatesRef.current = {};
     voiceOfferSentToRef.current = new Set();
     remoteStreamsRef.current = {};
     setRemoteStreams({});
@@ -682,6 +842,7 @@ function App() {
     if (joinedVoiceChannelId && socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "voice:leave", roomId: joinedVoiceChannelId, userId: currentUser?.id ?? CURRENT_USER_ID }));
     }
+    joinedVoiceChannelIdRef.current = null;
     setJoinedVoiceChannelId(null);
     setVoiceParticipants([]);
     voiceParticipantCountRef.current = 0;
@@ -694,6 +855,7 @@ function App() {
     setIsSharingScreen(false);
     Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
     peerConnectionsRef.current = {};
+    pendingIceCandidatesRef.current = {};
     remoteStreamsRef.current = {};
     setRemoteStreams({});
   };
@@ -752,7 +914,7 @@ function App() {
     );
   } else {
     content = (
-    <div className="h-screen w-screen bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+    <div className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white">
@@ -785,13 +947,13 @@ function App() {
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-48px)]">
-        <aside className="flex w-72 flex-col border-r border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-gray-900/80">
-          <div className="mb-3">
+      <div className="flex min-h-0 h-[calc(100vh-48px)]">
+        <aside className="flex min-h-0 w-72 flex-col border-r border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-gray-900/80">
+          <div className="mb-3 flex-shrink-0">
             <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
             <section>
               <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Text Channels
@@ -804,113 +966,20 @@ function App() {
             </section>
 
             <section>
-              <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 flex items-center justify-between">
-                <span>Voice Channels</span>
-                <button
-                  type="button"
-                  onClick={() => setIsVoiceSettingsOpen(true)}
-                  className="text-[10px] font-normal text-indigo-500 hover:text-indigo-600 dark:text-indigo-400"
-                >
-                  Sound settings
-                </button>
+              <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Voice
               </h2>
               <VoiceChannels
                 channels={VOICE_CHANNELS}
                 joinedChannelId={joinedVoiceChannelId}
+                channelParticipants={voiceChannelParticipants}
+                profiles={profiles}
+                speakingUserIds={speakingUserIds}
+                onOpenChannelView={setVoiceChannelModalRoomId}
                 onJoinChannel={joinVoiceChannel}
                 onLeaveChannel={leaveVoiceChannel}
+                onOpenSoundSettings={() => setIsVoiceSettingsOpen(true)}
               />
-              {joinedVoiceChannelId && (
-                <div className="mt-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-gray-700 dark:bg-gray-900">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">
-                      In {joinedVoiceChannelId}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={leaveVoiceChannel}
-                      className="text-[10px] text-red-500 hover:underline"
-                    >
-                      Leave
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 mb-1.5 text-gray-500 dark:text-gray-400">
-                    <span>Ping:</span>
-                    <span className="font-mono">
-                      {voicePingMs != null ? `${voicePingMs} ms` : "—"}
-                    </span>
-                  </div>
-                  <div className="flex gap-1 mb-1.5">
-                    <button
-                      type="button"
-                      onClick={isSharingScreen ? stopScreenShare : startScreenShare}
-                      className={`rounded px-2 py-1 text-[10px] font-medium ${
-                        isSharingScreen
-                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      }`}
-                    >
-                      {isSharingScreen ? "Stop sharing" : "Share screen"}
-                    </button>
-                  </div>
-                  {localScreenStream && (
-                    <div className="rounded overflow-hidden bg-black mb-2">
-                      <video
-                        autoPlay
-                        playsInline
-                        muted
-                        className="w-full aspect-video object-contain"
-                        ref={(el) => {
-                          if (el && localScreenStream) el.srcObject = localScreenStream;
-                        }}
-                      />
-                      <span className="block px-1 py-0.5 text-[10px] text-gray-400">Your screen</span>
-                    </div>
-                  )}
-                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
-                    {voiceParticipants.length === 0 && (
-                      <p className="text-gray-400 dark:text-gray-500">
-                        No other users connected yet.
-                      </p>
-                    )}
-                    {voiceParticipants.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex items-center justify-between text-gray-700 dark:text-gray-200"
-                      >
-                        <span className="truncate">{p.displayName}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {Object.entries(remoteStreams).some(([, stream]) => stream && typeof stream.getVideoTracks === "function" && stream.getVideoTracks().length > 0) && (
-                    <div className="mt-2 space-y-1 border-t border-gray-200 pt-2 dark:border-gray-700">
-                      <span className="text-[10px] font-semibold uppercase text-gray-500 dark:text-gray-400">Shared screen</span>
-                      {Object.entries(remoteStreams).map(([userId, stream]) => {
-                        if (!stream || typeof stream.getVideoTracks !== "function") return null;
-                        const videoTracks = stream.getVideoTracks();
-                        if (!videoTracks.length) return null;
-                        const participant = voiceParticipants.find((p) => String(p.id) === String(userId));
-                        return (
-                          <div key={userId} className="rounded overflow-hidden bg-black">
-                            <video
-                              autoPlay
-                              playsInline
-                              muted
-                              className="w-full aspect-video object-contain"
-                              ref={(el) => {
-                                if (el && videoTracks[0]) el.srcObject = new MediaStream([videoTracks[0]]);
-                              }}
-                            />
-                            <span className="block px-1 py-0.5 text-[10px] text-gray-400 truncate">
-                              {participant?.displayName ?? userId}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
             </section>
 
             <section>
@@ -926,8 +995,8 @@ function App() {
           </div>
         </aside>
 
-        <main className="flex flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <main className="flex min-h-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70">
+          <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-semibold">
@@ -951,7 +1020,7 @@ function App() {
             senderNameToAvatar={senderNameToAvatar}
           />
 
-          <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+          <div className="flex-shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
             <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
               <textarea
                 rows={1}
@@ -1015,6 +1084,26 @@ function App() {
           setVoiceSettings((prev) => ({ ...prev, ...next }));
           setIsVoiceSettingsOpen(false);
         }}
+      />
+      <VoiceChannelModal
+        isOpen={voiceChannelModalRoomId != null}
+        onClose={() => setVoiceChannelModalRoomId(null)}
+        channel={VOICE_CHANNELS.find((c) => c.id === voiceChannelModalRoomId) || null}
+        participants={voiceChannelModalRoomId ? (voiceChannelParticipants[voiceChannelModalRoomId] || []) : []}
+        profiles={profiles}
+        isJoined={joinedVoiceChannelId === voiceChannelModalRoomId}
+        speakingUserIds={speakingUserIds}
+        voicePingMs={voicePingMs}
+        isSharingScreen={isSharingScreen}
+        onStartScreenShare={startScreenShare}
+        onStopScreenShare={stopScreenShare}
+        localScreenStream={localScreenStream}
+        remoteStreams={remoteStreams}
+        onOpenSoundSettings={() => setIsVoiceSettingsOpen(true)}
+        onJoin={() => {
+          if (voiceChannelModalRoomId) joinVoiceChannel(voiceChannelModalRoomId);
+        }}
+        onLeave={leaveVoiceChannel}
       />
       <UserProfileModal
         isOpen={selectedUserForProfile != null}

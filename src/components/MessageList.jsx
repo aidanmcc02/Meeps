@@ -13,7 +13,7 @@ function MessageList({ messages, currentUserName, currentUserId, profiles = {}, 
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto px-4 py-3 text-sm space-y-3"
+      className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-3 text-sm space-y-3"
     >
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 dark:text-gray-500">

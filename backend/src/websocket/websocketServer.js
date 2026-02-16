@@ -57,6 +57,8 @@ function startWebSocketServer(httpServer) {
         handleVoiceLeave(socket, parsed);
       } else if (parsed.type === "voice:signal") {
         handleVoiceSignal(parsed);
+      } else if (parsed.type === "voice:get_participants") {
+        handleVoiceGetParticipants(socket, parsed);
       }
     });
 
@@ -294,12 +296,10 @@ function handleVoiceLeave(_socket, payload) {
   }
 }
 
-function broadcastVoiceParticipants(roomId) {
+function getVoiceRoomParticipants(roomId) {
   const members = voiceRooms.get(roomId);
-  if (!members || !wssInstance) return;
-
+  if (!members) return [];
   const participants = [];
-
   for (const userId of members.values()) {
     const presence = presenceByUserId.get(userId);
     participants.push({
@@ -307,6 +307,12 @@ function broadcastVoiceParticipants(roomId) {
       displayName: presence ? presence.displayName : `User ${userId}`
     });
   }
+  return participants;
+}
+
+function broadcastVoiceParticipants(roomId) {
+  const participants = getVoiceRoomParticipants(roomId);
+  if (!wssInstance) return;
 
   const outbound = JSON.stringify({
     type: "voice:participants",
@@ -320,6 +326,28 @@ function broadcastVoiceParticipants(roomId) {
     if (client.readyState === client.OPEN) {
       client.send(outbound);
     }
+  }
+}
+
+function handleVoiceGetParticipants(socket, parsed) {
+  if (socket.readyState !== socket.OPEN) return;
+  let roomIds = parsed.roomId
+    ? [parsed.roomId]
+    : Array.isArray(parsed.roomIds)
+      ? parsed.roomIds
+      : [];
+  // If no rooms specified, send all known voice rooms so client can show who's where
+  if (roomIds.length === 0 && voiceRooms.size > 0) {
+    roomIds = [...voiceRooms.keys()];
+  }
+  for (const roomId of roomIds) {
+    const participants = getVoiceRoomParticipants(roomId);
+    socket.send(
+      JSON.stringify({
+        type: "voice:participants",
+        payload: { roomId, participants }
+      })
+    );
   }
 }
 

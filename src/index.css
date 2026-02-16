@@ -6,6 +6,7 @@ html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -14,19 +15,12 @@ body {
     "Segoe UI", sans-serif;
 }
 
+/* Hide scrollbars but keep scroll behavior */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.8) transparent;
+  scrollbar-width: none;
 }
-
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.8);
-  border-radius: 999px;
+  display: none;
 }
 
 /* Voice settings modal: range slider track/thumb in dark mode */
@@ -53,4 +47,22 @@ body {
 }
 .dark .voice-settings-range::-moz-range-thumb {
   @apply bg-indigo-400;
+}
+
+/* Voice room: green glow around who is talking */
+.voice-speaking-glow {
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.6), 0 0 30px 12px rgba(52, 211, 153, 0.4),
+    0 0 60px 20px rgba(52, 211, 153, 0.25);
+  animation: voice-speaking-glow 1.8s ease-in-out infinite;
+}
+@keyframes voice-speaking-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.6), 0 0 30px 12px rgba(52, 211, 153, 0.4),
+      0 0 60px 20px rgba(52, 211, 153, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.8), 0 0 45px 18px rgba(52, 211, 153, 0.5),
+      0 0 80px 28px rgba(52, 211, 153, 0.35);
+  }
 }
