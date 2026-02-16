@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
-function MessageList({ messages, currentUserName }) {
+function MessageList({ messages, currentUserName, currentUserId, profiles = {}, senderNameToAvatar = {} }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -28,13 +28,29 @@ function MessageList({ messages, currentUserName }) {
 
       {messages.map((msg) => {
         const isSelf = msg.sender === currentUserName;
+        const profile = msg.senderId != null ? profiles[msg.senderId] : null;
+        const avatarUrl = profile?.avatarUrl ?? senderNameToAvatar[msg.sender] ?? null;
+        const initials = (msg.sender || "?")
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase() || "?";
         return (
           <div
             key={msg.id ?? `${msg.sender}-${msg.createdAt}-${msg.content}`}
             className="flex gap-2"
           >
-            <div className="mt-1 h-8 w-8 flex items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white">
-              {msg.sender?.charAt(0)?.toUpperCase() || "?"}
+            <div className="mt-1 h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white flex items-center justify-center">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2">

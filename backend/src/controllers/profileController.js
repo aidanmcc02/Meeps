@@ -21,6 +21,7 @@ function mapUserRowToProfile(row) {
     bio: row.bio || "",
     achievements,
     avatarUrl: row.avatar_url || null,
+    bannerUrl: row.banner_url || null,
     theme: row.theme || null,
     createdAt: row.created_at
   };
@@ -31,7 +32,7 @@ exports.getProfile = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, bio, achievements, avatar_url, theme, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, bio, achievements, avatar_url, banner_url, theme, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -54,7 +55,7 @@ exports.getProfileById = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, bio, achievements, avatar_url, theme, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, bio, achievements, avatar_url, banner_url, theme, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -75,11 +76,11 @@ exports.updateProfileById = async (req, res, next) => {
     return res.status(400).json({ message: "invalid user id" });
   }
 
-  const { displayName, bio, achievements, avatarUrl, theme } = req.body;
+  const { displayName, bio, achievements, avatarUrl, bannerUrl, theme } = req.body;
 
   try {
     const existingResult = await db.query(
-      "SELECT display_name, bio, achievements, avatar_url, theme FROM users WHERE id = $1",
+      "SELECT display_name, bio, achievements, avatar_url, banner_url, theme FROM users WHERE id = $1",
       [userId]
     );
 
@@ -101,11 +102,13 @@ exports.updateProfileById = async (req, res, next) => {
     const newBio = bio !== undefined ? bio || null : existing.bio;
     const newAvatarUrl =
       avatarUrl !== undefined ? avatarUrl || null : existing.avatar_url;
+    const newBannerUrl =
+      bannerUrl !== undefined ? bannerUrl || null : existing.banner_url;
     const newTheme = theme !== undefined ? theme || null : existing.theme;
 
     const result = await db.query(
-      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, theme = $6 WHERE id = $1 RETURNING id, email, display_name, bio, achievements, avatar_url, theme, created_at",
-      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newTheme]
+      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, theme = $7 WHERE id = $1 RETURNING id, email, display_name, bio, achievements, avatar_url, banner_url, theme, created_at",
+      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newTheme]
     );
 
     const profile = mapUserRowToProfile(result.rows[0]);

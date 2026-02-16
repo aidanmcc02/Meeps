@@ -103,12 +103,15 @@ function startWebSocketServer(httpServer) {
 }
 
 async function handleIncomingChatMessage(parsed, wss) {
+  console.log("Received message:", parsed);
   const channel = parsed.channel || "general";
   const sender = parsed.sender || "Anonymous";
+  const senderId = parsed.senderId != null ? Number(parsed.senderId) : null;
   const content =
     typeof parsed.content === "string" ? parsed.content.trim() : "";
 
   if (!content) {
+    console.log("Empty message, ignoring");
     return;
   }
 
@@ -116,26 +119,52 @@ async function handleIncomingChatMessage(parsed, wss) {
     id: null,
     channel,
     sender,
+    senderId: senderId || undefined,
     content,
     createdAt: new Date().toISOString()
   };
 
   try {
-    const result = await db.query(
-      "INSERT INTO messages (channel, sender_name, content) VALUES ($1, $2, $3) RETURNING id, created_at",
-      [channel, sender, content]
-    );
-    const row = result.rows[0];
-    savedMessage = {
-      id: row.id,
-      channel,
-      sender,
-      content,
-      createdAt: row.created_at
-    };
+    console.log("Saving message to database:", { channel, sender, senderId, content });
+    try {
+      const result = await db.query(
+        "INSERT INTO messages (channel, sender_name, sender_id, content) VALUES ($1, $2, $3, $4) RETURNING id, created_at, sender_id",
+        [channel, sender, senderId || null, content]
+      );
+      const row = result.rows[0];
+      savedMessage = {
+        id: row.id,
+        channel,
+        sender,
+        senderId: row.sender_id ?? undefined,
+        content,
+        createdAt: row.created_at
+      };
+      console.log("Message saved successfully:", savedMessage);
+    } catch (insertErr) {
+      // Old DBs may lack sender_id column (e.g. 42703 = undefined_column)
+      if (insertErr.code === "42703" || insertErr.message?.includes("sender_id")) {
+        const result = await db.query(
+          "INSERT INTO messages (channel, sender_name, content) VALUES ($1, $2, $3) RETURNING id, created_at",
+          [channel, sender, content]
+        );
+        const row = result.rows[0];
+        savedMessage = {
+          id: row.id,
+          channel,
+          sender,
+          senderId: undefined,
+          content,
+          createdAt: row.created_at
+        };
+        console.log("Message saved (legacy schema):", savedMessage);
+      } else {
+        throw insertErr;
+      }
+    }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("Failed to save message:", err.message);
+    console.error("Full error:", err);
   }
 
   const outbound = JSON.stringify({
@@ -143,6 +172,7 @@ async function handleIncomingChatMessage(parsed, wss) {
     payload: savedMessage
   });
 
+  console.log("Broadcasting message to", wss.clients.size, "clients");
   for (const client of wss.clients) {
     if (client.readyState === client.OPEN) {
       client.send(outbound);

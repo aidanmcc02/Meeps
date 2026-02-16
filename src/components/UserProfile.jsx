@@ -7,12 +7,14 @@ function UserProfile({ profile, onSave }) {
   const [bio, setBio] = useState("");
   const [achievementsText, setAchievementsText] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
 
   useEffect(() => {
     if (!profile) return;
     setDisplayName(profile.displayName || "Meeps User");
     setBio(profile.bio || "");
     setAvatarUrl(profile.avatarUrl || "");
+    setBannerUrl(profile.bannerUrl || "");
     setAchievementsText(
       Array.isArray(profile.achievements)
         ? profile.achievements.join("\n")
@@ -34,7 +36,8 @@ function UserProfile({ profile, onSave }) {
       displayName: displayName || "Meeps User",
       bio,
       achievements,
-      avatarUrl: avatarUrl || null
+      avatarUrl: avatarUrl || null,
+      bannerUrl: bannerUrl || null
     });
     setIsEditing(false);
   };
@@ -48,16 +51,25 @@ function UserProfile({ profile, onSave }) {
       .toUpperCase() || "MU";
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+    <div className="rounded-xl border border-gray-200 bg-gray-50 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800/80 overflow-hidden px-3 pt-2 pb-2">
       {!profile && (
         <div className="animate-pulse h-10 bg-gray-200 dark:bg-gray-700 rounded-md" />
       )}
 
       {profile && (
         <>
+          {bannerUrl && (
+            <div className="h-14 w-full -mx-3 -mt-2 mb-1 relative overflow-hidden rounded-t-xl">
+              <img
+                src={bannerUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="relative h-9 w-9 rounded-full overflow-hidden">
+              <div className="relative h-9 w-9 rounded-full overflow-hidden flex-shrink-0">
                 {avatarUrl ? (
                   <img
                     src={avatarUrl}
@@ -157,6 +169,19 @@ function UserProfile({ profile, onSave }) {
                   onChange={(e) => setAchievementsText(e.target.value)}
                   className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                   placeholder={"League of Legends – Diamond IV\nValorant – Immortal I"}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                  Banner URL (optional, image or GIF)
+                </label>
+                <input
+                  type="url"
+                  value={bannerUrl}
+                  onChange={(e) => setBannerUrl(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  placeholder="https://example.com/banner.gif"
                 />
               </div>
 

@@ -21,7 +21,7 @@ const AuthModal = ({ onAuth }) => {
         ? { email, password }
         : { email, password, displayName };
 
-      const response = await fetch(`${API_BASE}/api/auth/${endpoint}`, {
+      const response = await fetch(`${API_BASE}/api/${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -38,8 +38,12 @@ const AuthModal = ({ onAuth }) => {
       // Store token and user info
       localStorage.setItem("meeps_token", data.token);
       localStorage.setItem("meeps_user", JSON.stringify(data.user));
-      
-      onAuth(data.user);
+
+      if (isLogin) {
+        onAuth(data.user);
+      } else {
+        onAuth({ user: data.user, needsProfileSetup: true });
+      }
     } catch (err) {
       setError(err.message);
     } finally {

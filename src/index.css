@@ -28,3 +28,29 @@ body {
   background-color: rgba(148, 163, 184, 0.8);
   border-radius: 999px;
 }
+
+/* Voice settings modal: range slider track/thumb in dark mode */
+.voice-settings-range::-webkit-slider-runnable-track {
+  @apply bg-gray-200 rounded-lg;
+}
+.dark .voice-settings-range::-webkit-slider-runnable-track {
+  @apply bg-gray-600;
+}
+.voice-settings-range::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 rounded-full bg-indigo-500 cursor-pointer -mt-1;
+}
+.dark .voice-settings-range::-webkit-slider-thumb {
+  @apply bg-indigo-400;
+}
+.voice-settings-range::-moz-range-track {
+  @apply bg-gray-200 rounded-lg;
+}
+.dark .voice-settings-range::-moz-range-track {
+  @apply bg-gray-600;
+}
+.voice-settings-range::-moz-range-thumb {
+  @apply w-4 h-4 rounded-full bg-indigo-500 border-0 cursor-pointer;
+}
+.dark .voice-settings-range::-moz-range-thumb {
+  @apply bg-indigo-400;
+}

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT,
   achievements TEXT,
   avatar_url TEXT,
+  banner_url TEXT,
   theme TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

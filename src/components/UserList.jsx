@@ -6,7 +6,7 @@ const statusColor = {
   offline: "bg-gray-500"
 };
 
-function UserList({ users }) {
+function UserList({ users, onUserClick, profiles = {} }) {
   const safeUsers = users && users.length > 0 ? users : [];
 
   return (
@@ -14,6 +14,8 @@ function UserList({ users }) {
       {safeUsers.map((user) => {
         const status = user.status || "offline";
         const name = user.displayName || user.name || "Meeps User";
+        const profile = user.id != null ? profiles[user.id] : null;
+        const avatarUrl = profile?.avatarUrl || null;
         const initials =
           name
             .split(" ")
@@ -25,17 +27,34 @@ function UserList({ users }) {
         return (
           <li
             key={user.id}
-            className="flex items-center gap-2 rounded-md px-2 py-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+            role="button"
+            tabIndex={0}
+            onClick={() => onUserClick?.(user)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onUserClick?.(user);
+              }
+            }}
+            className="flex items-center gap-2 rounded-md px-2 py-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 cursor-pointer"
           >
-            <div className="relative h-6 w-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-[10px] font-semibold text-white flex items-center justify-center">
-              {initials}
+            <div className="relative h-6 w-6 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-[10px] font-semibold text-white flex items-center justify-center">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials
+              )}
               <span
                 className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-gray-900 ${
                   statusColor[status] || statusColor.offline
                 }`}
               />
             </div>
-            <div className="flex flex-col leading-tight">
+            <div className="flex flex-col leading-tight min-w-0">
               <span className="text-xs font-medium truncate">{name}</span>
               <span className="text-[10px] text-gray-500 dark:text-gray-400 capitalize">
                 {status}
