@@ -24,7 +24,6 @@
       "targets": "all",
       "identifier": "com.meeps.app",
       "icon": [
-        "icons/icon.icns",
         "icons/icon.ico",
         "icons/icon.png"
       ]
