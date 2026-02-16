@@ -10,7 +10,19 @@ import ProfileSetupPage from "./components/ProfileSetupPage";
 import VoiceSettingsModal from "./components/VoiceSettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
-import { playConnectSound, playUserJoinedSound, playUserLeftSound } from "./utils/voiceSounds";
+import {
+  setNotificationAudioElement,
+  setUserHasInteracted,
+  unlockAudio,
+  unlockNotificationElement,
+  preloadNotificationSound,
+  playConnectSound,
+  playVoiceParticipantSound,
+  playJoinedSound,
+  playDisconnectedSound,
+  playMessageSentSound,
+  playMessageReceivedSound
+} from "./utils/voiceSounds";
 
 const THEME_KEY = "meeps-theme";
 const DEFAULT_USER_NAME = "Meeps User";
@@ -54,11 +66,15 @@ function App() {
   const voiceOfferSentToRef = useRef(new Set());
   const localStreamRef = useRef(null);
   const remoteStreamsRef = useRef({});
+  const remoteStreamsFlushScheduledRef = useRef(false);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [voicePingMs, setVoicePingMs] = useState(null);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [localScreenStream, setLocalScreenStream] = useState(null);
   const screenStreamRef = useRef(null);
+  const [isCameraEnabled, setIsCameraEnabled] = useState(false);
+  const [localCameraStream, setLocalCameraStream] = useState(null);
+  const cameraStreamRef = useRef(null);
   const [isGifModalOpen, setIsGifModalOpen] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(false);
@@ -66,6 +82,7 @@ function App() {
   const micPermissionRequestedRef = useRef(false);
   const voiceParticipantCountRef = useRef(0);
   const justJoinedVoiceRef = useRef(false);
+  const notificationAudioRef = useRef(null);
   const joinedVoiceChannelIdRef = useRef(null);
   const pendingIceCandidatesRef = useRef({}); // peerUserId -> RTCIceCandidate[]
   const [speakingUserIds, setSpeakingUserIds] = useState([]);
@@ -215,6 +232,7 @@ function App() {
     socket.onopen = () => {
       console.log("WebSocket connected successfully");
       setSocketStatus("connected");
+      playJoinedSound();
       const hello = {
         type: "presence:hello",
         userId,
@@ -233,6 +251,7 @@ function App() {
     socket.onclose = () => {
       console.log("WebSocket connection closed");
       setSocketStatus("disconnected");
+      playDisconnectedSound();
       socketRef.current = null;
     };
 
@@ -246,6 +265,8 @@ function App() {
         const data = JSON.parse(event.data);
         if (data.type === "message" && data.payload) {
           setMessages((prev) => [...prev, data.payload]);
+          const myId = currentUser?.id ?? CURRENT_USER_ID;
+          if (Number(data.payload.senderId) !== Number(myId)) playMessageReceivedSound();
         } else if (data.type === "message:updated" && data.payload) {
           const payload = data.payload;
           setMessages((prev) =>
@@ -284,14 +305,17 @@ function App() {
           const { roomId, participants } = data.payload;
           const list = participants || [];
           setVoiceChannelParticipants((prev) => ({ ...prev, [roomId]: list }));
-          if (roomId === joinedVoiceChannelIdRef.current) {
+          const joinedRoomId = joinedVoiceChannelIdRef.current;
+          const isOurRoom = joinedRoomId != null && String(roomId) === String(joinedRoomId);
+          if (isOurRoom) {
             const newCount = list.length;
             const oldCount = voiceParticipantCountRef.current;
-            if (justJoinedVoiceRef.current) {
+            const isOurOwnJoin = justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
+            if (isOurOwnJoin) {
               justJoinedVoiceRef.current = false;
-            } else {
-              if (newCount > oldCount) playUserJoinedSound();
-              else if (newCount < oldCount) playUserLeftSound();
+            } else if (newCount !== oldCount) {
+              unlockAudio();
+              setTimeout(() => playVoiceParticipantSound(), 0);
             }
             voiceParticipantCountRef.current = newCount;
             setVoiceParticipants(list);
@@ -337,6 +361,30 @@ function App() {
       })
     );
   }, [voiceChannelModalRoomId]);
+
+  // Unlock notification audio on first user interaction so sounds can play later
+  useEffect(() => {
+    let done = false;
+    function unlock() {
+      if (done) return;
+      done = true;
+      setUserHasInteracted();
+      unlockAudio();
+      const el = notificationAudioRef.current;
+      if (el) unlockNotificationElement(el);
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("keydown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    }
+    window.addEventListener("click", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    window.addEventListener("touchstart", unlock, { once: true });
+    return () => {
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("keydown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -561,6 +609,7 @@ function App() {
 
     console.log("Sending message:", payload);
     socket.send(JSON.stringify(payload));
+    playMessageSentSound();
     setInputValue("");
   };
 
@@ -595,6 +644,7 @@ function App() {
     };
 
     socket.send(JSON.stringify(payload));
+    playMessageSentSound();
   };
 
   const channelMessages = messages.filter(
@@ -641,14 +691,20 @@ function App() {
     });
 
     const localStream = await ensureLocalStream();
+    const useScreenAsVideo = screenStreamRef.current?.getVideoTracks()?.length > 0;
+    const useCameraAsVideo = !useScreenAsVideo && cameraStreamRef.current?.getVideoTracks()?.length > 0;
     if (localStream) {
       localStream.getTracks().forEach((track) => {
+        if (track.kind === "video" && (useScreenAsVideo || useCameraAsVideo)) return;
         pc.addTrack(track, localStream);
       });
     }
-    if (screenStreamRef.current) {
+    if (useScreenAsVideo) {
       const videoTrack = screenStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) pc.addTrack(videoTrack, screenStreamRef.current);
+      pc.addTrack(videoTrack, screenStreamRef.current);
+    } else if (useCameraAsVideo) {
+      const videoTrack = cameraStreamRef.current.getVideoTracks()[0];
+      pc.addTrack(videoTrack, cameraStreamRef.current);
     }
 
     pc.onicecandidate = (event) => {
@@ -678,7 +734,13 @@ function App() {
           remoteStreamsRef.current[peerUserId] = peerStream;
         }
         peerStream.addTrack(track);
-        setRemoteStreams((prev) => ({ ...prev, [peerUserId]: peerStream }));
+        if (!remoteStreamsFlushScheduledRef.current) {
+          remoteStreamsFlushScheduledRef.current = true;
+          queueMicrotask(() => {
+            setRemoteStreams((prev) => ({ ...prev, ...remoteStreamsRef.current }));
+            remoteStreamsFlushScheduledRef.current = false;
+          });
+        }
       } catch (err) {
         console.warn("ontrack error:", err);
       }
@@ -698,6 +760,30 @@ function App() {
       } catch {
         // ignore
       }
+    }
+  };
+
+  const sendOfferToPeer = async (peerUserId) => {
+    const pc = peerConnectionsRef.current[peerUserId];
+    if (!pc || pc.connectionState === "closed" || pc.signalingState === "closed") return;
+    const socket = socketRef.current;
+    const roomId = joinedVoiceChannelIdRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !roomId) return;
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.send(
+        JSON.stringify({
+          type: "voice:signal",
+          roomId,
+          fromUserId: currentUser?.id ?? CURRENT_USER_ID,
+          toUserId: peerUserId,
+          signalType: "offer",
+          data: offer
+        })
+      );
+    } catch (err) {
+      console.warn("Renegotiation offer failed:", err);
     }
   };
 
@@ -856,6 +942,7 @@ function App() {
     await ensureLocalStream();
     socket.send(JSON.stringify({ type: "voice:join", roomId, userId: currentUser?.id ?? CURRENT_USER_ID }));
     playConnectSound();
+    preloadNotificationSound();
   };
 
   const leaveVoiceChannel = () => {
@@ -874,6 +961,12 @@ function App() {
     }
     setLocalScreenStream(null);
     setIsSharingScreen(false);
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+    }
+    setLocalCameraStream(null);
+    setIsCameraEnabled(false);
     Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
     peerConnectionsRef.current = {};
     pendingIceCandidatesRef.current = {};
@@ -889,13 +982,18 @@ function App() {
       stream.getVideoTracks()[0].onended = () => stopScreenShare();
       setIsSharingScreen(true);
       const track = stream.getVideoTracks()[0];
-      for (const pc of Object.values(peerConnectionsRef.current)) {
+      const peersToRenegotiate = [];
+      for (const [peerUserId, pc] of Object.entries(peerConnectionsRef.current)) {
         if (pc.connectionState !== "closed") {
           const sender = pc.getSenders().find((s) => s.track?.kind === "video");
           if (sender) sender.replaceTrack(track);
-          else pc.addTrack(track, stream);
+          else {
+            pc.addTrack(track, stream);
+            peersToRenegotiate.push(Number(peerUserId));
+          }
         }
       }
+      for (const peerId of peersToRenegotiate) await sendOfferToPeer(peerId);
     } catch (err) {
       console.warn("Screen share failed:", err);
     }
@@ -909,10 +1007,53 @@ function App() {
     }
     setLocalScreenStream(null);
     setIsSharingScreen(false);
+    const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
     for (const pc of Object.values(peerConnectionsRef.current)) {
       if (pc.connectionState !== "closed") {
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-        if (sender) sender.replaceTrack(null);
+        if (sender) sender.replaceTrack(cameraTrack);
+      }
+    }
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      cameraStreamRef.current = stream;
+      setLocalCameraStream(stream);
+      setIsCameraEnabled(true);
+      const track = stream.getVideoTracks()[0];
+      const peersToRenegotiate = [];
+      for (const [peerUserId, pc] of Object.entries(peerConnectionsRef.current)) {
+        if (pc.connectionState !== "closed") {
+          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+          if (sender) sender.replaceTrack(track);
+          else {
+            pc.addTrack(track, stream);
+            peersToRenegotiate.push(Number(peerUserId));
+          }
+        }
+      }
+      for (const peerId of peersToRenegotiate) await sendOfferToPeer(peerId);
+    } catch (err) {
+      console.warn("Camera failed:", err);
+    }
+  };
+
+  const stopCamera = () => {
+    const stream = cameraStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+    }
+    setLocalCameraStream(null);
+    setIsCameraEnabled(false);
+    if (!screenStreamRef.current?.getVideoTracks()?.length) {
+      for (const pc of Object.values(peerConnectionsRef.current)) {
+        if (pc.connectionState !== "closed") {
+          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+          if (sender) sender.replaceTrack(null);
+        }
       }
     }
   };
@@ -936,6 +1077,16 @@ function App() {
   } else {
     content = (
     <div className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+      <audio
+        ref={(el) => {
+          notificationAudioRef.current = el;
+          if (el) setNotificationAudioElement(el);
+        }}
+        src={`${import.meta.env.BASE_URL || "/"}notification.mp3`}
+        preload="auto"
+        aria-hidden="true"
+        style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
+      />
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white">
@@ -1121,6 +1272,10 @@ function App() {
         onStartScreenShare={startScreenShare}
         onStopScreenShare={stopScreenShare}
         localScreenStream={localScreenStream}
+        isCameraEnabled={isCameraEnabled}
+        onStartCamera={startCamera}
+        onStopCamera={stopCamera}
+        localCameraStream={localCameraStream}
         remoteStreams={remoteStreams}
         onOpenSoundSettings={() => setIsVoiceSettingsOpen(true)}
         onJoin={() => {

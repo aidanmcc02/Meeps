@@ -1,7 +1,55 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 function isGifUrl(url) {
   return typeof url === "string" && url.toLowerCase().includes(".gif");
+}
+
+/** Renders a single remote video stream; only updates srcObject when the track changes to avoid glitching. */
+function RemoteVideoTile({ stream, displayName }) {
+  const videoRef = useRef(null);
+  const videoTracks = stream && typeof stream.getVideoTracks === "function" ? stream.getVideoTracks() : [];
+  const liveTrack = videoTracks.find((t) => t.readyState !== "ended") ?? videoTracks[0];
+  const trackId = liveTrack?.id ?? null;
+
+  useEffect(() => {
+    if (!trackId || !stream) return;
+    const tracks = stream.getVideoTracks();
+    const live = tracks.find((t) => t.readyState !== "ended") ?? tracks[0];
+    if (!live) return;
+    const ms = new MediaStream([live]);
+    const el = videoRef.current;
+    if (el) el.srcObject = ms;
+    return () => {
+      if (el) el.srcObject = null;
+    };
+  }, [stream, trackId]);
+
+  if (!liveTrack) return null;
+  return (
+    <div className="overflow-hidden rounded-2xl bg-black/60 ring-1 ring-white/10">
+      <video ref={videoRef} autoPlay playsInline muted className="h-40 w-auto object-contain" />
+      <p className="px-3 py-2 text-xs text-white/60 truncate max-w-[200px]">{displayName}</p>
+    </div>
+  );
+}
+
+/** Local video (camera or screen); sets srcObject once when stream changes. */
+function LocalVideoTile({ stream, label }) {
+  const videoRef = useRef(null);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (el && stream) el.srcObject = stream;
+    return () => {
+      if (el) el.srcObject = null;
+    };
+  }, [stream]);
+  if (!stream) return null;
+  return (
+    <div className="overflow-hidden rounded-2xl bg-black/60 ring-1 ring-white/10">
+      <video ref={videoRef} autoPlay playsInline muted className="h-40 w-auto object-contain" />
+      <p className="px-3 py-2 text-xs text-white/60">{label}</p>
+    </div>
+  );
 }
 
 function VoiceChannelModal({
@@ -17,6 +65,10 @@ function VoiceChannelModal({
   onStartScreenShare,
   onStopScreenShare,
   localScreenStream,
+  isCameraEnabled,
+  onStartCamera,
+  onStopCamera,
+  localCameraStream,
   remoteStreams = {},
   onJoin,
   onLeave,
@@ -189,45 +241,23 @@ function VoiceChannelModal({
           )}
         </div>
 
-        {/* Screen shares - when in call */}
-        {isJoined && (localScreenStream || Object.entries(remoteStreams).some(([, s]) => s && typeof s.getVideoTracks === "function" && s.getVideoTracks().length > 0)) && (
+        {/* Screen shares + camera - when in call */}
+        {isJoined && (localScreenStream || localCameraStream || Object.entries(remoteStreams).some(([, s]) => s && typeof s.getVideoTracks === "function" && s.getVideoTracks().length > 0)) && (
           <div className="w-full max-w-2xl space-y-3">
-            <p className="text-center text-xs font-medium uppercase tracking-wider text-white/50">Shared screens</p>
+            <p className="text-center text-xs font-medium uppercase tracking-wider text-white/50">Video</p>
             <div className="flex flex-wrap justify-center gap-4">
-              {localScreenStream && (
-                <div className="overflow-hidden rounded-2xl bg-black/60 ring-1 ring-white/10">
-                  <video
-                    autoPlay
-                    playsInline
-                    muted
-                    className="h-40 w-auto object-contain"
-                    ref={(el) => {
-                      if (el && localScreenStream) el.srcObject = localScreenStream;
-                    }}
-                  />
-                  <p className="px-3 py-2 text-xs text-white/60">Your screen</p>
-                </div>
-              )}
+              <LocalVideoTile stream={localScreenStream} label="Your screen" />
+              {!localScreenStream && <LocalVideoTile stream={localCameraStream} label="Your camera" />}
               {Object.entries(remoteStreams).map(([userId, stream]) => {
                 if (!stream || typeof stream.getVideoTracks !== "function") return null;
-                const videoTracks = stream.getVideoTracks();
-                if (!videoTracks.length) return null;
                 const participant = participants.find((p) => String(p.id) === String(userId));
+                const displayName = participant?.displayName ?? participant?.name ?? `User ${userId}`;
                 return (
-                  <div key={userId} className="overflow-hidden rounded-2xl bg-black/60 ring-1 ring-white/10">
-                    <video
-                      autoPlay
-                      playsInline
-                      muted
-                      className="h-40 w-auto object-contain"
-                      ref={(el) => {
-                        if (el && videoTracks[0]) el.srcObject = new MediaStream([videoTracks[0]]);
-                      }}
-                    />
-                    <p className="px-3 py-2 text-xs text-white/60 truncate max-w-[200px]">
-                      {participant?.displayName ?? userId}
-                    </p>
-                  </div>
+                  <RemoteVideoTile
+                    key={userId}
+                    stream={stream}
+                    displayName={displayName}
+                  />
                 );
               })}
             </div>
@@ -235,7 +265,7 @@ function VoiceChannelModal({
         )}
       </main>
 
-      {/* Bottom bar: Join / Leave, Share screen */}
+      {/* Bottom bar: Join / Leave, Camera, Share screen */}
       <footer className="relative flex flex-shrink-0 items-center justify-center gap-4 border-t border-white/10 bg-black/20 px-6 py-5">
         {isJoined ? (
           <>
@@ -249,6 +279,17 @@ function VoiceChannelModal({
               className="rounded-xl bg-red-500/90 px-6 py-3 text-sm font-semibold text-white hover:bg-red-500 transition-colors"
             >
               Leave call
+            </button>
+            <button
+              type="button"
+              onClick={isCameraEnabled ? onStopCamera : onStartCamera}
+              className={`rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${
+                isCameraEnabled
+                  ? "bg-sky-500/90 text-white hover:bg-sky-500"
+                  : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+            >
+              {isCameraEnabled ? "Camera off" : "Camera on"}
             </button>
             <button
               type="button"

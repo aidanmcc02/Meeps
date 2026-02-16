@@ -1,75 +1,93 @@
 /**
- * Short notification sounds for voice channel (connect, user joined, user left).
- * Uses HTML5 Audio with generated WAV blobs. Disabled in Tauri/WebKit desktop app
- * where GStreamer autoplay can be missing and cause freezes/crashes.
+ * Notification sounds: one DOM <audio> element (set by the app) is unlocked on first
+ * user gesture and reused for all sounds. No Web Audio or dynamic Audio() in callbacks.
+ * Disabled in Tauri/WebKit desktop app where autoplay can cause issues.
  */
 
 const isTauri = typeof window !== "undefined" && !!window.__TAURI__;
 
-const SAMPLE_RATE = 44100;
+let notificationAudioElement = null;
+let userHasInteracted = false;
 
-function generateToneWav(frequencyHz, durationMs, volume = 0.2) {
-  const numSamples = Math.floor((SAMPLE_RATE * durationMs) / 1000);
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = SAMPLE_RATE * numChannels * (bitsPerSample / 8);
-  const dataSize = numSamples * numChannels * (bitsPerSample / 8);
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const samples = new Int16Array(buffer, 44, numSamples);
-
-  const twoPiF = (2 * Math.PI * frequencyHz) / SAMPLE_RATE;
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / SAMPLE_RATE;
-    const envelope = Math.exp(-t * 8);
-    samples[i] = Math.round(32767 * volume * envelope * Math.sin(twoPiF * i));
-  }
-
-  const writeStr = (offset, str) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeStr(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, SAMPLE_RATE, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, numChannels * (bitsPerSample / 8), true);
-  view.setUint16(34, bitsPerSample, true);
-  writeStr(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  return new Blob([buffer], { type: "audio/wav" });
+/** Call after a user gesture so we know we can unlock the element when it mounts. */
+export function setUserHasInteracted() {
+  userHasInteracted = true;
+  if (notificationAudioElement) unlockNotificationElement(notificationAudioElement);
 }
 
-function playWavBlob(blob) {
+/** Call when the app mounts its <audio> element so we can use it for all sounds. */
+export function setNotificationAudioElement(element) {
+  notificationAudioElement = element;
+  if (element && userHasInteracted) unlockNotificationElement(element);
+}
+
+/** Call from a user gesture (e.g. first click) to allow the element to play later. */
+export function unlockNotificationElement(element) {
+  if (isTauri || !element) return;
   try {
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.volume = 1;
-    audio.play().then(() => {
-      setTimeout(() => URL.revokeObjectURL(url), 500);
-    }).catch(() => URL.revokeObjectURL(url));
+    element.volume = 0.7;
+    element.play().then(() => element.pause()).catch(() => {});
+  } catch (_e) {}
+}
+
+function playViaElement() {
+  if (isTauri || !notificationAudioElement) return false;
+  try {
+    notificationAudioElement.currentTime = 0;
+    notificationAudioElement.volume = 0.7;
+    notificationAudioElement.play().catch(() => {});
+    return true;
   } catch (_e) {
-    // ignore
+    return false;
   }
+}
+
+export function unlockAudio() {
+  if (isTauri) return;
+  if (notificationAudioElement) unlockNotificationElement(notificationAudioElement);
+}
+
+export function preloadNotificationSound() {
+  if (isTauri) return;
+  unlockNotificationElement(notificationAudioElement);
 }
 
 export function playConnectSound() {
   if (isTauri) return;
-  playWavBlob(generateToneWav(523, 120, 0.25));
+  playViaElement();
 }
 
 export function playUserJoinedSound() {
   if (isTauri) return;
-  playWavBlob(generateToneWav(659, 80, 0.2));
-  setTimeout(() => playWavBlob(generateToneWav(784, 80, 0.2)), 90);
+  playViaElement();
 }
 
 export function playUserLeftSound() {
   if (isTauri) return;
-  playWavBlob(generateToneWav(392, 100, 0.2));
+  playViaElement();
+}
+
+export function playJoinedSound() {
+  if (isTauri) return;
+  playViaElement();
+}
+
+export function playDisconnectedSound() {
+  if (isTauri) return;
+  playViaElement();
+}
+
+export function playMessageSentSound() {
+  if (isTauri) return;
+  playViaElement();
+}
+
+export function playMessageReceivedSound() {
+  if (isTauri) return;
+  playViaElement();
+}
+
+export function playVoiceParticipantSound() {
+  if (isTauri) return;
+  playViaElement();
 }
