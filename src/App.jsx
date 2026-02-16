@@ -30,7 +30,7 @@ const CURRENT_USER_ID = 1;
 const TEXT_CHANNELS = [
   { id: "general", name: "general" },
   { id: "dev", name: "dev-chat" },
-  { id: "random", name: "random" }
+  { id: "Builds", name: "Builds" }
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 

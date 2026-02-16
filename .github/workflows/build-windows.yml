@@ -1,6 +1,7 @@
-# Build the Tauri frontend for Windows.
+# Build the Tauri frontend for Windows and run tests.
 # Run manually from the Actions tab or on push to main.
 # Download the .exe or installer from the workflow run artifacts.
+# On success or failure, a summary is posted to the Builds channel (if BUILD_WEBHOOK_SECRET and backend URL are set).
 
 name: Build for Windows
 
@@ -13,6 +14,51 @@ on:
       - '.gitignore'
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: meeps
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Run backend tests
+        run: npm run test
+        working-directory: backend
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGPASSWORD: postgres
+          PGUSER: postgres
+          PGDATABASE: meeps
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -46,3 +92,33 @@ jobs:
         with:
           name: Meeps-Windows
           path: src-tauri/target/release/bundle/
+
+  notify-builds:
+    runs-on: ubuntu-latest
+    needs: [test, build-windows]
+    if: always() && (needs.test.result != 'cancelled' && needs.build-windows.result != 'cancelled')
+    steps:
+      - name: Notify Builds channel
+        env:
+          BACKEND_URL: ${{ vars.VITE_BACKEND_HTTP_URL }}
+          BUILD_SECRET: ${{ secrets.BUILD_WEBHOOK_SECRET }}
+          TEST_RESULT: ${{ needs.test.result }}
+          BUILD_RESULT: ${{ needs.build-windows.result }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ -z "$BACKEND_URL" ] || [ -z "$BUILD_SECRET" ]; then
+            echo "Skipping Builds channel notify: BACKEND_URL or BUILD_WEBHOOK_SECRET not set."
+            exit 0
+          fi
+          if [ "$TEST_RESULT" = "success" ] && [ "$BUILD_RESULT" = "success" ]; then
+            STATUS="success"
+            MESSAGE="All jobs passed."
+          else
+            STATUS="failure"
+            MESSAGE="Test result: $TEST_RESULT. Build result: $BUILD_RESULT."
+          fi
+          curl -sS -X POST "$BACKEND_URL/api/build-notify" \
+            -H "Content-Type: application/json" \
+            -H "X-Build-Secret: $BUILD_SECRET" \
+            -d "{\"status\":\"$STATUS\",\"workflow\":\"Build for Windows\",\"runUrl\":\"$RUN_URL\",\"branch\":\"$BRANCH\",\"message\":\"$MESSAGE\"}"
