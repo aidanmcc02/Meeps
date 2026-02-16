@@ -4,7 +4,10 @@ const db = require("../config/db");
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
+console.log("Auth controller loaded");
+
 exports.register = async (req, res, next) => {
+  console.log("Register endpoint called", req.body);
   const { email, password, displayName } = req.body;
 
   if (!email || !password) {

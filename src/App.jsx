@@ -5,6 +5,7 @@ import UserList from "./components/UserList";
 import UserProfile from "./components/UserProfile";
 import MessageList from "./components/MessageList";
 import GifPickerModal from "./components/GifPickerModal";
+import AuthModal from "./components/AuthModal";
 
 const THEME_KEY = "meeps-theme";
 const DEFAULT_USER_NAME = "Meeps User";
@@ -32,6 +33,8 @@ function App() {
   const [socketStatus, setSocketStatus] = useState("disconnected");
   const [profiles, setProfiles] = useState({});
   const [presenceUsers, setPresenceUsers] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const socketRef = useRef(null);
   const lastActivitySentRef = useRef(0);
   const [joinedVoiceChannelId, setJoinedVoiceChannelId] = useState(null);
@@ -60,9 +63,38 @@ function App() {
       setTheme(initial);
       applyTheme(initial);
     }
+
+    // Check for existing authentication
+    const token = localStorage.getItem("meeps_token");
+    const user = localStorage.getItem("meeps_user");
+    if (token && user) {
+      try {
+        const parsedUser = JSON.parse(user);
+        setCurrentUser(parsedUser);
+        setIsAuthenticated(true);
+      } catch {
+        // Invalid user data, clear storage
+        localStorage.removeItem("meeps_token");
+        localStorage.removeItem("meeps_user");
+      }
+    }
   }, []);
 
+  const handleAuth = (user) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("meeps_token");
+    localStorage.removeItem("meeps_user");
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+  };
+
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     const socket = new WebSocket(WS_URL);
     socketRef.current = socket;
     setSocketStatus("connecting");
@@ -72,8 +104,8 @@ function App() {
       // Introduce this user to the presence system
       const hello = {
         type: "presence:hello",
-        userId: CURRENT_USER_ID,
-        displayName: DEFAULT_USER_NAME
+        userId: currentUser.id || CURRENT_USER_ID,
+        displayName: currentUser.displayName || DEFAULT_USER_NAME
       };
       socket.send(JSON.stringify(hello));
     };
@@ -138,6 +170,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     function handleActivity() {
       const now = Date.now();
       if (now - lastActivitySentRef.current < 30 * 1000) {
@@ -148,7 +182,7 @@ function App() {
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
       const msg = {
         type: "presence:activity",
-        userId: CURRENT_USER_ID
+        userId: currentUser.id || CURRENT_USER_ID
       };
       socket.send(JSON.stringify(msg));
     }
@@ -169,6 +203,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     async function loadMessages() {
       try {
         const res = await fetch(
@@ -187,12 +223,15 @@ function App() {
     }
 
     loadMessages();
-  }, [selectedChannelId]);
+  }, [selectedChannelId, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     async function loadProfile() {
       try {
-        const res = await fetch(`${API_BASE}/api/profile/${CURRENT_USER_ID}`);
+        const userId = currentUser.id || CURRENT_USER_ID;
+        const res = await fetch(`${API_BASE}/api/profile/${userId}`);
         if (!res.ok) return;
         const data = await res.json();
         setProfiles((prev) => ({
@@ -210,7 +249,7 @@ function App() {
     }
 
     loadProfile();
-  }, []);
+  }, [isAuthenticated, currentUser]);
 
   const applyTheme = (nextTheme) => {
     const root = document.documentElement;
@@ -222,8 +261,11 @@ function App() {
   };
 
   const saveThemePreference = async (nextTheme) => {
+    if (!isAuthenticated) return;
+    
     try {
-      await fetch(`${API_BASE}/api/profile/${CURRENT_USER_ID}`, {
+      const userId = currentUser.id || CURRENT_USER_ID;
+      await fetch(`${API_BASE}/api/profile/${userId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json"
@@ -257,7 +299,7 @@ function App() {
     const payload = {
       type: "message",
       channel: selectedChannelId,
-      sender: DEFAULT_USER_NAME,
+      sender: currentUser.displayName || DEFAULT_USER_NAME,
       content: trimmed
     };
 
@@ -276,7 +318,7 @@ function App() {
     const payload = {
       type: "message",
       channel: selectedChannelId,
-      sender: DEFAULT_USER_NAME,
+      sender: currentUser.displayName || DEFAULT_USER_NAME,
       content
     };
 
@@ -287,11 +329,19 @@ function App() {
     (m) => m.channel === selectedChannelId
   );
 
-  const currentUserProfile = profiles[CURRENT_USER_ID] || null;
+  const currentUserProfile = profiles[currentUser?.id || CURRENT_USER_ID] || null;
+
+  // Show auth modal if not authenticated
+  if (!isAuthenticated) {
+    return <AuthModal onAuth={handleAuth} />;
+  }
 
   const handleSaveProfile = async (payload) => {
+    if (!isAuthenticated) return;
+    
     try {
-      const res = await fetch(`${API_BASE}/api/profile/${CURRENT_USER_ID}`, {
+      const userId = currentUser.id || CURRENT_USER_ID;
+      const res = await fetch(`${API_BASE}/api/profile/${userId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json"
@@ -311,6 +361,10 @@ function App() {
         ...prev,
         [updated.id]: updated
       }));
+      // Update current user if display name changed
+      if (payload.displayName !== currentUser.displayName) {
+        setCurrentUser(prev => ({ ...prev, displayName: payload.displayName }));
+      }
     } catch {
       // ignore for skeleton
     }
@@ -356,7 +410,7 @@ function App() {
         JSON.stringify({
           type: "voice:signal",
           roomId: joinedVoiceChannelId,
-          fromUserId: CURRENT_USER_ID,
+          fromUserId: currentUser.id || CURRENT_USER_ID,
           toUserId: peerUserId,
           signalType: "ice-candidate",
           data: event.candidate
@@ -396,7 +450,7 @@ function App() {
           JSON.stringify({
             type: "voice:signal",
             roomId: joinedVoiceChannelId,
-            fromUserId: CURRENT_USER_ID,
+            fromUserId: currentUser.id || CURRENT_USER_ID,
             toUserId: fromUserId,
             signalType: "answer",
             data: answer
@@ -415,6 +469,8 @@ function App() {
   };
 
   const joinVoiceChannel = async (roomId) => {
+    if (!isAuthenticated) return;
+    
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
@@ -429,7 +485,7 @@ function App() {
       JSON.stringify({
         type: "voice:join",
         roomId,
-        userId: CURRENT_USER_ID
+        userId: currentUser.id || CURRENT_USER_ID
       })
     );
   };
@@ -441,7 +497,7 @@ function App() {
         JSON.stringify({
           type: "voice:leave",
           roomId: joinedVoiceChannelId,
-          userId: CURRENT_USER_ID
+          userId: currentUser.id || CURRENT_USER_ID
         })
       );
     }
@@ -468,15 +524,23 @@ function App() {
           </div>
         </div>
 
-        <button
-          onClick={toggleTheme}
-          className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-        >
-          <span className="text-xs" aria-hidden="true">
-            {theme === "dark" ? "🌙" : "☀️"}
-          </span>
-          <span>{theme === "dark" ? "Dark" : "Light"} mode</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTheme}
+            className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <span className="text-xs" aria-hidden="true">
+              {theme === "dark" ? "🌙" : "☀️"}
+            </span>
+            <span>{theme === "dark" ? "Dark" : "Light"} mode</span>
+          </button>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 shadow-sm hover:bg-red-50 dark:border-red-700 dark:bg-gray-800 dark:text-red-200 dark:hover:bg-red-900"
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       <div className="flex h-[calc(100vh-48px)]">
@@ -568,7 +632,7 @@ function App() {
 
           <MessageList
             messages={channelMessages}
-            currentUserName={DEFAULT_USER_NAME}
+            currentUserName={currentUser.displayName || DEFAULT_USER_NAME}
           />
 
           <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-800">

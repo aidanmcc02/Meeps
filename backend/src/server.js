@@ -4,6 +4,7 @@ const http = require("http");
 const app = require("./app");
 const { startWebSocketServer } = require("./websocket/websocketServer");
 const { pool } = require("./config/db");
+const { initDatabase } = require("./config/initDb");
 
 const PORT = process.env.PORT || 4000;
 
@@ -12,6 +13,9 @@ async function start() {
     await pool.query("SELECT 1");
     // eslint-disable-next-line no-console
     console.log("Connected to PostgreSQL");
+    
+    // Initialize database tables
+    await initDatabase();
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Failed to connect to PostgreSQL:", err.message);
