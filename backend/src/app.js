@@ -27,15 +27,22 @@ app.use("/api", messageRoutes);
 app.use("/api", gifRoutes);
 
 // Debug: Print all registered routes
+function routeMethodLabel(route) {
+  if (route.method) return route.method.toUpperCase();
+  if (route.methods && typeof route.methods === 'object') {
+    return Object.keys(route.methods).join(',').toUpperCase();
+  }
+  return '?';
+}
 console.log("Registered routes:");
 app._router.stack.forEach((middleware) => {
   if (middleware.route) {
-    console.log(`Route: ${middleware.route.method.toUpperCase()} ${middleware.route.path}`);
+    console.log(`Route: ${routeMethodLabel(middleware.route)} ${middleware.route.path}`);
   } else if (middleware.name === 'router') {
     console.log(`Router mounted at: ${middleware.regexp}`);
     middleware.handle.stack.forEach((handler) => {
       if (handler.route) {
-        console.log(`  Route: ${handler.route.method.toUpperCase()} ${handler.route.path}`);
+        console.log(`  Route: ${routeMethodLabel(handler.route)} ${handler.route.path}`);
       }
     });
   }
