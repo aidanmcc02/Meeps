@@ -14,12 +14,17 @@ function getSecret(req) {
 
 exports.notify = async (req, res, next) => {
   const secret = process.env.BUILD_WEBHOOK_SECRET;
+  const receivedSecret = getSecret(req);
+  console.log("[build-notify] Request received. BUILD_WEBHOOK_SECRET configured:", !!secret, "| Received secret present:", !!receivedSecret, "| Match:", secret ? receivedSecret === secret : "n/a");
   if (!secret) {
+    console.log("[build-notify] Not running: BUILD_WEBHOOK_SECRET is not set on the server (add it in Railway/backend env vars).");
     return res.status(503).json({ error: "Build notifications not configured" });
   }
-  if (getSecret(req) !== secret) {
+  if (receivedSecret !== secret) {
+    console.log("[build-notify] Not running: secret mismatch. Ensure BUILD_WEBHOOK_SECRET in GitHub Secrets matches the value set on the backend.");
     return res.status(401).json({ error: "Invalid build secret" });
   }
+  console.log("[build-notify] Checks passed. Body:", JSON.stringify(req.body || {}));
 
   const { status, workflow, runUrl, branch, message } = req.body || {};
   const normalizedStatus = status === "failure" ? "failure" : "success";
@@ -48,8 +53,10 @@ exports.notify = async (req, res, next) => {
       createdAt: row.created_at
     };
     broadcastMessagePayload(payload);
+    console.log("[build-notify] Message inserted and broadcast. id:", row.id);
     return res.status(201).json({ ok: true, channel: BUILDS_CHANNEL });
   } catch (err) {
+    console.error("[build-notify] DB/insert error:", err.message);
     return next(err);
   }
 };

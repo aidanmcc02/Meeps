@@ -98,9 +98,29 @@ jobs:
     needs: [test, build-windows]
     if: always() && (needs.test.result != 'cancelled' && needs.build-windows.result != 'cancelled')
     steps:
+      - name: Check why build-notify would run or skip
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL || vars.VITE_BACKEND_HTTP_URL }}
+          BUILD_SECRET: ${{ secrets.BUILD_WEBHOOK_SECRET }}
+        run: |
+          echo "=== Build-notify check ==="
+          echo "1. BACKEND_URL (from vars.VITE_BACKEND_HTTP_URL or vars.BACKEND_URL): $([ -n "$BACKEND_URL" ] && echo 'SET' || echo 'MISSING - add repo Variable in Settings → Actions')"
+          if [ -n "$BACKEND_URL" ]; then
+            echo "   Value: $BACKEND_URL"
+          fi
+          echo "2. BUILD_SECRET (from secrets.BUILD_WEBHOOK_SECRET): $([ -n "$BUILD_SECRET" ] && echo 'SET' || echo 'MISSING - add repo Secret in Settings → Actions')"
+          if [ -z "$BACKEND_URL" ]; then
+            echo ">>> Build-notify will NOT run: BACKEND_URL is missing. Add VITE_BACKEND_HTTP_URL or BACKEND_URL in Settings → Actions → Variables."
+          fi
+          if [ -z "$BUILD_SECRET" ]; then
+            echo ">>> Build-notify will NOT run: BUILD_WEBHOOK_SECRET is missing. Add it in Settings → Actions → Secrets."
+          fi
+          if [ -n "$BACKEND_URL" ] && [ -n "$BUILD_SECRET" ]; then
+            echo ">>> Build-notify will run (POST to backend). If it still fails, check backend logs for [build-notify] and ensure BUILD_WEBHOOK_SECRET on the server matches the GitHub secret."
+          fi
+
       - name: Notify Builds channel
         env:
-          # Use BACKEND_URL if set, otherwise same URL as frontend (VITE_BACKEND_HTTP_URL)
           BACKEND_URL: ${{ vars.BACKEND_URL || vars.VITE_BACKEND_HTTP_URL }}
           BUILD_SECRET: ${{ secrets.BUILD_WEBHOOK_SECRET }}
           TEST_RESULT: ${{ needs.test.result }}
@@ -108,8 +128,12 @@ jobs:
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          if [ -z "$BACKEND_URL" ] || [ -z "$BUILD_SECRET" ]; then
-            echo "Skipping Builds channel notify: set VITE_BACKEND_HTTP_URL or BACKEND_URL (variable) and BUILD_WEBHOOK_SECRET (secret) in repo Settings → Actions to enable."
+          if [ -z "$BACKEND_URL" ]; then
+            echo "Skipping: BACKEND_URL not set. Add VITE_BACKEND_HTTP_URL or BACKEND_URL in Settings → Actions → Variables."
+            exit 0
+          fi
+          if [ -z "$BUILD_SECRET" ]; then
+            echo "Skipping: BUILD_WEBHOOK_SECRET not set. Add it in Settings → Actions → Secrets."
             exit 0
           fi
           if [ "$TEST_RESULT" = "success" ] && [ "$BUILD_RESULT" = "success" ]; then
