@@ -6,6 +6,7 @@ const profileRoutes = require("./routes/profileRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const gifRoutes = require("./routes/gifRoutes");
 const buildNotifyRoutes = require("./routes/buildNotifyRoutes");
+const boardRoutes = require("./routes/boardRoutes");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
@@ -27,6 +28,7 @@ app.use("/api", profileRoutes);
 app.use("/api", messageRoutes);
 app.use("/api", gifRoutes);
 app.use("/api", buildNotifyRoutes);
+app.use("/api", boardRoutes);
 
 // Debug: Print all registered routes
 function routeMethodLabel(route) {

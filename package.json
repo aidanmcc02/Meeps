@@ -8,8 +8,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-"tauri:build": "tauri build",
-    "generate-icon": "node scripts/generate-icon.js"
+    "tauri:build": "tauri build",
+    "generate-icon": "node scripts/generate-icon.js",
+    "generate-latest-json": "node scripts/generate-latest-json.js"
 },
   "dependencies": {
     "@tauri-apps/api": "^1.0.0",

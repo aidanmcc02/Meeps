@@ -10,6 +10,7 @@ import ProfileSetupPage from "./components/ProfileSetupPage";
 import VoiceSettingsModal from "./components/VoiceSettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
+import Board from "./components/Board";
 import {
   setNotificationAudioElement,
   setUserHasInteracted,
@@ -41,6 +42,7 @@ const WS_URL =
 
 function App() {
   const [theme, setTheme] = useState("dark");
+  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
   const [selectedChannelId, setSelectedChannelId] = useState("general");
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
@@ -1102,6 +1104,30 @@ function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("chat")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === "chat"
+                  ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("board")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === "board"
+                  ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              Board
+            </button>
+          </nav>
           <button
             onClick={toggleTheme}
             className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -1169,80 +1195,86 @@ function App() {
         </aside>
 
         <main className="flex min-h-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70">
-          <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-semibold">
-                  # {selectedChannelId}
-                </span>
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                  {socketStatus === "connected" ? "Live" : socketStatus}
-                </span>
+          {activeTab === "board" ? (
+            <Board currentUser={currentUser} apiBase={API_BASE} />
+          ) : (
+            <>
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl font-semibold">
+                      # {selectedChannelId}
+                    </span>
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                      {socketStatus === "connected" ? "Live" : socketStatus}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Welcome to Meeps – this is where your conversations will appear.
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Welcome to Meeps – this is where your conversations will appear.
-              </p>
-            </div>
-          </div>
 
-          <MessageList
-            messages={channelMessages}
-            currentUserName={currentUser.displayName || DEFAULT_USER_NAME}
-            currentUserId={currentUser?.id}
-            profiles={profiles}
-            senderNameToAvatar={senderNameToAvatar}
-            onEditMessage={handleEditMessage}
-            onDeleteMessage={handleDeleteMessage}
-          />
-
-          <div className="flex-shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
-            <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              <textarea
-                rows={1}
-                className="min-h-[32px] max-h-24 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                placeholder={`Message #${selectedChannelId} (Markdown supported)…`}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
+              <MessageList
+                messages={channelMessages}
+                currentUserName={currentUser.displayName || DEFAULT_USER_NAME}
+                currentUserId={currentUser?.id}
+                profiles={profiles}
+                senderNameToAvatar={senderNameToAvatar}
+                onEditMessage={handleEditMessage}
+                onDeleteMessage={handleDeleteMessage}
               />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!inputValue.trim()}
-                className="inline-flex items-center rounded-full bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Send
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsGifModalOpen(true)}
-                className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-              >
-                GIF
-              </button>
-            </div>
-            {/* hidden audio elements for remote peers */}
-            <div className="sr-only">
-              {Object.entries(remoteStreams).map(([userId, stream]) => (
-                <audio
-                  key={userId}
-                  autoPlay
-                  playsInline
-                  ref={(el) => {
-                    if (el && stream && typeof stream.getTracks === "function") {
-                      el.srcObject = stream;
-                      el.volume = voiceSettings.volume;
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+
+              <div className="flex-shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+                <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                  <textarea
+                    rows={1}
+                    className="min-h-[32px] max-h-24 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                    placeholder={`Message #${selectedChannelId} (Markdown supported)…`}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!inputValue.trim()}
+                    className="inline-flex items-center rounded-full bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    Send
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsGifModalOpen(true)}
+                    className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    GIF
+                  </button>
+                </div>
+                {/* hidden audio elements for remote peers */}
+                <div className="sr-only">
+                  {Object.entries(remoteStreams).map(([userId, stream]) => (
+                    <audio
+                      key={userId}
+                      autoPlay
+                      playsInline
+                      ref={(el) => {
+                        if (el && stream && typeof stream.getTracks === "function") {
+                          el.srcObject = stream;
+                          el.volume = voiceSettings.volume;
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </main>
       </div>
       <GifPickerModal

@@ -58,6 +58,22 @@ async function initDatabase() {
       EXCEPTION WHEN duplicate_column THEN NULL; END $$
     `);
 
+    // Create board_issues table for the built-in board
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS board_issues (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'todo',
+        priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+        assignee_id INTEGER REFERENCES users(id),
+        assignee_name TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query("CREATE INDEX IF NOT EXISTS idx_board_issues_status ON board_issues(status)");
+
     // Create indexes for better performance
     await pool.query("CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel)");
     await pool.query("CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)");
