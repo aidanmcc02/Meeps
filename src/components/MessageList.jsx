@@ -77,17 +77,26 @@ function MessageList({
     prevCountRef.current = count;
     lastMessageKeyRef.current = lastKey;
     if (hadNewMessages || channelOrContentChanged) {
-      el.scrollTop = el.scrollHeight;
-      setShowJumpToBottom(false);
+      const scrollToBottom = () => {
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+          setShowJumpToBottom(false);
+        }
+      };
+      scrollToBottom();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(scrollToBottom);
+      });
     }
   }, [messages]);
 
   return (
-    <div className="relative flex-1 flex flex-col min-h-0">
+    <div className="relative flex-1 flex min-h-0 flex-col overflow-hidden">
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-3 text-sm space-y-3"
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-sm space-y-3"
+        style={{ WebkitOverflowScrolling: "touch" }}
       >
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 dark:text-gray-500">

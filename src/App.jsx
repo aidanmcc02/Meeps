@@ -1137,8 +1137,8 @@ function App() {
   } else {
     content = (
     <div
-        className="flex flex-col min-h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
-        style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "100vh" }}
+        className="flex h-screen w-screen flex-col overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+        style={{ paddingTop: "env(safe-area-inset-top)", height: "100dvh", maxHeight: "100vh" }}
       >
       <audio
         ref={(el) => {
@@ -1226,10 +1226,7 @@ function App() {
         aria-hidden="true"
       />
 
-      <div
-        className="flex min-h-0 min-w-0 flex-1"
-        style={{ height: "calc(100vh - 48px - env(safe-area-inset-top))" }}
-      >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <aside
           className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95
             fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
