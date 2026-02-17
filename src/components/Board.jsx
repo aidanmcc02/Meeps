@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 const COLUMNS = [
   { id: "todo", label: "To Do", color: "bg-slate-100 dark:bg-slate-800/60" },
@@ -20,8 +20,9 @@ function normalizeIssue(issue) {
   };
 }
 
-function IssueCard({ issue, currentUser, onEdit, onDelete, onDropInColumn }) {
-  const [isDragging, setIsDragging] = useState(false);
+const DRAG_THRESHOLD_PX = 6;
+
+function IssueCard({ issue, currentUser, onEdit, onDelete, onDragStart, onDragMove, onDragEnd, isDragging }) {
   const assigneeName = issue.assigneeName || (issue.assigneeId === currentUser?.id ? (currentUser?.displayName || "You") : "Unassigned");
 
   const priorityColors = {
@@ -31,27 +32,33 @@ function IssueCard({ issue, currentUser, onEdit, onDelete, onDropInColumn }) {
   };
   const priorityLabel = { low: "Low", medium: "Medium", high: "High" }[issue.priority] || "Medium";
 
+  const handlePointerDown = (e) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    onDragStart?.(issue.id, e.clientX, e.clientY);
+  };
+
+  const handlePointerMove = (e) => {
+    if (e.buttons !== 1) return;
+    onDragMove?.(e.clientX, e.clientY);
+  };
+
+  const handlePointerUp = (e) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    onDragEnd?.();
+  };
+
   return (
     <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("application/meeps-issue", issue.id);
-        e.dataTransfer.setData("text/plain", issue.id);
-        e.dataTransfer.effectAllowed = "move";
-        setIsDragging(true);
-      }}
-      onDragEnd={() => setIsDragging(false)}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const id = e.dataTransfer.getData("application/meeps-issue") || e.dataTransfer.getData("text/plain");
-        if (id && id !== issue.id && onDropInColumn) onDropInColumn(id);
-      }}
+      role="button"
+      tabIndex={0}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       className={`
         group rounded-xl border bg-white p-3 shadow-sm transition-all dark:bg-gray-800/90 dark:border-gray-700
-        hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/50
-        ${isDragging ? "opacity-50 scale-95" : "cursor-grab active:cursor-grabbing"}
+        hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/50 select-none
+        ${isDragging ? "opacity-50 scale-95 cursor-grabbing" : "cursor-grab active:cursor-grabbing"}
       `}
     >
       <div className="flex items-start justify-between gap-2">
@@ -69,7 +76,7 @@ function IssueCard({ issue, currentUser, onEdit, onDelete, onDropInColumn }) {
       </div>
       <h3
         className="mt-1 font-medium text-gray-900 dark:text-gray-100 line-clamp-2"
-        onClick={() => onEdit(issue)}
+        onClick={(e) => { e.stopPropagation(); onEdit(issue); }}
       >
         {issue.title}
       </h3>
@@ -81,7 +88,7 @@ function IssueCard({ issue, currentUser, onEdit, onDelete, onDropInColumn }) {
       <div className="mt-2 flex items-center justify-between">
         <button
           type="button"
-          onClick={() => onEdit(issue)}
+          onClick={(e) => { e.stopPropagation(); onEdit(issue); }}
           className="text-[10px] font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
         >
           {assigneeName}
@@ -350,7 +357,12 @@ export default function Board({ currentUser, apiBase }) {
   const [error, setError] = useState(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingIssue, setEditingIssue] = useState(null);
-  const [dragOverColumn, setDragOverColumn] = useState(null);
+  const [draggingIssueId, setDraggingIssueId] = useState(null);
+  const [dropTargetColumnId, setDropTargetColumnId] = useState(null);
+  const potentialDragRef = useRef(null);
+  const justDraggedRef = useRef(false);
+  const dropTargetColumnIdRef = useRef(null);
+  dropTargetColumnIdRef.current = dropTargetColumnId;
 
   const base = apiBase || "";
 
@@ -459,36 +471,74 @@ export default function Board({ currentUser, apiBase }) {
     }
   }, [base, refetch]);
 
-  const handleDrop = (e, columnId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverColumn(null);
-    const issueId =
-      e.dataTransfer.getData("application/meeps-issue") ||
-      e.dataTransfer.getData("text/plain");
-    if (issueId) moveIssue(issueId, columnId);
-  };
+  const handleDragStart = useCallback((issueId, clientX, clientY) => {
+    potentialDragRef.current = { issueId: String(issueId), startX: clientX, startY: clientY };
+  }, []);
 
-  const handleDragOver = (e, columnId) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverColumn(columnId);
-  };
+  const draggingIssueIdRef = useRef(null);
+  draggingIssueIdRef.current = draggingIssueId;
 
-  const handleDragLeave = (e) => {
-    if (!e.currentTarget.contains(e.relatedTarget)) setDragOverColumn(null);
-  };
+  const handleDragMove = useCallback((clientX, clientY) => {
+    const pot = potentialDragRef.current;
+    if (pot) {
+      const dx = clientX - pot.startX;
+      const dy = clientY - pot.startY;
+      if (Math.abs(dx) <= DRAG_THRESHOLD_PX && Math.abs(dy) <= DRAG_THRESHOLD_PX) return;
+      setDraggingIssueId(pot.issueId);
+      potentialDragRef.current = null;
+    }
+    const el = document.elementFromPoint(clientX, clientY);
+    let node = el;
+    while (node) {
+      const colId = node.getAttribute?.("data-column-id");
+      if (colId) {
+        setDropTargetColumnId(colId);
+        return;
+      }
+      node = node.parentElement;
+    }
+    setDropTargetColumnId(null);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    const wasDragging = draggingIssueIdRef.current;
+    const targetCol = dropTargetColumnIdRef.current;
+    setDraggingIssueId(null);
+    setDropTargetColumnId(null);
+    potentialDragRef.current = null;
+    if (wasDragging && targetCol) {
+      justDraggedRef.current = true;
+      moveIssue(wasDragging, targetCol);
+      setTimeout(() => { justDraggedRef.current = false; }, 150);
+    }
+  }, [moveIssue]);
+
+  useEffect(() => {
+    if (!draggingIssueId) return;
+    const onUp = () => handleDragEnd();
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    return () => {
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+  }, [draggingIssueId, handleDragEnd]);
+
+  const handleEditClick = useCallback((issue) => {
+    if (justDraggedRef.current) return;
+    setEditingIssue(issue);
+  }, []);
 
 
   return (
-    <div className="flex h-full flex-col bg-gray-50/60 dark:bg-gray-950/70">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-gray-50/60 dark:bg-gray-950/70">
       {error ? (
         <div className="flex-shrink-0 flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)} className="rounded px-2 py-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50">Dismiss</button>
         </div>
       ) : null}
-      <div className="flex-shrink-0 flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-3 sm:px-5 sm:py-4 dark:border-gray-800">
         <div>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Board</h1>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -507,22 +557,20 @@ export default function Board({ currentUser, apiBase }) {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden p-4">
+      <div className="flex-1 min-h-0 min-w-0 overflow-auto p-4">
         {loading ? (
           <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">Loading issues…</div>
         ) : (
-        <div className="flex gap-4 h-full min-w-max pb-4">
+        <div className="flex gap-3 sm:gap-4 h-full w-full min-w-0 pb-4">
           {COLUMNS.map((col) => {
             const columnIssues = issues.filter((i) => i.status === col.id);
-            const isDropTarget = dragOverColumn === col.id;
+            const isDropTarget = dropTargetColumnId === col.id;
             return (
               <div
                 key={col.id}
-                onDragOver={(e) => handleDragOver(e, col.id)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, col.id)}
+                data-column-id={col.id}
                 className={`
-                  flex-shrink-0 w-72 flex flex-col rounded-2xl border-2 border-dashed p-3 transition-colors
+                  flex-1 min-w-[11rem] max-w-[28rem] flex min-h-0 flex-col rounded-2xl border-2 border-dashed p-3 transition-colors
                   ${col.color}
                   ${isDropTarget ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-700"}
                 `}
@@ -533,16 +581,19 @@ export default function Board({ currentUser, apiBase }) {
                     {columnIssues.length}
                   </span>
                 </div>
-                <div className="flex-1 space-y-2 overflow-y-auto min-h-[120px]">
+                <div className="flex-1 min-h-0 space-y-2 overflow-y-auto overflow-x-hidden">
                   {columnIssues.map((issue) => (
                     <IssueCard
-                        key={issue.id}
-                        issue={issue}
-                        currentUser={currentUser}
-                        onEdit={setEditingIssue}
-                        onDelete={deleteIssue}
-                        onDropInColumn={(id) => moveIssue(id, col.id)}
-                      />
+                      key={issue.id}
+                      issue={issue}
+                      currentUser={currentUser}
+                      onEdit={handleEditClick}
+                      onDelete={deleteIssue}
+                      onDragStart={handleDragStart}
+                      onDragMove={handleDragMove}
+                      onDragEnd={handleDragEnd}
+                      isDragging={draggingIssueId === issue.id}
+                    />
                   ))}
                 </div>
               </div>

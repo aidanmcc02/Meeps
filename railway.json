@@ -1,7 +1,9 @@
 {
-    "build": {
-      "baseDirectory": "backend",
-      "installCommand": "npm install",
-      "startCommand": "npm run start"
-    }
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "npm run build:web"
+  },
+  "deploy": {
+    "startCommand": "npm start"
   }
+}

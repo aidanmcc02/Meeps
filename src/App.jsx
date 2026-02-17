@@ -18,7 +18,8 @@ import {
   unlockNotificationElement,
   preloadNotificationSound,
   playConnectSound,
-  playVoiceParticipantSound,
+  playUserJoinedSound,
+  playUserLeftSound,
   playJoinedSound,
   playDisconnectedSound,
   playMessageSentSound,
@@ -317,7 +318,11 @@ function App() {
               justJoinedVoiceRef.current = false;
             } else if (newCount !== oldCount) {
               unlockAudio();
-              setTimeout(() => playVoiceParticipantSound(), 0);
+              if (newCount > oldCount) {
+                setTimeout(() => playUserJoinedSound(), 0);
+              } else {
+                setTimeout(() => playUserLeftSound(), 0);
+              }
             }
             voiceParticipantCountRef.current = newCount;
             setVoiceParticipants(list);
@@ -702,8 +707,11 @@ function App() {
       });
     }
     if (useScreenAsVideo) {
-      const videoTrack = screenStreamRef.current.getVideoTracks()[0];
-      pc.addTrack(videoTrack, screenStreamRef.current);
+      const screenStream = screenStreamRef.current;
+      const videoTrack = screenStream.getVideoTracks()[0];
+      pc.addTrack(videoTrack, screenStream);
+      const screenAudioTrack = screenStream.getAudioTracks()[0];
+      if (screenAudioTrack) pc.addTrack(screenAudioTrack, screenStream);
     } else if (useCameraAsVideo) {
       const videoTrack = cameraStreamRef.current.getVideoTracks()[0];
       pc.addTrack(videoTrack, cameraStreamRef.current);
@@ -931,6 +939,8 @@ function App() {
     if (!isAuthenticated) return;
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    // Play sound immediately while still in the user gesture (before any await)
+    playConnectSound();
     joinedVoiceChannelIdRef.current = roomId;
     setJoinedVoiceChannelId(roomId);
     setVoiceParticipants([]);
@@ -943,11 +953,12 @@ function App() {
     justJoinedVoiceRef.current = true;
     await ensureLocalStream();
     socket.send(JSON.stringify({ type: "voice:join", roomId, userId: currentUser?.id ?? CURRENT_USER_ID }));
-    playConnectSound();
     preloadNotificationSound();
   };
 
   const leaveVoiceChannel = () => {
+    // Play sound immediately while still in the user gesture
+    playUserLeftSound();
     const socket = socketRef.current;
     const roomIdToLeave = joinedVoiceChannelIdRef.current ?? joinedVoiceChannelId;
     if (roomIdToLeave && socket && socket.readyState === WebSocket.OPEN) {
@@ -979,20 +990,38 @@ function App() {
 
   const startScreenShare = async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      } catch (audioErr) {
+        if (audioErr?.name === "NotAllowedError") throw audioErr;
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      }
+      if (!stream?.getVideoTracks()?.length) {
+        stream?.getTracks().forEach((t) => t.stop());
+        return;
+      }
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
       stream.getVideoTracks()[0].onended = () => stopScreenShare();
       setIsSharingScreen(true);
-      const track = stream.getVideoTracks()[0];
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0] ?? null;
       const peersToRenegotiate = [];
       for (const [peerUserId, pc] of Object.entries(peerConnectionsRef.current)) {
         if (pc.connectionState !== "closed") {
-          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-          if (sender) sender.replaceTrack(track);
+          const videoSender = pc.getSenders().find((s) => s.track?.kind === "video");
+          if (videoSender) videoSender.replaceTrack(videoTrack);
           else {
-            pc.addTrack(track, stream);
+            pc.addTrack(videoTrack, stream);
             peersToRenegotiate.push(Number(peerUserId));
+          }
+          if (audioTrack) {
+            const hasScreenAudio = pc.getSenders().some((s) => s.track?.id === audioTrack.id);
+            if (!hasScreenAudio) {
+              pc.addTrack(audioTrack, stream);
+              peersToRenegotiate.push(Number(peerUserId));
+            }
           }
         }
       }
@@ -1004,19 +1033,28 @@ function App() {
 
   const stopScreenShare = () => {
     const stream = screenStreamRef.current;
+    const screenAudioTrack = stream?.getAudioTracks()[0] ?? null;
     if (stream) {
+      for (const pc of Object.values(peerConnectionsRef.current)) {
+        if (pc.connectionState !== "closed" && screenAudioTrack) {
+          const audioSender = pc.getSenders().find((s) => s.track?.id === screenAudioTrack.id);
+          if (audioSender) audioSender.replaceTrack(null);
+        }
+      }
       stream.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
     }
     setLocalScreenStream(null);
     setIsSharingScreen(false);
     const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
+    const peerIds = Object.keys(peerConnectionsRef.current).map(Number);
     for (const pc of Object.values(peerConnectionsRef.current)) {
       if (pc.connectionState !== "closed") {
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
         if (sender) sender.replaceTrack(cameraTrack);
       }
     }
+    for (const peerId of peerIds) sendOfferToPeer(peerId);
   };
 
   const startCamera = async () => {
@@ -1090,8 +1128,8 @@ function App() {
         aria-hidden="true"
         style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
       />
-      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur">
-        <div className="flex items-center gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white">
             M
           </span>
@@ -1103,7 +1141,7 @@ function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
             <button
               type="button"
@@ -1146,8 +1184,8 @@ function App() {
         </div>
       </header>
 
-      <div className="flex min-h-0 h-[calc(100vh-48px)]">
-        <aside className="flex min-h-0 w-72 flex-col border-r border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-gray-900/80">
+      <div className="flex min-h-0 h-[calc(100vh-48px)] min-w-0">
+        <aside className="flex min-h-0 w-72 min-w-[12rem] max-w-[80vw] flex-shrink-0 flex-col border-r border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-gray-900/80">
           <div className="mb-3 flex-shrink-0">
             <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
           </div>
@@ -1160,7 +1198,10 @@ function App() {
               <TextChannels
                 channels={TEXT_CHANNELS}
                 selectedChannelId={selectedChannelId}
-                onSelectChannel={setSelectedChannelId}
+                onSelectChannel={(id) => {
+                  setSelectedChannelId(id);
+                  if (activeTab === "board") setActiveTab("chat");
+                }}
               />
             </section>
 
@@ -1174,7 +1215,10 @@ function App() {
                 channelParticipants={voiceChannelParticipants}
                 profiles={profiles}
                 speakingUserIds={speakingUserIds}
-                onOpenChannelView={setVoiceChannelModalRoomId}
+                onOpenChannelView={(roomId) => {
+                  if (activeTab === "board") setActiveTab("chat");
+                  setVoiceChannelModalRoomId(roomId);
+                }}
                 onJoinChannel={joinVoiceChannel}
                 onLeaveChannel={leaveVoiceChannel}
                 onOpenSoundSettings={() => setIsVoiceSettingsOpen(true)}
@@ -1194,15 +1238,15 @@ function App() {
           </div>
         </aside>
 
-        <main className="flex min-h-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden">
           {activeTab === "board" ? (
             <Board currentUser={currentUser} apiBase={API_BASE} />
           ) : (
-            <>
-              <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl font-semibold">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xl font-semibold truncate">
                       # {selectedChannelId}
                     </span>
                     <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
@@ -1225,11 +1269,11 @@ function App() {
                 onDeleteMessage={handleDeleteMessage}
               />
 
-              <div className="flex-shrink-0 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
-                <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className="flex-shrink-0 border-t border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
+                <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900 min-w-0">
                   <textarea
                     rows={1}
-                    className="min-h-[32px] max-h-24 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                    className="min-h-[32px] max-h-24 min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
                     placeholder={`Message #${selectedChannelId} (Markdown supported)…`}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
@@ -1240,21 +1284,23 @@ function App() {
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={!inputValue.trim()}
-                    className="inline-flex items-center rounded-full bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    Send
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsGifModalOpen(true)}
-                    className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                  >
-                    GIF
-                  </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!inputValue.trim()}
+                      className="inline-flex items-center rounded-full bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      Send
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsGifModalOpen(true)}
+                      className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 whitespace-nowrap"
+                    >
+                      GIF
+                    </button>
+                  </div>
                 </div>
                 {/* hidden audio elements for remote peers */}
                 <div className="sr-only">
@@ -1273,7 +1319,7 @@ function App() {
                   ))}
                 </div>
               </div>
-            </>
+            </div>
           )}
         </main>
       </div>

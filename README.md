@@ -41,9 +41,43 @@ The installer (`.msi`) and portable executable will be in `src-tauri/target/rele
 
 Push your code to GitHub and run the **Build for Windows** workflow (Actions → Build for Windows → Run workflow). When it finishes, download the Windows artifacts from the run. No Windows machine needed.
 
+## PWA (iOS / web) and Railway
+
+The app can run as a Progressive Web App in the browser (including **Add to Home Screen** on iOS) and be hosted on [Railway](https://railway.app).
+
+### Build for web (PWA)
+
+Use the web build when deploying to a host (e.g. Railway). It uses root-relative URLs (`BASE_URL=/`) so the app and service worker work correctly:
+
+```bash
+npm run build:web
+```
+
+Then serve the `dist/` folder (e.g. `npm start` which runs `serve -s dist`).
+
+### Deploy to Railway
+
+1. Create a new project on [Railway](https://railway.app) and add a service from this repo.
+2. Build and start are set in `railway.json`:
+   - Build: `npm run build:web`
+   - Start: `npm start` (serves `dist/` with `serve`)
+3. Deploy. After deployment, open the generated URL on your phone and use **Add to Home Screen** (Safari on iOS) to install the PWA.
+
+### PWA icons
+
+Icons are copied from the Tauri icon by default. For best quality on iOS and Android, replace the files in `public/` with higher-resolution PNGs:
+
+- `public/apple-touch-icon.png` — 180×180 (iOS home screen)
+- `public/icon-192.png` — 192×192
+- `public/icon-512.png` — 512×512
+
+Regenerate from the Tauri icon after running `generate-icon`:  
+`npm run generate-pwa-icons`
+
 ## Tech stack
 
 - React + Vite
 - TailwindCSS
 - Tauri (Rust)
+- PWA (vite-plugin-pwa) for iOS/web
 

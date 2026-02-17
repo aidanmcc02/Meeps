@@ -5,7 +5,7 @@ function isGifUrl(url) {
 }
 
 /** Renders a single remote video stream; only updates srcObject when the track changes to avoid glitching. */
-function RemoteVideoTile({ stream, displayName }) {
+function RemoteVideoTile({ stream, displayName, size = "thumb", isSelected, onClick }) {
   const videoRef = useRef(null);
   const videoTracks = stream && typeof stream.getVideoTracks === "function" ? stream.getVideoTracks() : [];
   const liveTrack = videoTracks.find((t) => t.readyState !== "ended") ?? videoTracks[0];
@@ -25,16 +25,32 @@ function RemoteVideoTile({ stream, displayName }) {
   }, [stream, trackId]);
 
   if (!liveTrack) return null;
+  const isLarge = size === "large";
+  const wrapperClass = `overflow-hidden rounded-2xl bg-black/60 ring-1 transition-all ${
+    isSelected ? "ring-2 ring-emerald-400" : "ring-white/10"
+  } ${onClick ? "cursor-pointer hover:ring-white/30" : ""} ${isLarge ? "size-full flex flex-col min-h-0" : ""}`;
+  const content = (
+    <>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className={isLarge ? "size-full object-contain" : "h-40 w-auto object-contain"}
+      />
+      {!isLarge && <p className="px-3 py-2 text-xs text-white/60 truncate max-w-[200px]">{displayName}</p>}
+    </>
+  );
+  const Wrapper = onClick ? "button" : "div";
   return (
-    <div className="overflow-hidden rounded-2xl bg-black/60 ring-1 ring-white/10">
-      <video ref={videoRef} autoPlay playsInline muted className="h-40 w-auto object-contain" />
-      <p className="px-3 py-2 text-xs text-white/60 truncate max-w-[200px]">{displayName}</p>
-    </div>
+    <Wrapper type={onClick ? "button" : undefined} onClick={onClick} className={wrapperClass}>
+      {content}
+    </Wrapper>
   );
 }
 
 /** Local video (camera or screen); sets srcObject once when stream changes. */
-function LocalVideoTile({ stream, label }) {
+function LocalVideoTile({ stream, label, size = "thumb", isSelected, onClick }) {
   const videoRef = useRef(null);
   useEffect(() => {
     const el = videoRef.current;
@@ -44,11 +60,27 @@ function LocalVideoTile({ stream, label }) {
     };
   }, [stream]);
   if (!stream) return null;
+  const isLarge = size === "large";
+  const wrapperClass = `overflow-hidden rounded-2xl bg-black/60 ring-1 transition-all ${
+    isSelected ? "ring-2 ring-emerald-400" : "ring-white/10"
+  } ${onClick ? "cursor-pointer hover:ring-white/30" : ""} ${isLarge ? "size-full flex flex-col min-h-0" : ""}`;
+  const content = (
+    <>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className={isLarge ? "size-full min-h-0 object-contain" : "h-40 w-auto object-contain"}
+      />
+      {!isLarge && <p className="px-3 py-2 text-xs text-white/60">{label}</p>}
+    </>
+  );
+  const Wrapper = onClick ? "button" : "div";
   return (
-    <div className="overflow-hidden rounded-2xl bg-black/60 ring-1 ring-white/10">
-      <video ref={videoRef} autoPlay playsInline muted className="h-40 w-auto object-contain" />
-      <p className="px-3 py-2 text-xs text-white/60">{label}</p>
-    </div>
+    <Wrapper type={onClick ? "button" : undefined} onClick={onClick} className={wrapperClass}>
+      {content}
+    </Wrapper>
   );
 }
 
@@ -75,6 +107,7 @@ function VoiceChannelModal({
   onOpenSoundSettings
 }) {
   const [gifStaticFrames, setGifStaticFrames] = useState({}); // avatarUrl -> dataURL (first frame)
+  const [expandedVideoKey, setExpandedVideoKey] = useState(null); // 'local-screen' | 'local-camera' | `remote-${userId}` | null
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -241,28 +274,61 @@ function VoiceChannelModal({
           )}
         </div>
 
-        {/* Screen shares + camera - when in call */}
-        {isJoined && (localScreenStream || localCameraStream || Object.entries(remoteStreams).some(([, s]) => s && typeof s.getVideoTracks === "function" && s.getVideoTracks().length > 0)) && (
-          <div className="w-full max-w-2xl space-y-3">
-            <p className="text-center text-xs font-medium uppercase tracking-wider text-white/50">Video</p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <LocalVideoTile stream={localScreenStream} label="Your screen" />
-              {!localScreenStream && <LocalVideoTile stream={localCameraStream} label="Your camera" />}
-              {Object.entries(remoteStreams).map(([userId, stream]) => {
-                if (!stream || typeof stream.getVideoTracks !== "function") return null;
-                const participant = participants.find((p) => String(p.id) === String(userId));
-                const displayName = participant?.displayName ?? participant?.name ?? `User ${userId}`;
-                return (
-                  <RemoteVideoTile
-                    key={userId}
-                    stream={stream}
-                    displayName={displayName}
-                  />
-                );
-              })}
+        {/* Screen shares + camera - when in call: stage (large) + thumbnails */}
+        {isJoined && (() => {
+          const videoEntries = [];
+          if (localScreenStream) videoEntries.push({ key: "local-screen", type: "local", stream: localScreenStream, label: "Your screen" });
+          if (localCameraStream) videoEntries.push({ key: "local-camera", type: "local", stream: localCameraStream, label: "Your camera" });
+          Object.entries(remoteStreams).forEach(([userId, stream]) => {
+            if (!stream || typeof stream.getVideoTracks !== "function" || !stream.getVideoTracks().length) return;
+            const participant = participants.find((p) => String(p.id) === String(userId));
+            const displayName = participant?.displayName ?? participant?.name ?? `User ${userId}`;
+            videoEntries.push({ key: `remote-${userId}`, type: "remote", stream, displayName });
+          });
+          if (videoEntries.length === 0) return null;
+          const selectedKey = expandedVideoKey && videoEntries.some((e) => e.key === expandedVideoKey) ? expandedVideoKey : videoEntries[0].key;
+          const selectedEntry = videoEntries.find((e) => e.key === selectedKey);
+          return (
+            <div className="flex w-full max-w-6xl flex-1 min-h-0 flex-col gap-4 px-2">
+              <p className="text-center text-xs font-medium uppercase tracking-wider text-white/50">Video — click a tile to show larger</p>
+              {/* Large stage: ~80% of viewport, full shared content scaled to fit (object-contain) */}
+              <div className="relative flex-1 min-h-0 w-full flex flex-col items-center justify-center">
+                <div className="relative w-[80vw] h-[80vh] max-w-full max-h-[80vh] rounded-2xl bg-black/80 ring-1 ring-white/10 overflow-hidden">
+                  <div className="absolute inset-0">
+                    {selectedEntry && selectedEntry.type === "local" && (
+                      <LocalVideoTile stream={selectedEntry.stream} label={selectedEntry.label} size="large" />
+                    )}
+                    {selectedEntry && selectedEntry.type === "remote" && (
+                      <RemoteVideoTile stream={selectedEntry.stream} displayName={selectedEntry.displayName} size="large" />
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Thumbnail strip */}
+              <div className="flex flex-wrap justify-center gap-3">
+                {videoEntries.map((entry) =>
+                  entry.type === "local" ? (
+                    <LocalVideoTile
+                      key={entry.key}
+                      stream={entry.stream}
+                      label={entry.label}
+                      isSelected={selectedKey === entry.key}
+                      onClick={() => setExpandedVideoKey(selectedKey === entry.key ? null : entry.key)}
+                    />
+                  ) : (
+                    <RemoteVideoTile
+                      key={entry.key}
+                      stream={entry.stream}
+                      displayName={entry.displayName}
+                      isSelected={selectedKey === entry.key}
+                      onClick={() => setExpandedVideoKey(selectedKey === entry.key ? null : entry.key)}
+                    />
+                  )
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
 
       {/* Bottom bar: Join / Leave, Camera, Share screen */}
