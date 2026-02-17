@@ -44,6 +44,7 @@ const DEFAULT_WS =
 function App() {
   const [apiBase, setApiBase] = useState(DEFAULT_HTTP);
   const [wsUrl, setWsUrl] = useState(DEFAULT_WS);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
@@ -1148,18 +1149,28 @@ function App() {
       />
       <header className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((o) => !o)}
+            className="md:hidden inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            aria-label="Open menu"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white flex-shrink-0">
             M
           </span>
-          <div className="flex flex-col">
-            <span className="text-base font-semibold">Meeps</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex flex-col min-w-0">
+            <span className="text-base font-semibold truncate">Meeps</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
               Next-gen desktop chat
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
             <button
               type="button"
@@ -1186,26 +1197,53 @@ function App() {
           </nav>
           <button
             onClick={toggleTheme}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-1 sm:px-3 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
             <span className="text-xs" aria-hidden="true">
               {theme === "dark" ? "🌙" : "☀️"}
             </span>
-            <span>{theme === "dark" ? "Dark" : "Light"} mode</span>
+            <span className="hidden sm:inline">{theme === "dark" ? "Dark" : "Light"} mode</span>
           </button>
           <button
             onClick={handleLogout}
-            className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 shadow-sm hover:bg-red-50 dark:border-red-700 dark:bg-gray-800 dark:text-red-200 dark:hover:bg-red-900"
+            className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-white px-2 py-1 sm:px-3 text-xs font-medium text-red-700 shadow-sm hover:bg-red-50 dark:border-red-700 dark:bg-gray-800 dark:text-red-200 dark:hover:bg-red-900"
           >
             Logout
           </button>
         </div>
       </header>
 
+      {/* Mobile sidebar backdrop */}
+      <div
+        role="presentation"
+        className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        style={{ top: "48px" }}
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
       <div className="flex min-h-0 h-[calc(100vh-48px)] min-w-0">
-        <aside className="flex min-h-0 w-72 min-w-[12rem] max-w-[80vw] flex-shrink-0 flex-col border-r border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-gray-900/80">
-          <div className="mb-3 flex-shrink-0">
-            <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
+        <aside
+          className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95
+            fixed left-0 top-12 z-40 w-72 max-w-[20rem] h-[calc(100vh-3rem)] transform transition-transform duration-200 ease-out
+            md:relative md:top-0 md:h-auto md:min-h-0 md:w-72 md:min-w-[12rem] md:max-w-none md:flex-shrink-0 md:transform-none
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+        >
+          <div className="mb-3 flex flex-shrink-0 items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
+            </div>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden flex-shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label="Close menu"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
@@ -1219,6 +1257,7 @@ function App() {
                 onSelectChannel={(id) => {
                   setSelectedChannelId(id);
                   if (activeTab === "board") setActiveTab("chat");
+                  setSidebarOpen(false);
                 }}
               />
             </section>
@@ -1236,6 +1275,7 @@ function App() {
                 onOpenChannelView={(roomId) => {
                   if (activeTab === "board") setActiveTab("chat");
                   setVoiceChannelModalRoomId(roomId);
+                  setSidebarOpen(false);
                 }}
                 onJoinChannel={joinVoiceChannel}
                 onLeaveChannel={leaveVoiceChannel}
@@ -1250,7 +1290,10 @@ function App() {
               <UserList
                 users={presenceUsers}
                 profiles={profiles}
-                onUserClick={setSelectedUserForProfile}
+                onUserClick={(user) => {
+                  setSelectedUserForProfile(user);
+                  setSidebarOpen(false);
+                }}
               />
             </section>
           </div>
