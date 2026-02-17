@@ -58,10 +58,14 @@ Then serve the `dist/` folder (e.g. `npm start` which runs `serve -s dist`).
 ### Deploy to Railway
 
 1. Create a new project on [Railway](https://railway.app) and add a service from this repo.
-2. Build and start are set in `railway.json`:
+2. **Variables** (required so the PWA can reach your backend): in the PWA service add
+   - `VITE_BACKEND_HTTP_URL` = your backend URL (e.g. `https://meeps-production.up.railway.app`)
+   - `VITE_BACKEND_WS_URL` = your backend WebSocket URL (e.g. `wss://meeps-production.up.railway.app/ws`)
+   The build writes these into `public/config.json`; the app loads that at runtime so the correct backend URL is used.
+3. Build and start are set in `railway.json`:
    - Build: `npm run build:web`
    - Start: `npm start` (serves `dist/` with `serve`)
-3. Deploy. After deployment, open the generated URL on your phone and use **Add to Home Screen** (Safari on iOS) to install the PWA.
+4. Deploy. After deployment, open the generated URL on your phone and use **Add to Home Screen** (Safari on iOS) to install the PWA.
 
 ### PWA icons
 

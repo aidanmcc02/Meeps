@@ -36,12 +36,15 @@ const TEXT_CHANNELS = [
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 
-const API_BASE =
+const DEFAULT_HTTP =
   import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
-const WS_URL =
+const DEFAULT_WS =
   import.meta.env.VITE_BACKEND_WS_URL || "ws://localhost:4000/ws";
 
 function App() {
+  const [apiBase, setApiBase] = useState(DEFAULT_HTTP);
+  const [wsUrl, setWsUrl] = useState(DEFAULT_WS);
+
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
   const [selectedChannelId, setSelectedChannelId] = useState("general");
@@ -93,6 +96,21 @@ function App() {
   const voiceAnalysersRef = useRef({}); // userId -> { source, analyser }
   const voiceSpeakingIntervalRef = useRef(null);
   const previousSpeakingRef = useRef(new Set());
+
+  // Load runtime config (e.g. from /config.json written at build on Railway) so PWA uses correct backend URL
+  useEffect(() => {
+    fetch("/config.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.VITE_BACKEND_HTTP_URL) {
+          setApiBase(data.VITE_BACKEND_HTTP_URL.replace(/\/$/, ""));
+        }
+        if (data?.VITE_BACKEND_WS_URL) {
+          setWsUrl(data.VITE_BACKEND_WS_URL);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Keep ref in sync so WebSocket onmessage always sees current voice channel (avoids stale closure).
   useEffect(() => {
@@ -227,8 +245,8 @@ function App() {
     const userId = currentUser?.id ?? CURRENT_USER_ID;
     const displayName = currentUser?.displayName ?? DEFAULT_USER_NAME;
 
-    console.log("Connecting to WebSocket at:", WS_URL);
-    const socket = new WebSocket(WS_URL);
+    console.log("Connecting to WebSocket at:", wsUrl);
+    const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
     setSocketStatus("connecting");
 
@@ -338,7 +356,7 @@ function App() {
     return () => {
       socket.close();
     };
-  }, [isAuthenticated, currentUser?.id, currentUser?.displayName]);
+  }, [isAuthenticated, currentUser?.id, currentUser?.displayName, wsUrl]);
 
   // Request voice channel participants when socket is connected (with delay so server is ready)
   const requestVoiceParticipants = () => {
@@ -432,7 +450,7 @@ function App() {
     async function loadMessages() {
       try {
         const res = await fetch(
-          `${API_BASE}/api/messages?channel=${encodeURIComponent(
+          `${apiBase}/api/messages?channel=${encodeURIComponent(
             selectedChannelId
           )}`
         );
@@ -447,7 +465,7 @@ function App() {
     }
 
     loadMessages();
-  }, [selectedChannelId, isAuthenticated]);
+  }, [selectedChannelId, isAuthenticated, apiBase]);
 
   // Preload profiles for message senders so avatars show in channel
   useEffect(() => {
@@ -456,7 +474,7 @@ function App() {
     const senderIds = [...new Set(channelMessages.map((m) => m.senderId).filter(Boolean))];
     senderIds.forEach((userId) => {
       if (profiles[userId]) return;
-      fetch(`${API_BASE}/api/profile/${userId}`)
+      fetch(`${apiBase}/api/profile/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data) {
@@ -465,7 +483,7 @@ function App() {
         })
         .catch(() => {});
     });
-  }, [selectedChannelId, isAuthenticated, messages, profiles]);
+  }, [selectedChannelId, isAuthenticated, messages, profiles, apiBase]);
 
   // Preload profiles for voice channel participants so avatars show in sidebar and modal
   useEffect(() => {
@@ -478,7 +496,7 @@ function App() {
     });
     participantIds.forEach((userId) => {
       if (profiles[userId]) return;
-      fetch(`${API_BASE}/api/profile/${userId}`)
+      fetch(`${apiBase}/api/profile/${userId}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data) {
@@ -487,7 +505,7 @@ function App() {
         })
         .catch(() => {});
     });
-  }, [isAuthenticated, voiceChannelParticipants, profiles]);
+  }, [isAuthenticated, voiceChannelParticipants, profiles, apiBase]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -495,7 +513,7 @@ function App() {
     async function loadProfile() {
       try {
         const userId = currentUser.id || CURRENT_USER_ID;
-        const res = await fetch(`${API_BASE}/api/profile/${userId}`);
+        const res = await fetch(`${apiBase}/api/profile/${userId}`);
         if (!res.ok) return;
         const data = await res.json();
         setProfiles((prev) => ({
@@ -513,7 +531,7 @@ function App() {
     }
 
     loadProfile();
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, apiBase]);
 
   // Ping viewer: poll WebRTC RTT when in a voice call (must be before early return)
   useEffect(() => {
@@ -574,7 +592,7 @@ function App() {
     
     try {
       const userId = currentUser.id || CURRENT_USER_ID;
-      await fetch(`${API_BASE}/api/profile/${userId}`, {
+      await fetch(`${apiBase}/api/profile/${userId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json"
@@ -912,7 +930,7 @@ function App() {
     if (!isAuthenticated) return;
     try {
       const userId = currentUser?.id ?? CURRENT_USER_ID;
-      const res = await fetch(`${API_BASE}/api/profile/${userId}`, {
+      const res = await fetch(`${apiBase}/api/profile/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1240,7 +1258,7 @@ function App() {
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden">
           {activeTab === "board" ? (
-            <Board currentUser={currentUser} apiBase={API_BASE} />
+            <Board currentUser={currentUser} apiBase={apiBase} />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
@@ -1327,7 +1345,7 @@ function App() {
         isOpen={isGifModalOpen}
         onClose={() => setIsGifModalOpen(false)}
         onSelectGif={handleSelectGif}
-        apiBase={API_BASE}
+        apiBase={apiBase}
       />
       <VoiceSettingsModal
         isOpen={isVoiceSettingsOpen}
