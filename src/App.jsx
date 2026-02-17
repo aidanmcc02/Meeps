@@ -1136,7 +1136,10 @@ function App() {
     );
   } else {
     content = (
-    <div className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+    <div
+        className="flex flex-col min-h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+        style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "100vh" }}
+      >
       <audio
         ref={(el) => {
           notificationAudioRef.current = el;
@@ -1218,15 +1221,18 @@ function App() {
       <div
         role="presentation"
         className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        style={{ top: "48px" }}
+        style={{ top: "calc(48px + env(safe-area-inset-top))" }}
         onClick={() => setSidebarOpen(false)}
         aria-hidden="true"
       />
 
-      <div className="flex min-h-0 h-[calc(100vh-48px)] min-w-0">
+      <div
+        className="flex min-h-0 min-w-0 flex-1"
+        style={{ height: "calc(100vh - 48px - env(safe-area-inset-top))" }}
+      >
         <aside
           className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95
-            fixed left-0 top-12 z-40 w-72 max-w-[20rem] h-[calc(100vh-3rem)] transform transition-transform duration-200 ease-out
+            fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
             md:relative md:top-0 md:h-auto md:min-h-0 md:w-72 md:min-w-[12rem] md:max-w-none md:flex-shrink-0 md:transform-none
             ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
         >
