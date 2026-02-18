@@ -103,8 +103,7 @@ function VoiceChannelModal({
   localCameraStream,
   remoteStreams = {},
   onJoin,
-  onLeave,
-  onOpenSoundSettings
+  onLeave
 }) {
   const [gifStaticFrames, setGifStaticFrames] = useState({}); // avatarUrl -> dataURL (first frame)
   const [expandedVideoKey, setExpandedVideoKey] = useState(null); // 'local-screen' | 'local-camera' | `remote-${userId}` | null
@@ -182,19 +181,6 @@ function VoiceChannelModal({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {onOpenSoundSettings && (
-            <button
-              type="button"
-              onClick={onOpenSoundSettings}
-              className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-              aria-label="Sound settings"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          )}
           <button
             type="button"
             onClick={onClose}
@@ -210,69 +196,70 @@ function VoiceChannelModal({
 
       {/* Main: big avatars + screen shares */}
       <main className="relative flex flex-1 flex-col items-center justify-center gap-8 overflow-auto px-6 py-8">
-        {/* Participant avatars - large circles */}
-        <div className="flex flex-wrap justify-center gap-10 max-w-4xl">
-          {participants.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-8 overflow-auto min-w-0 w-full">
+          {participants.length === 0 && !isJoined ? (
             <div className="rounded-3xl border border-white/10 bg-white/5 px-12 py-16 text-center">
               <p className="text-white/50 text-lg">No one in the call yet</p>
               <p className="mt-1 text-white/40 text-sm">Join to start talking</p>
             </div>
+          ) : participants.length === 0 ? (
+            <div className="rounded-3xl border border-white/10 bg-white/5 px-12 py-16 text-center">
+              <p className="text-white/50 text-lg">Waiting for others…</p>
+            </div>
           ) : (
-            participants.map((p) => {
-              const profile = profiles[p.id];
-              const avatarUrl = profile?.avatarUrl || null;
-              const name = p.displayName || profile?.displayName || `User ${p.id}`;
-              const initials = name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "?";
-              const isSpeaking = speakingUserIds.includes(String(p.id));
-
+            /* In call with no video: show big avatars in center; video section below handles when there is video */
+            (() => {
+              const videoEntries = [];
+              if (localScreenStream) videoEntries.push({ key: "local-screen" });
+              if (localCameraStream) videoEntries.push({ key: "local-camera" });
+              Object.entries(remoteStreams).forEach(([userId, stream]) => {
+                if (stream?.getVideoTracks?.()?.length) videoEntries.push({ key: `remote-${userId}` });
+              });
+              if (videoEntries.length > 0) return null;
               return (
-                <div
-                  key={p.id}
-                  className="flex flex-col items-center gap-3"
-                >
-                  <div
-                    className={`relative flex h-28 w-28 flex-shrink-0 items-center justify-center rounded-full text-3xl font-semibold text-white transition-all duration-300 ${
-                      isSpeaking ? "ring-4 ring-emerald-400 voice-speaking-glow" : "ring-2 ring-white/20 shadow-xl"
-                    }`}
-                  >
-                    <div className="h-full w-full overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600">
-                      {avatarUrl ? (
-                        isGifUrl(avatarUrl) ? (
-                          // GIF: only show animated GIF when speaking; otherwise static frame or initials
-                          isSpeaking ? (
-                            <img key="gif" src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                          ) : gifStaticFrames[avatarUrl] ? (
-                            <img key="static" src={gifStaticFrames[avatarUrl]} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <span className="flex h-full w-full items-center justify-center">{initials}</span>
-                          )
-                        ) : (
-                          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                        )
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center">{initials}</span>
-                      )}
-                    </div>
-                    {isSpeaking && (
-                      <span
-                        className="absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full border-2 border-gray-950 bg-emerald-500 animate-pulse"
-                        title="Speaking"
-                      />
-                    )}
-                  </div>
-                  <span className="max-w-[10rem] truncate text-center text-sm font-medium text-white/90" title={name}>
-                    {name}
-                  </span>
+                <div className="flex flex-wrap justify-center gap-10 max-w-4xl">
+                  {participants.map((p) => {
+                    const profile = profiles[p.id];
+                    const avatarUrl = profile?.avatarUrl || null;
+                    const name = p.displayName || profile?.displayName || `User ${p.id}`;
+                    const initials = name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
+                    const isSpeaking = speakingUserIds.includes(String(p.id));
+                    return (
+                      <div key={p.id} className="flex flex-col items-center gap-3">
+                        <div
+                          className={`relative flex h-28 w-28 flex-shrink-0 items-center justify-center rounded-full text-3xl font-semibold text-white transition-all duration-300 ${
+                            isSpeaking ? "ring-4 ring-emerald-400 voice-speaking-glow" : "ring-2 ring-white/20 shadow-xl"
+                          }`}
+                        >
+                          <div className="h-full w-full overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600">
+                            {avatarUrl ? (
+                              isGifUrl(avatarUrl) ? (
+                                isSpeaking ? (
+                                  <img key="gif" src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                                ) : gifStaticFrames[avatarUrl] ? (
+                                  <img key="static" src={gifStaticFrames[avatarUrl]} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="flex h-full w-full items-center justify-center">{initials}</span>
+                                )
+                              ) : (
+                                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                              )
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center">{initials}</span>
+                            )}
+                          </div>
+                          {isSpeaking && (
+                            <span className="absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full border-2 border-gray-950 bg-emerald-500 animate-pulse" title="Speaking" />
+                          )}
+                        </div>
+                        <span className="max-w-[10rem] truncate text-center text-sm font-medium text-white/90" title={name}>{name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               );
-            })
+            })()
           )}
-        </div>
 
         {/* Screen shares + camera - when in call: stage (large) + thumbnails */}
         {isJoined && (() => {
@@ -329,6 +316,7 @@ function VoiceChannelModal({
             </div>
           );
         })()}
+        </div>
       </main>
 
       {/* Bottom bar: Join / Leave, Camera, Share screen */}

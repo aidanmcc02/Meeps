@@ -8,25 +8,28 @@ import GifPickerModal from "./components/GifPickerModal";
 import AuthModal from "./components/AuthModal";
 import ProfileSetupPage from "./components/ProfileSetupPage";
 import VoiceSettingsModal from "./components/VoiceSettingsModal";
+import SettingsModal from "./components/SettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
 import Board from "./components/Board";
 import {
-  setNotificationAudioElement,
+  initSoundElements,
   setUserHasInteracted,
   unlockAudio,
-  unlockNotificationElement,
   preloadNotificationSound,
   playConnectSound,
   playUserJoinedSound,
   playUserLeftSound,
-  playJoinedSound,
-  playDisconnectedSound,
   playMessageSentSound,
   playMessageReceivedSound
 } from "./utils/voiceSounds";
 
 const THEME_KEY = "meeps-theme";
+const KEYBINDS_KEY = "meeps-keybinds";
+const DEFAULT_KEYBINDS = {
+  mute: { key: "KeyM", mode: "toggle" },
+  muteDeafen: { key: "KeyB", mode: "hold" }
+};
 const DEFAULT_USER_NAME = "Meeps User";
 const CURRENT_USER_ID = 1;
 const TEXT_CHANNELS = [
@@ -45,6 +48,9 @@ function App() {
   const [apiBase, setApiBase] = useState(DEFAULT_HTTP);
   const [wsUrl, setWsUrl] = useState(DEFAULT_WS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [usersPanelOpen, setUsersPanelOpen] = useState(false);
+  const [topMenuOpen, setTopMenuOpen] = useState(false);
+  const topMenuRef = useRef(null);
 
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
@@ -85,14 +91,31 @@ function App() {
   const [isGifModalOpen, setIsGifModalOpen] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [keybinds, setKeybinds] = useState(() => {
+    try {
+      const raw = localStorage.getItem(KEYBINDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          mute: { ...DEFAULT_KEYBINDS.mute, ...parsed.mute },
+          muteDeafen: { ...DEFAULT_KEYBINDS.muteDeafen, ...parsed.muteDeafen }
+        };
+      }
+    } catch (_) {}
+    return DEFAULT_KEYBINDS;
+  });
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
+  const keybindHoldRef = useRef({ mute: false, muteDeafen: false });
+  const keybindToggleReleasedRef = useRef({ mute: true, muteDeafen: true });
   const micPermissionRequestedRef = useRef(false);
   const voiceParticipantCountRef = useRef(0);
   const justJoinedVoiceRef = useRef(false);
-  const notificationAudioRef = useRef(null);
   const joinedVoiceChannelIdRef = useRef(null);
   const pendingIceCandidatesRef = useRef({}); // peerUserId -> RTCIceCandidate[]
   const [speakingUserIds, setSpeakingUserIds] = useState([]);
+  const [participantMuted, setParticipantMuted] = useState({}); // userId -> true if muted
+  const [isDeafened, setIsDeafened] = useState(false);
   const voiceAudioContextRef = useRef(null);
   const voiceAnalysersRef = useRef({}); // userId -> { source, analyser }
   const voiceSpeakingIntervalRef = useRef(null);
@@ -181,6 +204,30 @@ function App() {
     };
   }, [joinedVoiceChannelId, remoteStreams]);
 
+  // Poll participant mute state when in a voice call (track.enabled is not reactive)
+  useEffect(() => {
+    if (!joinedVoiceChannelId) {
+      setParticipantMuted({});
+      return;
+    }
+    const myId = currentUser?.id ?? CURRENT_USER_ID;
+    const interval = setInterval(() => {
+      const next = {};
+      const localTrack = localStreamRef.current?.getAudioTracks?.()[0];
+      next[myId] = localTrack ? !localTrack.enabled : false;
+      Object.keys(remoteStreams).forEach((uid) => {
+        const track = remoteStreams[uid]?.getAudioTracks?.()[0];
+        next[uid] = track ? !track.enabled : false;
+      });
+      setParticipantMuted((prev) => {
+        const same = Object.keys(next).length === Object.keys(prev).length &&
+          Object.keys(next).every((k) => prev[k] === next[k]);
+        return same ? prev : next;
+      });
+    }, 500);
+    return () => clearInterval(interval);
+  }, [joinedVoiceChannelId, currentUser?.id, remoteStreams]);
+
   // Request microphone permission once when main app is shown (desktop/Tauri often
   // only shows the system prompt when getUserMedia is called, not when opening a modal).
   useEffect(() => {
@@ -254,7 +301,6 @@ function App() {
     socket.onopen = () => {
       console.log("WebSocket connected successfully");
       setSocketStatus("connected");
-      playJoinedSound();
       const hello = {
         type: "presence:hello",
         userId,
@@ -273,7 +319,6 @@ function App() {
     socket.onclose = () => {
       console.log("WebSocket connection closed");
       setSocketStatus("disconnected");
-      playDisconnectedSound();
       socketRef.current = null;
     };
 
@@ -388,6 +433,12 @@ function App() {
     );
   }, [voiceChannelModalRoomId]);
 
+  // Initialize sound elements from public/sounds/
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL || "/";
+    initSoundElements(base);
+  }, []);
+
   // Unlock notification audio on first user interaction so sounds can play later
   useEffect(() => {
     let done = false;
@@ -396,8 +447,6 @@ function App() {
       done = true;
       setUserHasInteracted();
       unlockAudio();
-      const el = notificationAudioRef.current;
-      if (el) unlockNotificationElement(el);
       window.removeEventListener("click", unlock);
       window.removeEventListener("keydown", unlock);
       window.removeEventListener("touchstart", unlock);
@@ -411,6 +460,107 @@ function App() {
       window.removeEventListener("touchstart", unlock);
     };
   }, []);
+
+  // Close top menu when clicking outside
+  useEffect(() => {
+    if (!topMenuOpen) return;
+    function handleClick(e) {
+      if (topMenuRef.current && !topMenuRef.current.contains(e.target)) {
+        setTopMenuOpen(false);
+      }
+    }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [topMenuOpen]);
+
+  // Keybinds: mute and mute+deafen (only when in a call, and not typing in inputs)
+  useEffect(() => {
+    if (!joinedVoiceChannelId || !keybinds) return;
+    const muteKey = keybinds.mute?.key;
+    const muteMode = keybinds.mute?.mode ?? "toggle";
+    const muteDeafenKey = keybinds.muteDeafen?.key;
+    const muteDeafenMode = keybinds.muteDeafen?.mode ?? "hold";
+
+    function isInputFocused() {
+      const el = document.activeElement;
+      if (!el || el === document.body) return false;
+      const tag = el.tagName?.toLowerCase();
+      const role = (el.getAttribute?.("role") || "").toLowerCase();
+      const editable = el.isContentEditable;
+      return tag === "input" || tag === "textarea" || tag === "select" || role === "textbox" || editable;
+    }
+
+    function handleKeyDown(e) {
+      if (e.repeat || isInputFocused()) return;
+      const code = e.code || (e.key === " " ? "Space" : e.key);
+
+      if (code === muteKey) {
+        e.preventDefault();
+        if (muteMode === "hold") {
+          if (keybindHoldRef.current.mute) return;
+          keybindHoldRef.current.mute = true;
+          const track = localStreamRef.current?.getAudioTracks?.()[0];
+          if (track) track.enabled = false;
+        } else {
+          if (!keybindToggleReleasedRef.current.mute) return;
+          keybindToggleReleasedRef.current.mute = false;
+          toggleMute();
+        }
+      } else if (code === muteDeafenKey) {
+        e.preventDefault();
+        if (muteDeafenMode === "hold") {
+          if (keybindHoldRef.current.muteDeafen) return;
+          keybindHoldRef.current.muteDeafen = true;
+          const track = localStreamRef.current?.getAudioTracks?.()[0];
+          if (track) track.enabled = false;
+          setIsDeafened(true);
+        } else {
+          if (!keybindToggleReleasedRef.current.muteDeafen) return;
+          keybindToggleReleasedRef.current.muteDeafen = false;
+          toggleMute();
+          setIsDeafened((d) => !d);
+        }
+      }
+    }
+
+    function handleKeyUp(e) {
+      if (e.repeat || isInputFocused()) return;
+      const code = e.code || (e.key === " " ? "Space" : e.key);
+
+      if (code === muteKey) {
+        e.preventDefault();
+        if (muteMode === "hold") {
+          keybindHoldRef.current.mute = false;
+          const track = localStreamRef.current?.getAudioTracks?.()[0];
+          if (track) track.enabled = true;
+        } else {
+          keybindToggleReleasedRef.current.mute = true;
+        }
+      } else if (code === muteDeafenKey) {
+        e.preventDefault();
+        if (muteDeafenMode === "hold") {
+          keybindHoldRef.current.muteDeafen = false;
+          const track = localStreamRef.current?.getAudioTracks?.()[0];
+          if (track) track.enabled = true;
+          setIsDeafened(false);
+        } else {
+          keybindToggleReleasedRef.current.muteDeafen = true;
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+      keybindHoldRef.current.mute = false;
+      keybindHoldRef.current.muteDeafen = false;
+      const track = localStreamRef.current?.getAudioTracks?.()[0];
+      if (track) track.enabled = true;
+      setIsDeafened(false);
+    };
+  }, [joinedVoiceChannelId, keybinds]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -986,6 +1136,7 @@ function App() {
     joinedVoiceChannelIdRef.current = null;
     setJoinedVoiceChannelId(null);
     setVoiceParticipants([]);
+    setIsDeafened(false);
     voiceParticipantCountRef.current = 0;
     voiceOfferSentToRef.current = new Set();
     if (screenStreamRef.current) {
@@ -1005,6 +1156,18 @@ function App() {
     pendingIceCandidatesRef.current = {};
     remoteStreamsRef.current = {};
     setRemoteStreams({});
+  };
+
+  const toggleMute = () => {
+    const track = localStreamRef.current?.getAudioTracks?.()[0];
+    if (track) track.enabled = !track.enabled;
+  };
+
+  const handleKeybindsChange = (next) => {
+    setKeybinds(next);
+    try {
+      localStorage.setItem(KEYBINDS_KEY, JSON.stringify(next));
+    } catch (_) {}
   };
 
   const startScreenShare = async () => {
@@ -1140,17 +1303,7 @@ function App() {
         className="flex h-screen w-screen flex-col overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
         style={{ paddingTop: "env(safe-area-inset-top)", height: "100dvh", maxHeight: "100vh" }}
       >
-      <audio
-        ref={(el) => {
-          notificationAudioRef.current = el;
-          if (el) setNotificationAudioElement(el);
-        }}
-        src={`${import.meta.env.BASE_URL || "/"}notification.mp3`}
-        preload="auto"
-        aria-hidden="true"
-        style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
-      />
-      <header className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0">
+      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
@@ -1162,14 +1315,8 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white flex-shrink-0">
-            M
-          </span>
           <div className="flex flex-col min-w-0">
             <span className="text-base font-semibold truncate">Meeps</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
-              Next-gen desktop chat
-            </span>
           </div>
         </div>
 
@@ -1198,22 +1345,96 @@ function App() {
               Board
             </button>
           </nav>
-          <button
-            onClick={toggleTheme}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-1 sm:px-3 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            <span className="text-xs" aria-hidden="true">
-              {theme === "dark" ? "🌙" : "☀️"}
-            </span>
-            <span className="hidden sm:inline">{theme === "dark" ? "Dark" : "Light"} mode</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-white px-2 py-1 sm:px-3 text-xs font-medium text-red-700 shadow-sm hover:bg-red-50 dark:border-red-700 dark:bg-gray-800 dark:text-red-200 dark:hover:bg-red-900"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setUsersPanelOpen((o) => !o)}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                usersPanelOpen
+                  ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              }`}
+              aria-label={usersPanelOpen ? "Close users list" : "Open users list"}
+              aria-expanded={usersPanelOpen}
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </button>
+            <div className="relative" ref={topMenuRef}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setTopMenuOpen((o) => !o);
+              }}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              aria-label="Menu"
+              aria-expanded={topMenuOpen}
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            {topMenuOpen && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    toggleTheme();
+                    setTopMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  {theme === "dark" ? (
+                    <svg className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                  )}
+                  <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsSettingsOpen(true);
+                    setTopMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  <svg className="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Settings</span>
+                </button>
+                <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    handleLogout();
+                    setTopMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -1226,7 +1447,7 @@ function App() {
         aria-hidden="true"
       />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row">
         <aside
           className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95
             fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
@@ -1282,22 +1503,95 @@ function App() {
                 }}
                 onJoinChannel={joinVoiceChannel}
                 onLeaveChannel={leaveVoiceChannel}
-                onOpenSoundSettings={() => setIsVoiceSettingsOpen(true)}
               />
-            </section>
-
-            <section>
-              <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Users
-              </h2>
-              <UserList
-                users={presenceUsers}
-                profiles={profiles}
-                onUserClick={(user) => {
-                  setSelectedUserForProfile(user);
-                  setSidebarOpen(false);
-                }}
-              />
+              <div className="mt-2">
+                <h3 className="mb-1.5 px-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  In call
+                </h3>
+                <div className="flex flex-col gap-0.5">
+                  {(() => {
+                    const voiceChannelId = VOICE_CHANNELS[0]?.id;
+                    const myId = currentUser?.id ?? CURRENT_USER_ID;
+                    let inCallList;
+                    if (joinedVoiceChannelId) {
+                      const seen = new Set();
+                      const list = [];
+                      const myProfile = profiles[myId];
+                      const myDisplayName = currentUser?.displayName ?? myProfile?.displayName ?? `User ${myId}`;
+                      let me = voiceParticipants.find((p) => String(p.id) === String(myId));
+                      if (!me) me = { id: myId, displayName: myDisplayName };
+                      else me = { ...me, displayName: me.displayName || myDisplayName };
+                      list.push(me);
+                      seen.add(String(me.id));
+                      voiceParticipants.forEach((p) => {
+                        if (!seen.has(String(p.id))) {
+                          list.push(p);
+                          seen.add(String(p.id));
+                        }
+                      });
+                      inCallList = list;
+                    } else {
+                      inCallList = voiceChannelParticipants[voiceChannelId] || [];
+                    }
+                    const showMuteSpeaking = !!joinedVoiceChannelId;
+                    return inCallList.map((p) => {
+                      const profile = profiles[p.id];
+                      const avatarUrl = profile?.avatarUrl || null;
+                      const name = p.displayName || profile?.displayName || `User ${p.id}`;
+                      const initials = (name || "?")
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase() || "?";
+                      const isSpeaking = showMuteSpeaking && speakingUserIds.includes(String(p.id));
+                      const isMuted = showMuteSpeaking && participantMuted[String(p.id)] === true;
+                      return (
+                        <div
+                          key={p.id}
+                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${
+                            isSpeaking ? "bg-emerald-100 dark:bg-emerald-900/30" : ""
+                          }`}
+                        >
+                          <div
+                            className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-medium ring-2 ${
+                              isSpeaking ? "ring-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 voice-speaking-glow" : "ring-gray-200 dark:ring-gray-600 bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white"
+                            }`}
+                          >
+                            {avatarUrl ? (
+                              <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">{initials}</span>
+                            )}
+                            {isSpeaking && (
+                              <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white bg-emerald-500 dark:border-gray-900" title="Speaking" />
+                            )}
+                          </div>
+                          <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300" title={name}>
+                            {name}
+                          </span>
+                          {showMuteSpeaking && isMuted && (
+                            <span className="flex-shrink-0 text-red-500 dark:text-red-400" title="Muted">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                              </svg>
+                            </span>
+                          )}
+                          {showMuteSpeaking && String(p.id) === String(myId) && isDeafened && (
+                            <span className="flex-shrink-0 text-red-500 dark:text-red-400" title="Deafened">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
+                              </svg>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
             </section>
           </div>
         </aside>
@@ -1313,13 +1607,9 @@ function App() {
                     <span className="text-xl font-semibold truncate">
                       # {selectedChannelId}
                     </span>
-                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                      {socketStatus === "connected" ? "Live" : socketStatus}
-                    </span>
+
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Welcome to Meeps – this is where your conversations will appear.
-                  </p>
+
                 </div>
               </div>
 
@@ -1376,7 +1666,7 @@ function App() {
                       ref={(el) => {
                         if (el && stream && typeof stream.getTracks === "function") {
                           el.srcObject = stream;
-                          el.volume = voiceSettings.volume;
+                          el.volume = isDeafened ? 0 : voiceSettings.volume;
                         }
                       }}
                     />
@@ -1386,12 +1676,133 @@ function App() {
             </div>
           )}
         </main>
+
+        {usersPanelOpen && (
+          <aside
+            className="flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95
+              w-40 min-w-[8rem] max-w-[10rem] flex-shrink-0"
+          >
+            <section className="flex flex-col min-h-0 flex-1 overflow-hidden">
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">
+                  Users
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setUsersPanelOpen(false)}
+                  className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                  aria-label="Close users list"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-0.5">
+                <UserList
+                  users={presenceUsers}
+                  profiles={profiles}
+                  onUserClick={(user) => {
+                    setSelectedUserForProfile(user);
+                  }}
+                />
+              </div>
+            </section>
+          </aside>
+        )}
       </div>
+
+      {/* Voice control bar when in a call - bottom left */}
+      {joinedVoiceChannelId && (
+        <div
+          className="fixed bottom-6 left-6 z-50 flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95"
+          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))", paddingLeft: "max(0.5rem, env(safe-area-inset-left))" }}
+        >
+          <button
+            type="button"
+            onClick={toggleMute}
+            className={`rounded-xl p-3 transition-colors ${
+              participantMuted[currentUser?.id ?? CURRENT_USER_ID]
+                ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            }`}
+            aria-label={participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? "Unmute" : "Mute"}
+          >
+            {participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsDeafened((d) => !d)}
+            className={`rounded-xl p-3 transition-colors ${
+              isDeafened
+                ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            }`}
+            aria-label={isDeafened ? "Undeafen" : "Deafen"}
+          >
+            {isDeafened ? (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              leaveVoiceChannel();
+              setVoiceChannelModalRoomId(null);
+            }}
+            className="rounded-xl bg-red-100 p-3 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+            aria-label="Leave call"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 3l-2 2m0 0l-2 2m2-2l2-2m-2 2l-2-2" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="rounded-xl p-3 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            aria-label="Settings"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <GifPickerModal
         isOpen={isGifModalOpen}
         onClose={() => setIsGifModalOpen(false)}
         onSelectGif={handleSelectGif}
         apiBase={apiBase}
+      />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onOpenVoiceSettings={() => {
+          setIsSettingsOpen(false);
+          setIsVoiceSettingsOpen(true);
+        }}
+        keybinds={keybinds}
+        onKeybindsChange={handleKeybindsChange}
       />
       <VoiceSettingsModal
         isOpen={isVoiceSettingsOpen}
@@ -1420,7 +1831,6 @@ function App() {
         onStopCamera={stopCamera}
         localCameraStream={localCameraStream}
         remoteStreams={remoteStreams}
-        onOpenSoundSettings={() => setIsVoiceSettingsOpen(true)}
         onJoin={() => {
           if (voiceChannelModalRoomId) joinVoiceChannel(voiceChannelModalRoomId);
         }}

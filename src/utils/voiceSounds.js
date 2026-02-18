@@ -1,22 +1,45 @@
 /**
- * Notification sounds: use Web Audio API to play a short beep (no asset required).
+ * Notification sounds from public/sounds/:
+ * - message: messages sent/received
+ * - user-joined: user join
+ * - user-left: user leave
  * Unlock on first user gesture so autoplay policy is satisfied. Works in browser and Tauri.
  */
 
-let notificationAudioElement = null;
+let soundUrls = null; // { message, userJoined, userLeave } -> full URLs
 let userHasInteracted = false;
 let audioContext = null;
+
+/** Initialize sound URLs. Call from App on mount. */
+export function initSoundElements(baseUrl = import.meta.env?.BASE_URL || "/") {
+  const base = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+  soundUrls = {
+    message: base + "sounds/message.mp3",
+    userJoined: base + "sounds/user-joined.mp3",
+    userLeave: base + "sounds/user-left.mp3"
+  };
+  // Preload and unlock using disposable elements (muted to avoid audible cut-off)
+  if (soundUrls && typeof Audio !== "undefined") {
+    Object.values(soundUrls).forEach((url) => {
+      const el = new Audio(url);
+      el.volume = 0;
+      el.play().then(() => el.pause()).catch(() => {});
+    });
+  }
+}
+
+/** @deprecated Use initSoundElements. Kept for backwards compat. */
+export function setNotificationAudioElement(element) {
+  if (!soundUrls && element?.src) {
+    const base = (element.src || "").replace(/[^/]+$/, "");
+    initSoundElements(base || "/");
+  }
+}
 
 /** Call after a user gesture so we know we can play sounds when needed. */
 export function setUserHasInteracted() {
   userHasInteracted = true;
   ensureAudioContext();
-}
-
-/** Call when the app mounts its <audio> element (kept for ref; we use Web Audio for sounds). */
-export function setNotificationAudioElement(element) {
-  notificationAudioElement = element;
-  if (element && userHasInteracted) ensureAudioContext();
 }
 
 function ensureAudioContext() {
@@ -40,14 +63,13 @@ export function unlockNotificationElement(element) {
   if (!element) return;
   ensureAudioContext();
   userHasInteracted = true;
-  // If we still use the element for anything, unlock it
   try {
     if (element.volume !== undefined) element.volume = 0.7;
     if (typeof element.play === "function") element.play().then(() => element.pause()).catch(() => {});
   } catch (_e) {}
 }
 
-/** Play a short beep using Web Audio (works without any .mp3 file and in Tauri). */
+/** Play a short beep using Web Audio (fallback when sound file fails). */
 function playBeep() {
   const ctx = userHasInteracted ? ensureAudioContext() : audioContext;
   if (!ctx) return false;
@@ -68,57 +90,71 @@ function playBeep() {
   }
 }
 
-/** Try <audio> element first (if src loaded), else Web Audio beep. */
-function playViaElement() {
+function playSound(key) {
+  const url = soundUrls?.[key];
+  if (!url) return playBeep();
   try {
-    if (notificationAudioElement?.src && notificationAudioElement.readyState >= 2) {
-      notificationAudioElement.currentTime = 0;
-      notificationAudioElement.volume = 0.7;
-      notificationAudioElement.play().catch(() => playBeep());
-      return true;
-    }
-  } catch (_e) {}
-  return playBeep();
+    const el = new Audio(url);
+    el.volume = 0.7;
+    el.play().catch(() => playBeep());
+    return true;
+  } catch (_e) {
+    return playBeep();
+  }
 }
 
 export function unlockAudio() {
   ensureAudioContext();
-  if (notificationAudioElement) unlockNotificationElement(notificationAudioElement);
+  userHasInteracted = true;
+  if (soundUrls && typeof Audio !== "undefined") {
+    Object.values(soundUrls).forEach((url) => {
+      const el = new Audio(url);
+      el.volume = 0;
+      el.play().then(() => el.pause()).catch(() => {});
+    });
+  }
 }
 
 export function preloadNotificationSound() {
   ensureAudioContext();
-  if (notificationAudioElement) unlockNotificationElement(notificationAudioElement);
+  userHasInteracted = true;
+  if (soundUrls && typeof Audio !== "undefined") {
+    Object.values(soundUrls).forEach((url) => {
+      const el = new Audio(url);
+      el.volume = 0;
+      el.play().then(() => el.pause()).catch(() => {});
+    });
+  }
 }
 
 export function playConnectSound() {
-  playViaElement();
+  playSound("userJoined");
 }
 
 export function playUserJoinedSound() {
-  playViaElement();
+  playSound("userJoined");
 }
 
 export function playUserLeftSound() {
-  playViaElement();
+  playSound("userLeave");
 }
 
 export function playJoinedSound() {
-  playViaElement();
+  playSound("userJoined");
 }
 
 export function playDisconnectedSound() {
-  playViaElement();
+  playSound("userLeave");
 }
 
 export function playMessageSentSound() {
-  playViaElement();
+  playSound("message");
 }
 
 export function playMessageReceivedSound() {
-  playViaElement();
+  playSound("message");
 }
 
 export function playVoiceParticipantSound() {
-  playViaElement();
+  playSound("message");
 }
