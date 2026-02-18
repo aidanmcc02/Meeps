@@ -159,6 +159,7 @@ function VoiceChannelModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="voice-room-title"
+      style={{ paddingTop: "env(safe-area-inset-top)", paddingRight: "env(safe-area-inset-right)", paddingLeft: "env(safe-area-inset-left)", paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {/* Subtle noise / grain overlay */}
       <div
@@ -168,30 +169,28 @@ function VoiceChannelModal({
         }}
       />
 
-      {/* Top bar */}
-      <header className="relative flex flex-shrink-0 items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-4">
-          <h1 id="voice-room-title" className="text-xl font-semibold tracking-tight text-white">
+      {/* Top bar: safe area pushes content below notch; close button has large tap target on mobile */}
+      <header className="relative flex flex-shrink-0 items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <h1 id="voice-room-title" className="text-lg sm:text-xl font-semibold tracking-tight text-white truncate">
             {channel.name}
           </h1>
           {isJoined && voicePingMs != null && (
-            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/90 shrink-0">
               {voicePingMs} ms
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-2.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-            aria-label="Close"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-xl p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/70 hover:bg-white/10 hover:text-white transition-colors shrink-0 -mr-1"
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </header>
 
       {/* Main: big avatars + screen shares */}

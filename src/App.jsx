@@ -1501,7 +1501,7 @@ function App() {
           maxHeight: "100vh"
         }}
       >
-      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0" data-tauri-drag-region>
+      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0" data-tauri-drag-region>
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             type="button"
@@ -1576,7 +1576,7 @@ function App() {
             </button>
             {topMenuOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                className="absolute right-0 top-full z-50 mt-0.5 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
                 role="menu"
               >
                 <button
@@ -1687,6 +1687,7 @@ function App() {
             className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
               fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
               md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none md:!w-full
+              pt-2 md:pt-3
               ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
             style={{
               ...(isDesktop
@@ -1699,11 +1700,11 @@ function App() {
                 : { paddingLeft: "max(0.75rem, env(safe-area-inset-left))" })
             }}
           >
-          <div className="flex flex-shrink-0 justify-end md:hidden">
+          <div className="flex flex-shrink-0 justify-end md:hidden -mt-0.5 mb-1">
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="rounded-lg p-1.5 -m-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="Close menu"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1712,7 +1713,7 @@ function App() {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1 -mt-1 md:mt-0">
             <section>
               <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Text Channels
