@@ -29,9 +29,38 @@ async function getAttachmentsForMessage(messageId) {
 let wssInstance = null;
 const presenceByUserId = new Map();
 const socketsByUserId = new Map();
-const voiceRooms = new Map(); // roomId -> Set<userId>
+const voiceRooms = new Map(); // roomId -> Set<userId> (for broadcast; kept in sync with voiceRoomSockets)
+const voiceRoomSockets = new Map(); // roomId -> Map<userId, Set<socket>> (per-socket membership for multi-device)
 const voiceRoomPings = new Map(); // roomId -> Map<userId, rttMs>
 let idleCheckInterval = null;
+
+/** Remove one socket from a voice room. Only removes userId from room when this is their last socket in the room. */
+function removeSocketFromVoiceRoom(socket, roomId, userId) {
+  const roomMap = voiceRoomSockets.get(roomId);
+  if (!roomMap) return;
+  const userSockets = roomMap.get(userId);
+  if (!userSockets) return;
+  userSockets.delete(socket);
+  if (userSockets.size === 0) {
+    roomMap.delete(userId);
+    const members = voiceRooms.get(roomId);
+    if (members) {
+      members.delete(userId);
+      const pings = voiceRoomPings.get(roomId);
+      if (pings) {
+        pings.delete(userId);
+        if (pings.size === 0) voiceRoomPings.delete(roomId);
+      }
+      if (members.size === 0) {
+        voiceRooms.delete(roomId);
+        voiceRoomSockets.delete(roomId);
+        voiceRoomPings.delete(roomId);
+      } else {
+        broadcastVoiceParticipants(roomId);
+      }
+    }
+  }
+}
 
 const IDLE_AFTER_MS = 5 * 60 * 1000; // 5 minutes
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds
@@ -101,6 +130,13 @@ function startWebSocketServer(httpServer) {
       console.log("WebSocket client disconnected");
       if (socket.userId) {
         const userId = socket.userId;
+
+        // Remove only this socket from its voice room (so other devices stay in the call)
+        if (socket.voiceRoomId) {
+          removeSocketFromVoiceRoom(socket, socket.voiceRoomId, userId);
+          socket.voiceRoomId = null;
+        }
+
         const entry = presenceByUserId.get(userId);
         if (entry) {
           entry.status = "offline";
@@ -117,24 +153,6 @@ function startWebSocketServer(httpServer) {
           sockets.delete(socket);
           if (sockets.size === 0) {
             socketsByUserId.delete(userId);
-          }
-        }
-
-        // Remove from all voice rooms
-        for (const [roomId, members] of voiceRooms.entries()) {
-          if (members.has(userId)) {
-            members.delete(userId);
-            const pings = voiceRoomPings.get(roomId);
-            if (pings) {
-              pings.delete(userId);
-              if (pings.size === 0) voiceRoomPings.delete(roomId);
-            }
-            if (members.size === 0) {
-              voiceRooms.delete(roomId);
-              voiceRoomPings.delete(roomId);
-            } else {
-              broadcastVoiceParticipants(roomId);
-            }
           }
         }
       }
@@ -513,10 +531,24 @@ function handlePresenceActivity(socket, payload) {
   presenceByUserId.set(userId, existing);
 }
 
-function handleVoiceJoin(_socket, payload) {
+function handleVoiceJoin(socket, payload) {
   const userId = Number(payload.userId);
   const roomId = payload.roomId;
   if (!userId || !roomId) return;
+
+  // Per-socket membership: so closing mobile doesn't kick desktop from the call
+  let roomMap = voiceRoomSockets.get(roomId);
+  if (!roomMap) {
+    roomMap = new Map();
+    voiceRoomSockets.set(roomId, roomMap);
+  }
+  let userSockets = roomMap.get(userId);
+  if (!userSockets) {
+    userSockets = new Set();
+    roomMap.set(userId, userSockets);
+  }
+  userSockets.add(socket);
+  socket.voiceRoomId = roomId;
 
   let members = voiceRooms.get(roomId);
   if (!members) {
@@ -528,25 +560,13 @@ function handleVoiceJoin(_socket, payload) {
   broadcastVoiceParticipants(roomId);
 }
 
-function handleVoiceLeave(_socket, payload) {
-  const userId = Number(payload.userId);
-  const roomId = payload.roomId;
+function handleVoiceLeave(socket, payload) {
+  const userId = Number(payload.userId) || socket.userId;
+  const roomId = payload.roomId || socket.voiceRoomId;
   if (!userId || !roomId) return;
 
-  const members = voiceRooms.get(roomId);
-  if (!members) return;
-
-  members.delete(userId);
-  const pings = voiceRoomPings.get(roomId);
-  if (pings) {
-    pings.delete(userId);
-    if (pings.size === 0) voiceRoomPings.delete(roomId);
-  }
-  if (members.size === 0) {
-    voiceRooms.delete(roomId);
-    voiceRoomPings.delete(roomId);
-  }
-  broadcastVoiceParticipants(roomId);
+  removeSocketFromVoiceRoom(socket, roomId, userId);
+  socket.voiceRoomId = null;
 }
 
 function getVoiceHost(roomId) {
