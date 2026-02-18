@@ -54,14 +54,35 @@ function groupMessagesByDay(messages) {
   return groups;
 }
 
+// Match @mention (e.g. @person1, @everyone, @Person_One) - turn into markdown links so we can render with custom component
+const MENTION_PATTERN = /@(\S+)/g;
+function contentWithMentionLinks(content) {
+  return content.replace(MENTION_PATTERN, (_, slug) => `[@${slug}](mention:${slug})`);
+}
+
+function MentionLink({ href, children, mentionSlugToName }) {
+  if (href?.startsWith("mention:")) {
+    const slug = href.slice(8);
+    const displayName = mentionSlugToName[slug] ?? slug;
+    return (
+      <span className="mention inline-flex items-center rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 font-medium">
+        @{displayName}
+      </span>
+    );
+  }
+  return <a href={href}>{children}</a>;
+}
+
 function MessageList({
   messages,
   currentUserName,
   currentUserId,
   profiles = {},
   senderNameToAvatar = {},
+  mentionSlugToName = {},
   onEditMessage,
-  onDeleteMessage
+  onDeleteMessage,
+  apiBase = ""
 }) {
   const containerRef = useRef(null);
   const prevCountRef = useRef(0);
@@ -279,9 +300,65 @@ function MessageList({
                   </div>
                 </div>
               ) : (
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                </div>
+                <>
+                  {(msg.content?.trim() || "") !== "" && (
+                    <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg [&_.mention]:font-medium">
+                      <ReactMarkdown
+                        components={{
+                          a: ({ href, children }) => (
+                            <MentionLink href={href} mentionSlugToName={mentionSlugToName}>
+                              {children}
+                            </MentionLink>
+                          )
+                        }}
+                      >
+                        {contentWithMentionLinks(msg.content)}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                  {(msg.attachments?.length > 0) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {msg.attachments.map((att) => {
+                        const url = att.url || (apiBase ? `${apiBase}/api/files/${att.id}` : null);
+                        const isImage = att.mimeType?.startsWith("image/");
+                        return (
+                          <div key={att.id} className="flex flex-col">
+                            {url ? (
+                              isImage ? (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-xs max-h-48"
+                                >
+                                  <img
+                                    src={url}
+                                    alt={att.filename}
+                                    className="max-h-48 w-auto object-contain"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                                >
+                                  <span className="truncate max-w-[180px]" title={att.filename}>{att.filename}</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">↗</span>
+                                </a>
+                              )
+                            ) : (
+                              <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[180px]" title={att.filename}>
+                                {att.filename} (expired)
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

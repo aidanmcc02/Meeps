@@ -4,6 +4,7 @@ import VoiceChannels from "./components/VoiceChannels";
 import UserList from "./components/UserList";
 import UserProfile from "./components/UserProfile";
 import MessageList from "./components/MessageList";
+import MessageInput from "./components/MessageInput";
 import GifPickerModal from "./components/GifPickerModal";
 import AuthModal from "./components/AuthModal";
 import ProfileSetupPage from "./components/ProfileSetupPage";
@@ -55,6 +56,7 @@ function App() {
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
   const [selectedChannelId, setSelectedChannelId] = useState("general");
+  const [unreadChannelIds, setUnreadChannelIds] = useState(new Set());
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [socketStatus, setSocketStatus] = useState("disconnected");
@@ -63,6 +65,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const socketRef = useRef(null);
+  const selectedChannelIdRef = useRef(selectedChannelId);
   const lastActivitySentRef = useRef(0);
   const [joinedVoiceChannelId, setJoinedVoiceChannelId] = useState(null);
   const [voiceParticipants, setVoiceParticipants] = useState([]);
@@ -136,7 +139,10 @@ function App() {
       .catch(() => {});
   }, []);
 
-  // Keep ref in sync so WebSocket onmessage always sees current voice channel (avoids stale closure).
+  // Keep refs in sync so WebSocket onmessage always sees current values (avoids stale closure).
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedChannelId;
+  }, [selectedChannelId]);
   useEffect(() => {
     joinedVoiceChannelIdRef.current = joinedVoiceChannelId;
   }, [joinedVoiceChannelId]);
@@ -334,6 +340,12 @@ function App() {
           setMessages((prev) => [...prev, data.payload]);
           const myId = currentUser?.id ?? CURRENT_USER_ID;
           if (Number(data.payload.senderId) !== Number(myId)) playMessageReceivedSound();
+          // Mark channel as unread if we're not viewing it and message isn't from us
+          const msgChannel = data.payload.channel;
+          const currentChannel = selectedChannelIdRef.current;
+          if (msgChannel && msgChannel !== currentChannel && Number(data.payload.senderId) !== Number(myId)) {
+            setUnreadChannelIds((prev) => new Set(prev).add(msgChannel));
+          }
         } else if (data.type === "message:updated" && data.payload) {
           const payload = data.payload;
           setMessages((prev) =>
@@ -765,9 +777,9 @@ function App() {
     saveThemePreference(nextTheme);
   };
 
-  const handleSend = () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed) return;
+  const handleSend = (contentOrTrimmed, attachmentIds = []) => {
+    const trimmed = typeof contentOrTrimmed === "string" ? contentOrTrimmed : inputValue.trim();
+    if (!trimmed && (!attachmentIds || attachmentIds.length === 0)) return;
 
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -778,9 +790,10 @@ function App() {
     const payload = {
       type: "message",
       channel: selectedChannelId,
-      sender: currentUser.displayName || DEFAULT_USER_NAME,
-      senderId: currentUser.id ?? undefined,
-      content: trimmed
+      sender: currentUser?.displayName || DEFAULT_USER_NAME,
+      senderId: currentUser?.id ?? undefined,
+      content: trimmed || (attachmentIds?.length > 0 ? " " : ""),
+      attachmentIds: Array.isArray(attachmentIds) ? attachmentIds : []
     };
 
     console.log("Sending message:", payload);
@@ -814,8 +827,8 @@ function App() {
     const payload = {
       type: "message",
       channel: selectedChannelId,
-      sender: currentUser.displayName || DEFAULT_USER_NAME,
-      senderId: currentUser.id ?? undefined,
+      sender: currentUser?.displayName || DEFAULT_USER_NAME,
+      senderId: currentUser?.id ?? undefined,
       content
     };
 
@@ -840,6 +853,20 @@ function App() {
     });
     return m;
   }, [currentUser?.displayName, currentUserProfile?.avatarUrl, presenceUsers, profiles]);
+
+  // Slug (for @mentions) -> display name (e.g. "Person_One" -> "Person One", "everyone" -> "everyone")
+  const mentionSlugToName = useMemo(() => {
+    const m = { everyone: "everyone" };
+    const add = (displayName) => {
+      if (!displayName || typeof displayName !== "string") return;
+      const slug = displayName.replace(/\s+/g, "_").trim();
+      if (slug) m[slug] = displayName;
+    };
+    add(currentUser?.displayName);
+    (presenceUsers || []).forEach((u) => add(u.displayName || u.name));
+    Object.values(profiles).forEach((p) => add(p?.displayName));
+    return m;
+  }, [currentUser?.displayName, presenceUsers, profiles]);
 
   const ensureLocalStream = async () => {
     if (localStreamRef.current) return localStreamRef.current;
@@ -1478,8 +1505,14 @@ function App() {
               <TextChannels
                 channels={TEXT_CHANNELS}
                 selectedChannelId={selectedChannelId}
+                unreadChannelIds={unreadChannelIds}
                 onSelectChannel={(id) => {
                   setSelectedChannelId(id);
+                  setUnreadChannelIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                  });
                   if (activeTab === "board") setActiveTab("chat");
                   setSidebarOpen(false);
                 }}
@@ -1619,43 +1652,24 @@ function App() {
                 currentUserId={currentUser?.id}
                 profiles={profiles}
                 senderNameToAvatar={senderNameToAvatar}
+                mentionSlugToName={mentionSlugToName}
                 onEditMessage={handleEditMessage}
                 onDeleteMessage={handleDeleteMessage}
+                apiBase={apiBase}
               />
 
-              <div className="flex-shrink-0 border-t border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
-                <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900 min-w-0">
-                  <textarea
-                    rows={1}
-                    className="min-h-[32px] max-h-24 min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                    placeholder={`Message #${selectedChannelId} (Markdown supported)…`}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                  />
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleSend}
-                      disabled={!inputValue.trim()}
-                      className="inline-flex items-center rounded-full bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      Send
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsGifModalOpen(true)}
-                      className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 whitespace-nowrap"
-                    >
-                      GIF
-                    </button>
-                  </div>
-                </div>
+              <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 min-w-0">
+                <MessageInput
+                  value={inputValue}
+                  onChange={setInputValue}
+                  onSend={handleSend}
+                  onGifClick={() => setIsGifModalOpen(true)}
+                  placeholder={`Message #${selectedChannelId} (Markdown supported, @ to mention)…`}
+                  presenceUsers={presenceUsers}
+                  currentUser={currentUser}
+                  profiles={profiles}
+                  apiBase={apiBase}
+                />
                 {/* hidden audio elements for remote peers */}
                 <div className="sr-only">
                   {Object.entries(remoteStreams).map(([userId, stream]) => (

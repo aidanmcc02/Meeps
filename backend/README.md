@@ -124,3 +124,13 @@ You can later extend this to handle rooms, presence, and typing indicators.
 
 Once deployed, update your frontend or Tauri app to point its API base URL at your Railway backend (e.g. `https://your-project.up.railway.app/api`).
 
+### File uploads (Railway)
+
+Uploaded files are stored on disk and **auto-deleted after 3 days**. On Railway the filesystem is ephemeral unless you use a **Volume**:
+
+1. In your Railway project, add a **Volume** to your backend service and set the mount path (e.g. `/data`).
+2. Set the backend variable **`UPLOADS_PATH`** to that path (e.g. `/data`). Uploads will be stored under `UPLOADS_PATH/files`.
+3. Alternatively use the provided env **`RAILWAY_VOLUME_MOUNT_PATH`** and set `UPLOADS_PATH=$RAILWAY_VOLUME_MOUNT_PATH` so uploads persist across deploys.
+
+Without a volume, uploads work but are lost on redeploy. A cleanup job runs every hour to remove files older than 3 days.
+

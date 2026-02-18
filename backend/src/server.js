@@ -8,8 +8,10 @@ const app = require("./app");
 const { startWebSocketServer } = require("./websocket/websocketServer");
 const { pool } = require("./config/db");
 const { initDatabase } = require("./config/initDb");
+const { cleanupExpiredUploads } = require("./controllers/uploadController");
 
 const PORT = process.env.PORT || 4000;
+const UPLOAD_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 async function start() {
   try {
@@ -26,6 +28,10 @@ async function start() {
 
   const server = http.createServer(app);
   startWebSocketServer(server);
+
+  // Clean up expired file uploads (older than 3 days) every hour
+  setTimeout(() => cleanupExpiredUploads(), 60 * 1000);
+  setInterval(cleanupExpiredUploads, UPLOAD_CLEANUP_INTERVAL_MS);
 
   server.listen(PORT, () => {
     // eslint-disable-next-line no-console

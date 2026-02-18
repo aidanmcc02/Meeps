@@ -1,6 +1,30 @@
 const { WebSocketServer } = require("ws");
 const db = require("../config/db");
 
+const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+
+async function getAttachmentsForMessage(messageId) {
+  try {
+    const result = await db.query(
+      `SELECT u.id, u.filename, u.mime_type, u.size_bytes, u.created_at
+       FROM message_attachments ma
+       JOIN uploads u ON u.id = ma.upload_id
+       WHERE ma.message_id = $1 AND u.created_at > $2
+       ORDER BY ma.upload_id`,
+      [messageId, new Date(Date.now() - UPLOAD_MAX_AGE_MS)]
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      filename: r.filename,
+      mimeType: r.mime_type,
+      size: r.size_bytes,
+      url: null
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+
 let wssInstance = null;
 const presenceByUserId = new Map();
 const socketsByUserId = new Map();
@@ -116,8 +140,12 @@ async function handleIncomingChatMessage(parsed, wss) {
   const content =
     typeof parsed.content === "string" ? parsed.content.trim() : "";
 
-  if (!content) {
-    console.log("Empty message, ignoring");
+  const attachmentIds = Array.isArray(parsed.attachmentIds)
+    ? parsed.attachmentIds.map((a) => Number(a)).filter((n) => !Number.isNaN(n))
+    : [];
+
+  if (!content && attachmentIds.length === 0) {
+    console.log("Empty message (no content or attachments), ignoring");
     return;
   }
 
@@ -127,32 +155,69 @@ async function handleIncomingChatMessage(parsed, wss) {
     sender,
     senderId: senderId || undefined,
     content,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    attachments: []
   };
 
+  const contentToSave = content || (attachmentIds.length > 0 ? " " : "");
   try {
-    console.log("Saving message to database:", { channel, sender, senderId, content });
+    console.log("Saving message to database:", { channel, sender, senderId, content: contentToSave, attachmentIds });
     try {
       const result = await db.query(
         "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
-        [channel, sender, senderId || null, content]
+        [channel, sender, senderId || null, contentToSave]
       );
       const row = result.rows[0];
+      const messageId = row.id;
+
+      if (attachmentIds.length > 0) {
+        const threeDaysAgo = new Date(Date.now() - UPLOAD_MAX_AGE_MS);
+        for (const uploadId of attachmentIds) {
+          const ok = await db.query(
+            "SELECT id FROM uploads WHERE id = $1 AND created_at > $2",
+            [uploadId, threeDaysAgo]
+          );
+          if (ok.rows.length > 0) {
+            await db.query(
+              "INSERT INTO message_attachments (message_id, upload_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+              [messageId, uploadId]
+            );
+          }
+        }
+      }
+
+      savedMessage.attachments = await getAttachmentsForMessage(messageId);
       savedMessage = {
         id: row.id,
         channel,
         sender,
         senderId: row.sender_id ?? undefined,
-        content,
-        createdAt: row.created_at
+        content: contentToSave,
+        createdAt: row.created_at,
+        attachments: savedMessage.attachments
       };
       console.log("Message saved successfully:", savedMessage);
     } catch (insertErr) {
-      // Old DBs may lack sender_id column (e.g. 42703 = undefined_column)
-      if (insertErr.code === "42703" || insertErr.message?.includes("sender_id")) {
+      if (insertErr.code === "42P01") {
+        // relation "message_attachments" or "uploads" does not exist yet
+        const result = await db.query(
+          "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
+          [channel, sender, senderId || null, content]
+        );
+        const row = result.rows[0];
+        savedMessage = {
+          id: row.id,
+          channel,
+          sender,
+          senderId: row.sender_id ?? undefined,
+          content: contentToSave,
+          createdAt: row.created_at,
+          attachments: []
+        };
+      } else if (insertErr.code === "42703" || insertErr.message?.includes("sender_id")) {
         const result = await db.query(
           "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, created_at",
-          [channel, sender, content]
+          [channel, sender, contentToSave]
         );
         const row = result.rows[0];
         savedMessage = {
@@ -160,8 +225,9 @@ async function handleIncomingChatMessage(parsed, wss) {
           channel,
           sender,
           senderId: undefined,
-          content,
-          createdAt: row.created_at
+          content: contentToSave,
+          createdAt: row.created_at,
+          attachments: []
         };
         console.log("Message saved (legacy schema):", savedMessage);
       } else {
