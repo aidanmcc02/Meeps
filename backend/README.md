@@ -112,15 +112,19 @@ You can later extend this to handle rooms, presence, and typing indicators.
      npm install && npm start
      ```
 
-5. **Migrations on Railway**: The backend runs migrations automatically on each deploy via `preDeployCommand` in `backend/railway.json`. Ensure the backend service has its root directory set to `backend` so Railway uses that config.
+5. **Migrations on Railway**: The backend runs migrations automatically on each deploy via `preDeployCommand` in `backend/railway.json`. 
 
-   For manual migration (e.g. first-time setup or troubleshooting), open a Railway shell for your Postgres service and run:
+   **Important**: Ensure the backend service has its **root directory set to `backend`** in Railway dashboard (Settings → Service → Root Directory). Otherwise, Railway won't find `railway.json` and migrations won't run automatically.
 
-     ```sql
-     \i src/models/userModel.sql
-     ```
+   **Check if migrations ran**:
+   ```sql
+   SELECT * FROM schema_migrations ORDER BY applied_at;
+   ```
 
-     or copy the contents of `userModel.sql` into a Railway SQL console.
+   **Manual migration** (if automatic migrations didn't run):
+   - Open Railway shell for your **backend service** (not Postgres)
+   - Run: `npm run migrate`
+   - Or connect to Postgres and run migration SQL files manually
 
 Once deployed, update your frontend or Tauri app to point its API base URL at your Railway backend (e.g. `https://your-project.up.railway.app/api`).
 

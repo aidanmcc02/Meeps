@@ -6,10 +6,16 @@ const SCROLL_THRESHOLD = 100;
 function formatMessageTime(createdAt) {
   if (!createdAt) return null;
   const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return null;
   const now = new Date();
   const msAgo = now - d;
   const twentyFourHours = 24 * 60 * 60 * 1000;
-  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Use user's local timezone for display
+  const timeStr = d.toLocaleTimeString([], { 
+    hour: "2-digit", 
+    minute: "2-digit",
+    timeZoneName: "short"
+  });
   if (msAgo < twentyFourHours && msAgo >= 0) return timeStr;
   const dateStr = d.toLocaleDateString([], {
     month: "short",
@@ -217,7 +223,11 @@ function MessageList({
                 {msg.createdAt && (
                   <span
                     className="text-xs text-gray-500 dark:text-gray-400"
-                    title={new Date(msg.createdAt).toLocaleString()}
+                    title={new Date(msg.createdAt).toLocaleString(undefined, {
+                      dateStyle: "full",
+                      timeStyle: "long",
+                      timeZoneName: "short"
+                    })}
                   >
                     {formatMessageTime(msg.createdAt)}
                   </span>
