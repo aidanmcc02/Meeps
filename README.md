@@ -67,16 +67,23 @@ Then serve the `dist/` folder (e.g. `npm start` which runs `serve -s dist`).
    - Start: `npm start` (serves `dist/` with `serve`)
 4. Deploy. After deployment, open the generated URL on your phone and use **Add to Home Screen** (Safari on iOS) to install the PWA.
 
-### PWA icons
+### App icon (Windows + iPhone PWA)
 
-Icons are copied from the Tauri icon by default. For best quality on iOS and Android, replace the files in `public/` with higher-resolution PNGs:
+Place a square PNG as **`icon.png`** in the project root, then run:
 
-- `public/apple-touch-icon.png` — 180×180 (iOS home screen)
-- `public/icon-192.png` — 192×192
-- `public/icon-512.png` — 512×512
+```bash
+npm run update-icons
+```
 
-Regenerate from the Tauri icon after running `generate-icon`:  
-`npm run generate-pwa-icons`
+This generates the Windows icon (`.ico` and store assets) from `icon.png` and copies it to `public/` for the PWA (iPhone home screen, etc.). Use a square image, ideally **512×512 or larger**. Then rebuild:
+
+- Windows: `npm run tauri:build`
+- PWA: `npm run build:web`
+
+**Windows taskbar still shows the old icon?** The icon is embedded in the .exe at build time. Do this:
+1. **Rebuild** so the new icon is in the executable: `npm run tauri:build`, then run the new `.exe` from `src-tauri/target/release/bundle/` (or reinstall from the new `.msi`).
+2. **Unpin** the app from the taskbar (right‑click → Unpin), then run the new build and pin it again.
+3. If it still shows the old icon, clear Windows’ icon cache: close Explorer in Task Manager, delete `%LOCALAPPDATA%\IconCache.db`, then restart Explorer (File → Run new task → `explorer`).
 
 ### iOS PWA Notifications
 
