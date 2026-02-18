@@ -87,6 +87,18 @@ You can later extend this to handle rooms, presence, and typing indicators.
 
    Tables are created automatically on first run (see `config/initDb.js`).
 
+## Valorant (Neon tab and #Matchs channel)
+
+The app has a **Neon** tab to view Valorant rank and match history for linked players. When a linked user finishes a competitive game, a message is posted to the **#Matchs** text channel (win/loss, agent image, rank, K/D/A).
+
+**Setup:** Set `RIOT_API_KEY` in `.env` (from developer.riotgames.com, Valorant product). Tracker polls every 2 min and posts to #Matchs. **Linking:** From Neon tab or API (POST/GET/DELETE /api/valorant/*, auth required).
+
+1. **Riot API key** — [developer.riotgames.com](https://developer.riotgames.com/) → create an app and get an API key (Valorant product).
+2. **Environment** (root `.env` or backend `.env`):
+   - `RIOT_API_KEY` — your Riot API key
+
+**Note:** Riot’s match API does not expose RR gained/lost per match; the message shows “—” for RR unless you add a separate source.
+
 ## Deploying / connecting to Railway
 
 1. **Create a new Railway project** and add a **PostgreSQL** plugin.

@@ -14,6 +14,7 @@ import SettingsModal from "./components/SettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
 import Board from "./components/Board";
+import Neon from "./components/Neon";
 import {
   initSoundElements,
   setUserHasInteracted,
@@ -62,7 +63,8 @@ const voiceDebug = isDev ? {
 const TEXT_CHANNELS = [
   { id: "general", name: "general" },
   { id: "dev", name: "dev-chat" },
-  { id: "Builds", name: "Builds" }
+  { id: "Builds", name: "Builds" },
+  { id: "matches", name: "Matchs" }
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 
@@ -96,7 +98,7 @@ function App() {
   const resizeStateRef = useRef({ active: null, startX: 0, startWidth: 0, lastSidebarPx: SIDEBAR_DEFAULT_PX, lastUsersPx: USERS_PANEL_DEFAULT_PX });
 
   const [theme, setTheme] = useState("dark");
-  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
+  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board" | "neon"
   const [selectedChannelId, setSelectedChannelId] = useState("general");
   const [unreadChannelIds, setUnreadChannelIds] = useState(new Set());
   const [messages, setMessages] = useState([]);
@@ -107,6 +109,12 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const socketRef = useRef(null);
+  const wsShouldReconnectRef = useRef(false);
+  const reconnectTimeoutRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
+  const connectWsRef = useRef(null);
+  const currentUserRef = useRef(currentUser);
+  const wsUrlRef = useRef(wsUrl);
   const selectedChannelIdRef = useRef(selectedChannelId);
   const lastActivitySentRef = useRef(0);
   const [joinedVoiceChannelId, setJoinedVoiceChannelId] = useState(null);
@@ -532,155 +540,216 @@ function App() {
     setIsAuthenticated(false);
   };
 
+  // Keep refs in sync so reconnection and visibility handler use latest user/wsUrl
+  currentUserRef.current = currentUser;
+  wsUrlRef.current = wsUrl;
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const userId = currentUser?.id ?? CURRENT_USER_ID;
-    const displayName = currentUser?.displayName ?? DEFAULT_USER_NAME;
+    wsShouldReconnectRef.current = true;
 
-    console.log("Connecting to WebSocket at:", wsUrl);
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-    setSocketStatus("connecting");
-
-    socket.onopen = () => {
-      console.log("WebSocket connected successfully");
-      setSocketStatus("connected");
-      const hello = {
-        type: "presence:hello",
-        userId,
-        displayName
-      };
-      socket.send(JSON.stringify(hello));
-      // Request current voice channel participants so we show who's in each channel before joining
-      socket.send(
-        JSON.stringify({
-          type: "voice:get_participants",
-          roomIds: VOICE_CHANNELS.map((c) => c.id)
-        })
-      );
+    const scheduleReconnect = () => {
+      if (!wsShouldReconnectRef.current) return;
+      const attempt = reconnectAttemptRef.current;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      reconnectAttemptRef.current = attempt + 1;
+      console.log("WebSocket reconnecting in", delay, "ms (attempt", attempt + 1, ")");
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
+        connect();
+      }, delay);
     };
 
-    socket.onclose = () => {
-      console.log("WebSocket connection closed");
-      setSocketStatus("disconnected");
-      socketRef.current = null;
-    };
+    const connect = () => {
+      const u = wsUrlRef.current;
+      if (!u) return;
+      const uid = currentUserRef.current?.id ?? CURRENT_USER_ID;
+      const dname = currentUserRef.current?.displayName ?? DEFAULT_USER_NAME;
 
-    socket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setSocketStatus("error");
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "message" && data.payload) {
-          const payload = data.payload;
-          setMessages((prev) => [...prev, payload]);
-          const myId = currentUser?.id ?? CURRENT_USER_ID;
-          const isFromMe = Number(payload.senderId) === Number(myId);
-          // Only play notification sound when mentioned (@username or @everyone)
-          // Double-check: ensure content exists and contains @ symbol before checking mentions
-          const hasMention = payload.content && 
-            typeof payload.content === "string" && 
-            payload.content.includes("@") &&
-            messageMentionsMe(payload.content, currentUser?.displayName);
-          if (!isFromMe && hasMention) {
-            playMessageReceivedSound();
-          }
-          // Mark channel as unread if we're not viewing it and message isn't from us
-          const msgChannel = payload.channel;
-          const currentChannel = selectedChannelIdRef.current;
-          if (msgChannel && msgChannel !== currentChannel && !isFromMe) {
-            setUnreadChannelIds((prev) => new Set(prev).add(msgChannel));
-          }
-          // Notify when mentioned and app is in background (PWA iPhone / Tauri Windows)
-          if (
-            !isFromMe &&
-            messageMentionsMe(payload.content, currentUser?.displayName)
-          ) {
-            showMentionNotificationIfBackground(
-              payload.sender || "Someone",
-              payload.content,
-              payload.channel
-            );
-          }
-        } else if (data.type === "message:updated" && data.payload) {
-          const payload = data.payload;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === payload.id ? { ...m, ...payload } : m))
-          );
-        } else if (data.type === "message:deleted" && data.payload?.id != null) {
-          setMessages((prev) => prev.filter((m) => m.id !== data.payload.id));
-        } else if (data.type === "profileUpdated" && data.payload) {
-          const profile = data.payload;
-          setProfiles((prev) => ({
-            ...prev,
-            [profile.id]: profile
-          }));
-          if (
-            profile.id === CURRENT_USER_ID &&
-            (profile.theme === "light" || profile.theme === "dark")
-          ) {
-            setTheme(profile.theme);
-            applyTheme(profile.theme);
-            window.localStorage.setItem(THEME_KEY, profile.theme);
-          }
-        } else if (data.type === "presence:state" && Array.isArray(data.payload)) {
-          setPresenceUsers(data.payload);
-        } else if (data.type === "presence:updated" && data.payload) {
-          const presence = data.payload;
-          setPresenceUsers((prev) => {
-            const existingIndex = prev.findIndex((u) => u.id === presence.id);
-            if (existingIndex === -1) {
-              return [...prev, presence];
-            }
-            const copy = [...prev];
-            copy[existingIndex] = { ...copy[existingIndex], ...presence };
-            return copy;
-          });
-        } else if (data.type === "voice:participants" && data.payload) {
-          const { roomId, participants, hostUserId } = data.payload;
-          const list = participants || [];
-          voiceDebug.log("Received voice:participants", { roomId, participantCount: list.length, hostUserId, participants: list.map(p => ({ id: p.id, displayName: p.displayName })) });
-          setVoiceChannelParticipants((prev) => ({ ...prev, [roomId]: list }));
-          const joinedRoomId = joinedVoiceChannelIdRef.current;
-          const isOurRoom = joinedRoomId != null && String(roomId) === String(joinedRoomId);
-          voiceDebug.log("Processing participants for room", { roomId, joinedRoomId, isOurRoom });
-          if (isOurRoom) {
-            setVoiceHostUserId(hostUserId != null ? hostUserId : null);
-            const newCount = list.length;
-            const oldCount = voiceParticipantCountRef.current;
-            const isOurOwnJoin = justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
-            voiceDebug.log("Our room participants updated", { newCount, oldCount, isOurOwnJoin });
-            if (isOurOwnJoin) {
-              justJoinedVoiceRef.current = false;
-            } else if (newCount !== oldCount) {
-              unlockAudio();
-              if (newCount > oldCount) {
-                setTimeout(() => playUserJoinedSound(), 0);
-              } else {
-                setTimeout(() => playUserLeftSound(), 0);
-              }
-            }
-            voiceParticipantCountRef.current = newCount;
-            setVoiceParticipants(list);
-            voiceDebug.log("Voice participants state updated", { count: list.length });
-          }
-        } else if (data.type === "voice:signal" && data.payload) {
-          voiceDebug.log("Received voice:signal", { signalType: data.payload.signalType, fromUserId: data.payload.fromUserId });
-          handleIncomingVoiceSignal(data.payload);
-        }
-      } catch {
-        // ignore malformed messages
+      if (socketRef.current) {
+        try {
+          socketRef.current.close();
+        } catch (_) {}
+        socketRef.current = null;
       }
+
+      console.log("Connecting to WebSocket at:", u);
+      const socket = new WebSocket(u);
+      socketRef.current = socket;
+      setSocketStatus("connecting");
+
+      socket.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        console.log("WebSocket connected successfully");
+        setSocketStatus("connected");
+        socket.send(
+          JSON.stringify({ type: "presence:hello", userId: uid, displayName: dname })
+        );
+        socket.send(
+          JSON.stringify({
+            type: "voice:get_participants",
+            roomIds: VOICE_CHANNELS.map((c) => c.id)
+          })
+        );
+      };
+
+      socket.onclose = () => {
+        console.log("WebSocket connection closed");
+        setSocketStatus("disconnected");
+        socketRef.current = null;
+        joinedVoiceChannelIdRef.current = null;
+        setJoinedVoiceChannelId(null);
+        scheduleReconnect();
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setSocketStatus("error");
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "message" && data.payload) {
+            const payload = data.payload;
+            setMessages((prev) => [...prev, payload]);
+            const myId = currentUserRef.current?.id ?? CURRENT_USER_ID;
+            const isFromMe = Number(payload.senderId) === Number(myId);
+            const hasMention = payload.content &&
+              typeof payload.content === "string" &&
+              payload.content.includes("@") &&
+              messageMentionsMe(payload.content, currentUserRef.current?.displayName);
+            if (!isFromMe && hasMention) {
+              playMessageReceivedSound();
+            }
+            const msgChannel = payload.channel;
+            const currentChannel = selectedChannelIdRef.current;
+            if (msgChannel && msgChannel !== currentChannel && !isFromMe) {
+              setUnreadChannelIds((prev) => new Set(prev).add(msgChannel));
+            }
+            if (
+              !isFromMe &&
+              messageMentionsMe(payload.content, currentUserRef.current?.displayName)
+            ) {
+              showMentionNotificationIfBackground(
+                payload.sender || "Someone",
+                payload.content,
+                payload.channel
+              );
+            }
+          } else if (data.type === "message:updated" && data.payload) {
+            const payload = data.payload;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === payload.id ? { ...m, ...payload } : m))
+            );
+          } else if (data.type === "message:deleted" && data.payload?.id != null) {
+            setMessages((prev) => prev.filter((m) => m.id !== data.payload.id));
+          } else if (data.type === "profileUpdated" && data.payload) {
+            const profile = data.payload;
+            setProfiles((prev) => ({
+              ...prev,
+              [profile.id]: profile
+            }));
+            if (
+              profile.id === CURRENT_USER_ID &&
+              (profile.theme === "light" || profile.theme === "dark")
+            ) {
+              setTheme(profile.theme);
+              applyTheme(profile.theme);
+              window.localStorage.setItem(THEME_KEY, profile.theme);
+            }
+          } else if (data.type === "presence:state" && Array.isArray(data.payload)) {
+            setPresenceUsers(data.payload);
+          } else if (data.type === "presence:updated" && data.payload) {
+            const presence = data.payload;
+            setPresenceUsers((prev) => {
+              const existingIndex = prev.findIndex((u) => u.id === presence.id);
+              if (existingIndex === -1) {
+                return [...prev, presence];
+              }
+              const copy = [...prev];
+              copy[existingIndex] = { ...copy[existingIndex], ...presence };
+              return copy;
+            });
+          } else if (data.type === "voice:participants" && data.payload) {
+            const { roomId, participants, hostUserId } = data.payload;
+            const list = participants || [];
+            voiceDebug.log("Received voice:participants", { roomId, participantCount: list.length, hostUserId, participants: list.map(p => ({ id: p.id, displayName: p.displayName })) });
+            setVoiceChannelParticipants((prev) => ({ ...prev, [roomId]: list }));
+            const joinedRoomId = joinedVoiceChannelIdRef.current;
+            const isOurRoom = joinedRoomId != null && String(roomId) === String(joinedRoomId);
+            voiceDebug.log("Processing participants for room", { roomId, joinedRoomId, isOurRoom });
+            if (isOurRoom) {
+              setVoiceHostUserId(hostUserId != null ? hostUserId : null);
+              const newCount = list.length;
+              const oldCount = voiceParticipantCountRef.current;
+              const isOurOwnJoin = justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
+              voiceDebug.log("Our room participants updated", { newCount, oldCount, isOurOwnJoin });
+              if (isOurOwnJoin) {
+                justJoinedVoiceRef.current = false;
+              } else if (newCount !== oldCount) {
+                unlockAudio();
+                if (newCount > oldCount) {
+                  setTimeout(() => playUserJoinedSound(), 0);
+                } else {
+                  setTimeout(() => playUserLeftSound(), 0);
+                }
+              }
+              voiceParticipantCountRef.current = newCount;
+              setVoiceParticipants(list);
+              voiceDebug.log("Voice participants state updated", { count: list.length });
+            }
+          } else if (data.type === "voice:signal" && data.payload) {
+            voiceDebug.log("Received voice:signal", { signalType: data.payload.signalType, fromUserId: data.payload.fromUserId });
+            handleIncomingVoiceSignal(data.payload);
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      };
+    };
+
+    connect();
+    connectWsRef.current = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      reconnectAttemptRef.current = 0;
+      connect();
     };
 
     return () => {
-      socket.close();
+      wsShouldReconnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      connectWsRef.current = null;
+      if (socketRef.current) {
+        try {
+          socketRef.current.close();
+        } catch (_) {}
+        socketRef.current = null;
+      }
     };
   }, [isAuthenticated, currentUser?.id, currentUser?.displayName, wsUrl]);
+
+  // When app becomes visible again (e.g. after sleep or Windows lock), reconnect if socket is dead.
+  // The connection is often dropped by OS/server but the close event may not fire immediately.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        connectWsRef.current?.();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isAuthenticated]);
 
   // Request voice channel participants when socket is connected (with delay so server is ready)
   const requestVoiceParticipants = () => {
@@ -1888,6 +1957,17 @@ function App() {
             >
               Board
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("neon")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === "neon"
+                  ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              Neon
+            </button>
           </nav>
           <div className="flex items-center gap-1">
             <button
@@ -2075,7 +2155,7 @@ function App() {
                     next.delete(id);
                     return next;
                   });
-                  if (activeTab === "board") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "neon") setActiveTab("chat");
                   setSidebarOpen(false);
                 }}
               />
@@ -2092,7 +2172,7 @@ function App() {
                 profiles={profiles}
                 speakingUserIds={speakingUserIds}
                 onOpenChannelView={(roomId) => {
-                  if (activeTab === "board") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "neon") setActiveTab("chat");
                   setVoiceChannelModalRoomId(roomId);
                   setSidebarOpen(false);
                 }}
@@ -2220,6 +2300,8 @@ function App() {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden w-full min-w-0">
           {activeTab === "board" ? (
             <Board currentUser={currentUser} apiBase={apiBase} />
+          ) : activeTab === "neon" ? (
+            <Neon apiBase={apiBase} token={localStorage.getItem("meeps_token")} currentUser={currentUser} />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">

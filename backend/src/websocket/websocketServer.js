@@ -696,4 +696,55 @@ function broadcastMessagePayload(payload) {
   }
 }
 
-module.exports = { startWebSocketServer, broadcastProfileUpdate, broadcastMessagePayload };
+/**
+ * Insert a message into a channel and broadcast to all clients (e.g. Valorant match updates).
+ * @param {string} channel - Channel id (e.g. "matches")
+ * @param {number} senderId - Meeps user id
+ * @param {string} senderName - Display name
+ * @param {string} content - Message content (markdown)
+ * @returns {Promise<object|null>} Saved message or null
+ */
+async function postMessageToChannel(channel, senderId, senderName, content) {
+  try {
+    const result = await db.query(
+      "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, sender_id, content, created_at",
+      [channel, senderName || "Meeps", senderId || null, content || ""]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const payload = {
+      id: row.id,
+      channel: row.channel,
+      sender: row.sender_name,
+      senderId: row.sender_id ?? undefined,
+      content: row.content,
+      createdAt: row.created_at,
+      attachments: []
+    };
+    broadcastMessagePayload(payload);
+    return payload;
+  } catch (err) {
+    if (err.code === "42703" || err.message?.includes("sender_id")) {
+      const result = await db.query(
+        "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, content, created_at",
+        [channel, senderName || "Meeps", content || ""]
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      const payload = {
+        id: row.id,
+        channel: row.channel,
+        sender: row.sender_name,
+        senderId: undefined,
+        content: row.content,
+        createdAt: row.created_at,
+        attachments: []
+      };
+      broadcastMessagePayload(payload);
+      return payload;
+    }
+    throw err;
+  }
+}
+
+module.exports = { startWebSocketServer, broadcastProfileUpdate, broadcastMessagePayload, postMessageToChannel };

@@ -8,6 +8,7 @@ const gifRoutes = require("./routes/gifRoutes");
 const buildNotifyRoutes = require("./routes/buildNotifyRoutes");
 const boardRoutes = require("./routes/boardRoutes");
 const pushRoutes = require("./routes/pushRoutes");
+const valorantRoutes = require("./routes/valorantRoutes");
 const uploadController = require("./controllers/uploadController");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
@@ -36,6 +37,7 @@ app.use("/api", gifRoutes);
 app.use("/api", buildNotifyRoutes);
 app.use("/api", boardRoutes);
 app.use("/api", pushRoutes);
+app.use("/api", valorantRoutes);
 
 // Debug: Print all registered routes
 function routeMethodLabel(route) {

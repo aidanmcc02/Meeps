@@ -9,6 +9,7 @@ const { startWebSocketServer } = require("./websocket/websocketServer");
 const { pool } = require("./config/db");
 const { initDatabase } = require("./config/initDb");
 const { cleanupExpiredUploads } = require("./controllers/uploadController");
+const { startTracker, stopTracker } = require("./services/valorantMatchTracker");
 
 const PORT = process.env.PORT || 4000;
 const UPLOAD_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -39,12 +40,14 @@ async function start() {
   server.listen(PORT, "0.0.0.0", () => {
     // eslint-disable-next-line no-console
     console.log(`Meeps backend listening on port ${PORT}`);
+    startTracker();
   });
 }
 
 function shutdown(signal) {
   // eslint-disable-next-line no-console
   console.log(`${signal} received, shutting down gracefully`);
+  stopTracker();
   if (cleanupInterval) clearInterval(cleanupInterval);
   if (server) {
     server.close(() => {
