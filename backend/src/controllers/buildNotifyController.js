@@ -40,7 +40,7 @@ exports.notify = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "INSERT INTO messages (channel, sender_name, content) VALUES ($1, $2, $3) RETURNING id, created_at",
+      "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, created_at",
       [BUILDS_CHANNEL, SENDER_NAME, content]
     );
     const row = result.rows[0];

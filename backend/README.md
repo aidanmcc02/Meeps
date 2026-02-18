@@ -39,25 +39,19 @@ You can later extend this to handle rooms, presence, and typing indicators.
 
 ## Running locally
 
-### Option A: PostgreSQL with Docker Compose (recommended)
+### Option A: PostgreSQL + Backend with Docker Compose (recommended)
 
-1. **Start PostgreSQL** (from project root):
+1. **Start PostgreSQL and backend** (from project root):
 
    ```bash
    docker compose up -d
    ```
 
-   This runs Postgres 16 on `localhost:5432` with database `meeps`, user `postgres`, password `postgres`. The backend will create tables on first run.
+   This runs Postgres 16 and the backend. Migrations run automatically on backend startup. The backend listens on `http://localhost:4000`.
 
-2. **Environment**: Use the root `.env` (the backend loads it automatically), or copy `backend/.env.example` to `backend/.env`:
+2. **Environment**: Use the root `.env` (the backend loads it automatically), or copy `backend/.env.example` to `backend/.env`. The backend container uses `PGHOST=postgres` to connect to the Postgres service in Docker.
 
-   ```bash
-   # From project root – one .env for frontend + backend
-   cp .env.example .env
-   # Edit .env if you need to change JWT_SECRET or DB credentials
-   ```
-
-3. **Install and run the backend**:
+3. **Run without Docker**: To run the backend on the host (against Docker Postgres), use `PGHOST=localhost` and `PGPORT=5433` in `.env`, then:
 
    ```bash
    cd backend
@@ -118,9 +112,9 @@ You can later extend this to handle rooms, presence, and typing indicators.
      npm install && npm start
      ```
 
-5. **Migrate the database on Railway**:
+5. **Migrations on Railway**: The backend runs migrations automatically on each deploy via `preDeployCommand` in `backend/railway.json`. Ensure the backend service has its root directory set to `backend` so Railway uses that config.
 
-   - Open a Railway shell for your Postgres service and run:
+   For manual migration (e.g. first-time setup or troubleshooting), open a Railway shell for your Postgres service and run:
 
      ```sql
      \i src/models/userModel.sql

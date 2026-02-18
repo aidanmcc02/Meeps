@@ -1,6 +1,9 @@
-# Meeps – Local PostgreSQL for development
+# Meeps – Local PostgreSQL + Backend for development
 # Run: docker compose up -d
 # Stop: docker compose down
+#
+# Backend runs migrations on startup (via initDatabase).
+# Frontend: run separately with npm run dev (connects to backend on :4000).
 
 services:
   postgres:
@@ -12,7 +15,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: meeps
     ports:
-      - "5433:5432"   # host 5433 to avoid conflict with local Postgres on 5432
+      - "5433:5432"
     volumes:
       - meeps_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,6 +23,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meeps-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: meeps
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PORT: 4000
+      NODE_ENV: development
+      JWT_SECRET: dev_jwt_secret_change_me
+    ports:
+      - "4000:4000"
 
 volumes:
   meeps_pgdata:
