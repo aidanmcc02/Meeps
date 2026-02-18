@@ -10,6 +10,11 @@
  */
 export function messageMentionsMe(content, displayName) {
   if (!content || typeof content !== "string") return false;
+  
+  // Check for @everyone first (always triggers, regardless of displayName)
+  if (/@everyone\b/i.test(content)) return true;
+  
+  // Check for user-specific mentions only if displayName is set
   const trimmed = (displayName || "").trim();
   if (!trimmed) return false;
   const currentSlug = trimmed.replace(/\s+/g, "_").toLowerCase();
@@ -18,7 +23,6 @@ export function messageMentionsMe(content, displayName) {
   let match;
   while ((match = re.exec(content)) !== null) {
     const slug = (match[1] || "").toLowerCase();
-    if (slug === "everyone") return true;
     if (slug === currentSlug) return true;
   }
   return false;

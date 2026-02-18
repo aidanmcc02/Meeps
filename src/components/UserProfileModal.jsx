@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 
 const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
-function UserProfileModal({ isOpen, onClose, user, initialProfile }) {
+function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPosition = "center" }) {
   const [profile, setProfile] = useState(initialProfile || null);
   const [loading, setLoading] = useState(false);
 
@@ -42,8 +42,13 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile }) {
     .slice(0, 2)
     .toUpperCase() || "MU";
 
+  const isBottomLeft = anchorPosition === "bottom-left";
+  const wrapperClass = isBottomLeft
+    ? "fixed inset-0 z-50 flex items-end justify-start bg-black/50 p-4 pb-24 pl-6"
+    : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className={wrapperClass}>
       <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
