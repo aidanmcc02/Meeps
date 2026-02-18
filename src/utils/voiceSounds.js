@@ -4,11 +4,18 @@
  * - user-joined: user join
  * - user-left: user leave
  * Unlock on first user gesture so autoplay policy is satisfied. Works in browser and Tauri.
+ * On iOS we avoid keeping a persistent AudioContext or preloading with muted play so the
+ * status bar does not show "audio playing" when the app is just open.
  */
 
 let soundUrls = null; // { message, userJoined, userLeave } -> full URLs
 let userHasInteracted = false;
 let audioContext = null;
+
+function isIOS() {
+  if (typeof navigator === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
 
 /** Initialize sound URLs. Call from App on mount. */
 export function initSoundElements(baseUrl = import.meta.env?.BASE_URL || "/") {
@@ -18,7 +25,8 @@ export function initSoundElements(baseUrl = import.meta.env?.BASE_URL || "/") {
     userJoined: base + "sounds/user-joined.mp3",
     userLeave: base + "sounds/user-left.mp3"
   };
-  // Preload and unlock using disposable elements (muted to avoid audible cut-off)
+  // On iOS, skip muted preload so the app doesn't show "audio playing" in the status bar
+  if (isIOS()) return;
   if (soundUrls && typeof Audio !== "undefined") {
     Object.values(soundUrls).forEach((url) => {
       const el = new Audio(url);
@@ -39,7 +47,7 @@ export function setNotificationAudioElement(element) {
 /** Call after a user gesture so we know we can play sounds when needed. */
 export function setUserHasInteracted() {
   userHasInteracted = true;
-  ensureAudioContext();
+  if (!isIOS()) ensureAudioContext();
 }
 
 function ensureAudioContext() {
@@ -61,7 +69,7 @@ function ensureAudioContext() {
 /** Call from a user gesture (e.g. first click) to allow sounds to play later. */
 export function unlockNotificationElement(element) {
   if (!element) return;
-  ensureAudioContext();
+  if (!isIOS()) ensureAudioContext();
   userHasInteracted = true;
   try {
     if (element.volume !== undefined) element.volume = 0.7;
@@ -69,9 +77,20 @@ export function unlockNotificationElement(element) {
   } catch (_e) {}
 }
 
-/** Play a short beep using Web Audio (fallback when sound file fails). */
+/** Play a short beep using Web Audio (fallback when sound file fails). On iOS use a one-off context and close it so the audio session is released. */
 function playBeep() {
-  const ctx = userHasInteracted ? ensureAudioContext() : audioContext;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;
+  let ctx;
+  if (isIOS()) {
+    try {
+      ctx = new Ctx();
+    } catch (_e) {
+      return false;
+    }
+  } else {
+    ctx = userHasInteracted ? ensureAudioContext() : audioContext;
+  }
   if (!ctx) return false;
   try {
     const osc = ctx.createOscillator();
@@ -84,6 +103,9 @@ function playBeep() {
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.15);
+    if (isIOS() && typeof ctx.close === "function") {
+      setTimeout(() => { try { ctx.close(); } catch (_) {} }, 200);
+    }
     return true;
   } catch (_e) {
     return false;
@@ -104,8 +126,9 @@ function playSound(key) {
 }
 
 export function unlockAudio() {
-  ensureAudioContext();
+  if (!isIOS()) ensureAudioContext();
   userHasInteracted = true;
+  if (isIOS()) return;
   if (soundUrls && typeof Audio !== "undefined") {
     Object.values(soundUrls).forEach((url) => {
       const el = new Audio(url);
@@ -116,15 +139,17 @@ export function unlockAudio() {
 }
 
 export function preloadNotificationSound() {
-  ensureAudioContext();
-  userHasInteracted = true;
-  if (soundUrls && typeof Audio !== "undefined") {
-    Object.values(soundUrls).forEach((url) => {
-      const el = new Audio(url);
-      el.volume = 0;
-      el.play().then(() => el.pause()).catch(() => {});
-    });
+  if (!isIOS()) {
+    ensureAudioContext();
+    if (soundUrls && typeof Audio !== "undefined") {
+      Object.values(soundUrls).forEach((url) => {
+        const el = new Audio(url);
+        el.volume = 0;
+        el.play().then(() => el.pause()).catch(() => {});
+      });
+    }
   }
+  userHasInteracted = true;
 }
 
 export function playConnectSound() {

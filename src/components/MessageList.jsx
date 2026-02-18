@@ -10,12 +10,8 @@ function formatMessageTime(createdAt) {
   const now = new Date();
   const msAgo = now - d;
   const twentyFourHours = 24 * 60 * 60 * 1000;
-  // Use user's local timezone for display
-  const timeStr = d.toLocaleTimeString([], { 
-    hour: "2-digit", 
-    minute: "2-digit",
-    timeZoneName: "short"
-  });
+  // Use user's local timezone for display (legacy options for broad support)
+  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (msAgo < twentyFourHours && msAgo >= 0) return timeStr;
   const dateStr = d.toLocaleDateString([], {
     month: "short",
@@ -23,6 +19,21 @@ function formatMessageTime(createdAt) {
     year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined
   });
   return `${dateStr}, ${timeStr}`;
+}
+
+// Tooltip for message timestamp (avoids dateStyle/timeStyle for older envs)
+function formatMessageTimeTooltip(createdAt) {
+  if (!createdAt) return "";
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
 }
 
 function formatDayLabel(dateStr) {
@@ -60,10 +71,65 @@ function groupMessagesByDay(messages) {
   return groups;
 }
 
+const CONSECUTIVE_MESSAGE_GAP_MS = 2 * 60 * 1000; // 2 minutes – show header again if gap is larger
+
+/** Group consecutive messages from the same sender (by senderId or sender name). Splits a new run if more than 2 minutes since previous message. */
+function groupConsecutiveBySender(messages) {
+  if (!messages.length) return [];
+  const runs = [];
+  let current = { sender: messages[0].sender, senderId: messages[0].senderId, messages: [messages[0]] };
+  for (let i = 1; i < messages.length; i++) {
+    const msg = messages[i];
+    const sameSender =
+      (msg.senderId != null && current.senderId != null && Number(msg.senderId) === Number(current.senderId)) ||
+      (msg.sender === current.sender && current.sender != null);
+    const lastInRun = current.messages[current.messages.length - 1];
+    const lastTime = lastInRun?.createdAt ? new Date(lastInRun.createdAt).getTime() : 0;
+    const thisTime = msg.createdAt ? new Date(msg.createdAt).getTime() : 0;
+    const gapOk = thisTime - lastTime <= CONSECUTIVE_MESSAGE_GAP_MS;
+    if (sameSender && gapOk) {
+      current.messages.push(msg);
+    } else {
+      runs.push(current);
+      current = { sender: msg.sender, senderId: msg.senderId, messages: [msg] };
+    }
+  }
+  runs.push(current);
+  return runs;
+}
+
 // Match @mention (e.g. @person1, @everyone, @Person_One) - turn into markdown links so we can render with custom component
 const MENTION_PATTERN = /@(\S+)/g;
 function contentWithMentionLinks(content) {
   return content.replace(MENTION_PATTERN, (_, slug) => `[@${slug}](mention:${slug})`);
+}
+
+// True if message content mentions the current user (by slug or @everyone)
+function messageMentionsCurrentUser(content, currentUserName, mentionSlugToName) {
+  if (!content || typeof content !== "string") return false;
+  const trimmedName = (currentUserName || "").trim();
+  if (!trimmedName) return false;
+  const currentSlug = trimmedName.replace(/\s+/g, "_").toLowerCase();
+
+  // Use a fresh regex each time so we don't depend on global lastIndex
+  const re = /@(\S+)/g;
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    const rawSlug = match[1] || "";
+    const slug = rawSlug.toLowerCase();
+
+    // @everyone highlights for everyone
+    if (slug === "everyone") return true;
+
+    // Direct slug match (case-insensitive)
+    if (slug === currentSlug) return true;
+
+    // Fallback: see if this slug maps to the current user's display name
+    if (mentionSlugToName && mentionSlugToName[rawSlug] === trimmedName) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function MentionLink({ href, children, mentionSlugToName }) {
@@ -182,35 +248,47 @@ function MessageList({
             </span>
             <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
           </div>
-          {dayMessages.map((msg) => {
+          {groupConsecutiveBySender(dayMessages).map((run) => {
+            const first = run.messages[0];
+            const runKey = first.id ?? `${run.sender}-${first.createdAt}`;
+            const profile = first.senderId != null ? profiles[first.senderId] : null;
+            const avatarUrl = profile?.avatarUrl ?? senderNameToAvatar[first.sender] ?? null;
+            const initials = (first.sender || "?")
+              .split(" ")
+              .map((n) => n[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase() || "?";
+            return (
+              <div key={runKey} className="space-y-0">
+                {run.messages.map((msg, runIndex) => {
+        const showHeader = runIndex === 0;
         const isSelf = msg.sender === currentUserName;
+        const isMentioned = messageMentionsCurrentUser(msg.content, currentUserName, mentionSlugToName);
         const canManage = isSelf && msg.id != null && onEditMessage && onDeleteMessage;
         const isEditing = editingId === msg.id;
-        const profile = msg.senderId != null ? profiles[msg.senderId] : null;
-        const avatarUrl = profile?.avatarUrl ?? senderNameToAvatar[msg.sender] ?? null;
-        const initials = (msg.sender || "?")
-          .split(" ")
-          .map((n) => n[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase() || "?";
         return (
           <div
-            key={msg.id ?? `${msg.sender}-${msg.createdAt}-${msg.content}`}
-            className={`flex gap-2 rounded-lg transition-colors ${canManage ? "group hover:bg-gray-100 dark:hover:bg-gray-800/60" : ""}`}
+            key={msg.id ?? `${msg.sender}-${msg.createdAt}-${runIndex}-${msg.content}`}
+            className={`flex gap-2 rounded-lg transition-colors px-2 -mx-2 ${showHeader ? "py-1" : "pt-0 pb-0.5"} ${isMentioned ? "bg-amber-100 dark:bg-amber-900/30" : ""} ${canManage && !isMentioned ? "group hover:bg-gray-100 dark:hover:bg-gray-800/60" : canManage && isMentioned ? "group hover:bg-amber-200 dark:hover:bg-amber-900/50" : ""}`}
           >
-            <div className="mt-1 h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white flex items-center justify-center">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                initials
-              )}
-            </div>
+            {showHeader ? (
+              <div className="mt-1 h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white flex items-center justify-center">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  initials
+                )}
+              </div>
+            ) : (
+              <div className="w-8 flex-shrink-0 self-stretch min-h-[2px]" aria-hidden="true" />
+            )}
             <div className="flex-1 min-w-0">
+              {showHeader ? (
               <div className="flex items-baseline gap-2 flex-1 min-w-0">
                 <span className="text-xs font-semibold shrink-0">
                   {msg.sender || "Unknown"}
@@ -223,11 +301,7 @@ function MessageList({
                 {msg.createdAt && (
                   <span
                     className="text-xs text-gray-500 dark:text-gray-400"
-                    title={new Date(msg.createdAt).toLocaleString(undefined, {
-                      dateStyle: "full",
-                      timeStyle: "long",
-                      timeZoneName: "short"
-                    })}
+                    title={formatMessageTimeTooltip(msg.createdAt)}
                   >
                     {formatMessageTime(msg.createdAt)}
                   </span>
@@ -279,6 +353,54 @@ function MessageList({
                   </div>
                 )}
               </div>
+              ) : canManage ? (
+              <div className="relative h-0 overflow-visible">
+                <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity z-10" ref={openMenuId === msg.id ? menuRef : null}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (openMenuId === msg.id) setOpenMenuId(null);
+                      else setOpenMenuId(msg.id);
+                    }}
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 focus:opacity-100 focus:outline-none"
+                    aria-label="Message options"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                      <circle cx="8" cy="3" r="1.5" />
+                      <circle cx="8" cy="8" r="1.5" />
+                      <circle cx="8" cy="13" r="1.5" />
+                    </svg>
+                  </button>
+                  {openMenuId === msg.id && (
+                    <div className="absolute right-0 top-full mt-1 py-1 w-36 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={() => {
+                          setEditingId(msg.id);
+                          setEditContent(msg.content || "");
+                          setOpenMenuId(null);
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={() => {
+                          if (window.confirm("Delete this message?")) {
+                            onDeleteMessage(msg.id);
+                          }
+                          setOpenMenuId(null);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              ) : null}
               {isEditing ? (
                 <div className="mt-1 space-y-2">
                   <textarea
@@ -373,6 +495,9 @@ function MessageList({
             </div>
           </div>
         );
+                })}
+              </div>
+            );
           })}
         </div>
       ))}

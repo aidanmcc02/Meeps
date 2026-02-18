@@ -12,7 +12,7 @@ tauri-build = { version = "1", features = [] }
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "1", features = [] }
+tauri = { version = "1", features = [ "window-all", "notification-all", "system-tray", "notification"] }
 
 [features]
 default = ["custom-protocol"]

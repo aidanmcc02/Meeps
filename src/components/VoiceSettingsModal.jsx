@@ -156,6 +156,9 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
                 {loading ? "Scanning…" : "Rescan devices"}
               </button>
             </div>
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              Allow microphone once here; your browser will remember it for future sessions and voice calls.
+            </p>
             <select
               value={inputDeviceId}
               onChange={(e) => setInputDeviceId(e.target.value)}

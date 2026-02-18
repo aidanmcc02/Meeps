@@ -226,7 +226,7 @@ function MessageInput({
           <textarea
             ref={textareaRef}
             rows={1}
-            className="min-h-[32px] max-h-24 min-w-0 w-full resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            className="min-h-[32px] max-h-24 min-w-0 w-full resize-none bg-transparent text-base sm:text-sm outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
             placeholder={placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}

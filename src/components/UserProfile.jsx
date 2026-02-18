@@ -8,6 +8,7 @@ function UserProfile({ profile, onSave }) {
   const [achievementsText, setAchievementsText] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
+  const [bannerHovered, setBannerHovered] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -59,12 +60,23 @@ function UserProfile({ profile, onSave }) {
       {profile && (
         <>
           {bannerUrl && (
-            <div className="h-14 w-full -mx-3 -mt-2 mb-1 relative overflow-hidden rounded-t-xl">
-              <img
-                src={bannerUrl}
-                alt=""
-                className="h-full w-full object-cover"
-              />
+            <div
+              className="h-14 w-full -mx-3 -mt-2 mb-1 relative overflow-hidden rounded-t-xl"
+              onMouseEnter={() => setBannerHovered(true)}
+              onMouseLeave={() => setBannerHovered(false)}
+            >
+              {bannerHovered ? (
+                <img
+                  src={bannerUrl}
+                  alt=""
+                  className="h-full w-full object-cover object-center scale-105 transition-transform duration-500 ease-out"
+                />
+              ) : (
+                <div
+                  className="h-full w-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-600 dark:to-gray-700"
+                  title="Hover to show banner"
+                />
+              )}
             </div>
           )}
           <div className="flex items-center justify-between gap-2">
@@ -142,7 +154,7 @@ function UserProfile({ profile, onSave }) {
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-[16px] sm:text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                 />
               </div>
 
@@ -154,7 +166,7 @@ function UserProfile({ profile, onSave }) {
                   rows={3}
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-[16px] sm:text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                   placeholder="I climb in League of Legends, main support..."
                 />
               </div>
@@ -167,7 +179,7 @@ function UserProfile({ profile, onSave }) {
                   rows={3}
                   value={achievementsText}
                   onChange={(e) => setAchievementsText(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-[16px] sm:text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                   placeholder={"League of Legends – Diamond IV\nValorant – Immortal I"}
                 />
               </div>
@@ -180,7 +192,7 @@ function UserProfile({ profile, onSave }) {
                   type="url"
                   value={bannerUrl}
                   onChange={(e) => setBannerUrl(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-[16px] sm:text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                   placeholder="https://example.com/banner.gif"
                 />
               </div>
@@ -193,7 +205,7 @@ function UserProfile({ profile, onSave }) {
                   type="url"
                   value={avatarUrl}
                   onChange={(e) => setAvatarUrl(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-[16px] sm:text-xs text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                   placeholder="https://example.com/avatar.png"
                 />
               </div>

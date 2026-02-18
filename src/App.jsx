@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { appWindow } from "@tauri-apps/api/window";
 import TextChannels from "./components/TextChannels";
 import VoiceChannels from "./components/VoiceChannels";
 import UserList from "./components/UserList";
@@ -24,9 +25,22 @@ import {
   playMessageSentSound,
   playMessageReceivedSound
 } from "./utils/voiceSounds";
+import {
+  messageMentionsMe,
+  requestNotificationPermission,
+  showMentionNotificationIfBackground
+} from "./utils/mentionNotifications";
 
 const THEME_KEY = "meeps-theme";
 const KEYBINDS_KEY = "meeps-keybinds";
+const SIDEBAR_WIDTH_KEY = "meeps-sidebar-width-px";
+const USERS_PANEL_WIDTH_KEY = "meeps-users-panel-width-px";
+const SIDEBAR_MIN_PX = 192;
+const SIDEBAR_MAX_PX = 420;
+const SIDEBAR_DEFAULT_PX = 288;
+const USERS_PANEL_MIN_PX = 128;
+const USERS_PANEL_MAX_PX = 360;
+const USERS_PANEL_DEFAULT_PX = 160;
 const DEFAULT_KEYBINDS = {
   mute: { key: "KeyM", mode: "toggle" },
   muteDeafen: { key: "KeyB", mode: "hold" }
@@ -52,6 +66,22 @@ function App() {
   const [usersPanelOpen, setUsersPanelOpen] = useState(false);
   const [topMenuOpen, setTopMenuOpen] = useState(false);
   const topMenuRef = useRef(null);
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
+      if (Number.isFinite(v) && v >= SIDEBAR_MIN_PX && v <= SIDEBAR_MAX_PX) return v;
+    } catch (_) {}
+    return SIDEBAR_DEFAULT_PX;
+  });
+  const [usersPanelWidthPx, setUsersPanelWidthPx] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(USERS_PANEL_WIDTH_KEY), 10);
+      if (Number.isFinite(v) && v >= USERS_PANEL_MIN_PX && v <= USERS_PANEL_MAX_PX) return v;
+    } catch (_) {}
+    return USERS_PANEL_DEFAULT_PX;
+  });
+  const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
+  const resizeStateRef = useRef({ active: null, startX: 0, startWidth: 0, lastSidebarPx: SIDEBAR_DEFAULT_PX, lastUsersPx: USERS_PANEL_DEFAULT_PX });
 
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board"
@@ -111,7 +141,6 @@ function App() {
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
   const keybindHoldRef = useRef({ mute: false, muteDeafen: false });
   const keybindToggleReleasedRef = useRef({ mute: true, muteDeafen: true });
-  const micPermissionRequestedRef = useRef(false);
   const voiceParticipantCountRef = useRef(0);
   const justJoinedVoiceRef = useRef(false);
   const joinedVoiceChannelIdRef = useRef(null);
@@ -123,6 +152,82 @@ function App() {
   const voiceAnalysersRef = useRef({}); // userId -> { source, analyser }
   const voiceSpeakingIntervalRef = useRef(null);
   const previousSpeakingRef = useRef(new Set());
+  const [isTauri, setIsTauri] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    const ua = navigator.userAgent || "";
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (ua.includes("Macintosh") && "ontouchend" in window);
+    setIsTauri(!!window.__TAURI__ && !isIOS);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handle = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", handle);
+    return () => mq.removeEventListener("change", handle);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onMove = (e) => {
+      const r = resizeStateRef.current;
+      const { active, startX, startWidth } = r;
+      if (!active) return;
+      const delta = active === "sidebar" ? e.clientX - startX : startX - e.clientX;
+      const next = Math.round(Math.max(0, startWidth + delta));
+      if (active === "sidebar") {
+        const clamped = Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, next));
+        r.lastSidebarPx = clamped;
+        setSidebarWidthPx(clamped);
+      } else {
+        const clamped = Math.min(USERS_PANEL_MAX_PX, Math.max(USERS_PANEL_MIN_PX, next));
+        r.lastUsersPx = clamped;
+        setUsersPanelWidthPx(clamped);
+      }
+    };
+    const onUp = () => {
+      const r = resizeStateRef.current;
+      if (r.active === "sidebar") {
+        try {
+          localStorage.setItem(SIDEBAR_WIDTH_KEY, String(r.lastSidebarPx));
+        } catch (_) {}
+      } else if (r.active === "users") {
+        try {
+          localStorage.setItem(USERS_PANEL_WIDTH_KEY, String(r.lastUsersPx));
+        } catch (_) {}
+      }
+      r.active = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const handleTauriMinimize = () => {
+    if (!isTauri) return;
+    try {
+      appWindow.minimize();
+    } catch (err) {
+      console.error("Failed to minimize Tauri window", err);
+    }
+  };
+  const handleTauriClose = () => {
+    if (!isTauri) return;
+    try {
+      appWindow.hide();
+    } catch (err) {
+      console.error("Failed to hide Tauri window", err);
+    }
+  };
 
   // Load runtime config (e.g. from /config.json written at build on Railway) so PWA uses correct backend URL
   useEffect(() => {
@@ -234,20 +339,8 @@ function App() {
     return () => clearInterval(interval);
   }, [joinedVoiceChannelId, currentUser?.id, remoteStreams]);
 
-  // Request microphone permission once when main app is shown (desktop/Tauri often
-  // only shows the system prompt when getUserMedia is called, not when opening a modal).
-  useEffect(() => {
-    if (!isAuthenticated || showProfileSetup) return;
-    if (micPermissionRequestedRef.current) return;
-    if (!navigator.mediaDevices?.getUserMedia) return;
-    micPermissionRequestedRef.current = true;
-    navigator.mediaDevices
-      .getUserMedia({ video: false, audio: true })
-      .then((stream) => {
-        stream.getTracks().forEach((t) => t.stop());
-      })
-      .catch(() => {});
-  }, [isAuthenticated, showProfileSetup]);
+  // Do not request microphone on app load (e.g. iPhone asks every time and shows "audio" in status bar).
+  // Mic is requested only when the user joins a voice channel (ensureLocalStream).
 
   useEffect(() => {
     const stored = window.localStorage.getItem(THEME_KEY);
@@ -262,21 +355,43 @@ function App() {
       applyTheme(initial);
     }
 
-    // Check for existing authentication
+    // Check for existing authentication by validating the stored token with the backend.
     const token = localStorage.getItem("meeps_token");
     const user = localStorage.getItem("meeps_user");
-    if (token && user) {
+    if (!token || !user || isAuthenticated) return;
+
+    let parsedUser;
+    try {
+      parsedUser = JSON.parse(user);
+    } catch {
+      localStorage.removeItem("meeps_token");
+      localStorage.removeItem("meeps_user");
+      return;
+    }
+
+    (async () => {
       try {
-        const parsedUser = JSON.parse(user);
-        setCurrentUser(parsedUser);
+        const res = await fetch(`${apiBase}/api/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        if (!res.ok) {
+          throw new Error("invalid token");
+        }
+        const profile = await res.json();
+        const nextUser = { ...parsedUser, ...profile };
+        setCurrentUser(nextUser);
         setIsAuthenticated(true);
+        localStorage.setItem("meeps_user", JSON.stringify(nextUser));
       } catch {
-        // Invalid user data, clear storage
         localStorage.removeItem("meeps_token");
         localStorage.removeItem("meeps_user");
+        setCurrentUser(null);
+        setIsAuthenticated(false);
       }
-    }
-  }, []);
+    })();
+  }, [apiBase, isAuthenticated]);
 
   const handleAuth = (payload) => {
     const user = payload?.user ?? payload;
@@ -337,14 +452,27 @@ function App() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "message" && data.payload) {
-          setMessages((prev) => [...prev, data.payload]);
+          const payload = data.payload;
+          setMessages((prev) => [...prev, payload]);
           const myId = currentUser?.id ?? CURRENT_USER_ID;
-          if (Number(data.payload.senderId) !== Number(myId)) playMessageReceivedSound();
+          const isFromMe = Number(payload.senderId) === Number(myId);
+          if (!isFromMe) playMessageReceivedSound();
           // Mark channel as unread if we're not viewing it and message isn't from us
-          const msgChannel = data.payload.channel;
+          const msgChannel = payload.channel;
           const currentChannel = selectedChannelIdRef.current;
-          if (msgChannel && msgChannel !== currentChannel && Number(data.payload.senderId) !== Number(myId)) {
+          if (msgChannel && msgChannel !== currentChannel && !isFromMe) {
             setUnreadChannelIds((prev) => new Set(prev).add(msgChannel));
+          }
+          // Notify when mentioned and app is in background (PWA iPhone / Tauri Windows)
+          if (
+            !isFromMe &&
+            messageMentionsMe(payload.content, currentUser?.displayName)
+          ) {
+            showMentionNotificationIfBackground(
+              payload.sender || "Someone",
+              payload.content,
+              payload.channel
+            );
           }
         } else if (data.type === "message:updated" && data.payload) {
           const payload = data.payload;
@@ -473,6 +601,17 @@ function App() {
     };
   }, []);
 
+  // Request notification permission for mention alerts (PWA iPhone / Tauri Windows)
+  const notificationPermissionRequestedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated || showProfileSetup || notificationPermissionRequestedRef.current) return;
+    notificationPermissionRequestedRef.current = true;
+    const t = setTimeout(() => {
+      requestNotificationPermission().catch(() => {});
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [isAuthenticated, showProfileSetup]);
+
   // Close top menu when clicking outside
   useEffect(() => {
     if (!topMenuOpen) return;
@@ -575,8 +714,8 @@ function App() {
   }, [joinedVoiceChannelId, keybinds]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
-    
+    if (!isAuthenticated || !currentUser) return;
+
     function handleActivity() {
       const now = Date.now();
       if (now - lastActivitySentRef.current < 30 * 1000) {
@@ -605,7 +744,7 @@ function App() {
       window.removeEventListener("focus", handleActivity);
       window.removeEventListener("visibilitychange", handleActivity);
     };
-  }, []);
+  }, [isAuthenticated, currentUser]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -669,6 +808,20 @@ function App() {
         .catch(() => {});
     });
   }, [isAuthenticated, voiceChannelParticipants, profiles, apiBase]);
+
+  // Preload profiles for presence users so we can show only DB users in the users tab
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    (presenceUsers || []).forEach((u) => {
+      if (u?.id == null || profiles[u.id]) return;
+      fetch(`${apiBase}/api/profile/${u.id}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) setProfiles((prev) => ({ ...prev, [data.id]: data }));
+        })
+        .catch(() => {});
+    });
+  }, [isAuthenticated, presenceUsers, profiles, apiBase]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -867,6 +1020,11 @@ function App() {
     Object.values(profiles).forEach((p) => add(p?.displayName));
     return m;
   }, [currentUser?.displayName, presenceUsers, profiles]);
+
+  // Only show in users tab people who exist in the DB (we have their profile)
+  const usersInDb = useMemo(() => {
+    return (presenceUsers || []).filter((u) => u?.id != null && profiles[u.id]);
+  }, [presenceUsers, profiles]);
 
   const ensureLocalStream = async () => {
     if (localStreamRef.current) return localStreamRef.current;
@@ -1328,14 +1486,20 @@ function App() {
     content = (
     <div
         className="flex h-screen w-screen flex-col overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
-        style={{ paddingTop: "env(safe-area-inset-top)", height: "100dvh", maxHeight: "100vh" }}
+        style={{
+          paddingTop: "env(safe-area-inset-top)",
+          paddingLeft: "env(safe-area-inset-left)",
+          paddingRight: "env(safe-area-inset-right)",
+          height: "100dvh",
+          maxHeight: "100vh"
+        }}
       >
-      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0" data-tauri-drag-region>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
-            className="md:hidden inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            className="md:hidden inline-flex h-11 w-11 min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:active:bg-gray-700"
             aria-label="Open menu"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1347,7 +1511,7 @@ function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0" data-tauri-drag-region="false">
           <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
             <button
               type="button"
@@ -1376,10 +1540,10 @@ function App() {
             <button
               type="button"
               onClick={() => setUsersPanelOpen((o) => !o)}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+              className={`inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border transition-colors ${
                 usersPanelOpen
                   ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
               }`}
               aria-label={usersPanelOpen ? "Close users list" : "Open users list"}
               aria-expanded={usersPanelOpen}
@@ -1395,7 +1559,7 @@ function App() {
                 e.stopPropagation();
                 setTopMenuOpen((o) => !o);
               }}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              className="inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
               aria-label="Menu"
               aria-expanded={topMenuOpen}
             >
@@ -1461,6 +1625,30 @@ function App() {
               </div>
             )}
             </div>
+            {isTauri && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleTauriMinimize}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  aria-label="Minimize"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTauriClose}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                  aria-label="Close"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -1476,19 +1664,26 @@ function App() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-row">
         <aside
-          className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95
+          className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
             fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
-            md:relative md:top-0 md:h-auto md:min-h-0 md:w-72 md:min-w-[12rem] md:max-w-none md:flex-shrink-0 md:transform-none
+            md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none
             ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+          style={{
+            ...(isDesktop
+              ? {
+                  width: sidebarWidthPx,
+                  minWidth: SIDEBAR_MIN_PX,
+                  maxWidth: SIDEBAR_MAX_PX,
+                  fontSize: `clamp(0.8125rem, 0.75rem + (${sidebarWidthPx - SIDEBAR_MIN_PX} / ${SIDEBAR_MAX_PX - SIDEBAR_MIN_PX}) * 0.125rem, 0.9375rem)`
+                }
+              : { paddingLeft: "max(0.75rem, env(safe-area-inset-left))" })
+          }}
         >
-          <div className="mb-3 flex flex-shrink-0 items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
-            </div>
+          <div className="flex flex-shrink-0 justify-end md:hidden">
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className="md:hidden flex-shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               aria-label="Close menu"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1627,6 +1822,29 @@ function App() {
               </div>
             </section>
           </div>
+
+          <div className="flex flex-shrink-0 flex-col border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+            <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
+          </div>
+          {isDesktop && (
+            <div
+              role="separator"
+              aria-label="Resize sidebar"
+              className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize shrink-0 hover:bg-indigo-300/50 dark:hover:bg-indigo-500/30 active:bg-indigo-400/50 md:block"
+              style={{ touchAction: "none" }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const r = resizeStateRef.current;
+                r.active = "sidebar";
+                r.startX = e.clientX;
+                r.startWidth = sidebarWidthPx;
+                r.lastSidebarPx = sidebarWidthPx;
+                r.lastUsersPx = usersPanelWidthPx;
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
+            />
+          )}
         </aside>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden">
@@ -1658,7 +1876,10 @@ function App() {
                 apiBase={apiBase}
               />
 
-              <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 min-w-0">
+              <div
+                className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 min-w-0"
+                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+              >
                 <MessageInput
                   value={inputValue}
                   onChange={setInputValue}
@@ -1670,32 +1891,58 @@ function App() {
                   profiles={profiles}
                   apiBase={apiBase}
                 />
-                {/* hidden audio elements for remote peers */}
-                <div className="sr-only">
-                  {Object.entries(remoteStreams).map(([userId, stream]) => (
-                    <audio
-                      key={userId}
-                      autoPlay
-                      playsInline
-                      ref={(el) => {
-                        if (el && stream && typeof stream.getTracks === "function") {
-                          el.srcObject = stream;
-                          el.volume = isDeafened ? 0 : voiceSettings.volume;
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
               </div>
             </div>
           )}
         </main>
 
+        {/* hidden audio elements for remote peers – must always be mounted while in a call */}
+        <div className="sr-only">
+          {Object.entries(remoteStreams).map(([userId, stream]) => (
+            <audio
+              key={userId}
+              autoPlay
+              playsInline
+              ref={(el) => {
+                if (el && stream && typeof stream.getTracks === "function") {
+                  el.srcObject = stream;
+                  el.volume = isDeafened ? 0 : voiceSettings.volume;
+                }
+              }}
+            />
+          ))}
+        </div>
+
         {usersPanelOpen && (
           <aside
-            className="flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95
-              w-40 min-w-[8rem] max-w-[10rem] flex-shrink-0"
+            className="flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95 relative flex-shrink-0
+              w-40 min-w-[8rem] max-w-[50vw] sm:max-w-[10rem]"
+            style={isDesktop ? {
+              width: usersPanelWidthPx,
+              minWidth: USERS_PANEL_MIN_PX,
+              maxWidth: USERS_PANEL_MAX_PX,
+              fontSize: `clamp(0.8125rem, 0.75rem + (${usersPanelWidthPx - USERS_PANEL_MIN_PX} / ${USERS_PANEL_MAX_PX - USERS_PANEL_MIN_PX}) * 0.125rem, 0.9375rem)`
+            } : undefined}
           >
+            {isDesktop && (
+              <div
+                role="separator"
+                aria-label="Resize users panel"
+                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize shrink-0 hover:bg-indigo-300/50 dark:hover:bg-indigo-500/30 active:bg-indigo-400/50 z-10"
+                style={{ touchAction: "none" }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const r = resizeStateRef.current;
+                  r.active = "users";
+                  r.startX = e.clientX;
+                  r.startWidth = usersPanelWidthPx;
+                  r.lastUsersPx = usersPanelWidthPx;
+                  r.lastSidebarPx = sidebarWidthPx;
+                  document.body.style.cursor = "col-resize";
+                  document.body.style.userSelect = "none";
+                }}
+              />
+            )}
             <section className="flex flex-col min-h-0 flex-1 overflow-hidden">
               <div className="mb-1 flex items-center justify-between gap-1">
                 <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">
@@ -1714,7 +1961,7 @@ function App() {
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-0.5">
                 <UserList
-                  users={presenceUsers}
+                  users={usersInDb}
                   profiles={profiles}
                   onUserClick={(user) => {
                     setSelectedUserForProfile(user);

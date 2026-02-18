@@ -172,7 +172,7 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Fix login button"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               autoFocus
             />
           </div>
@@ -183,7 +183,7 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional details…"
               rows={3}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 resize-none"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 resize-none"
             />
           </div>
           <div className="flex flex-wrap gap-3">
@@ -192,7 +192,7 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -288,7 +288,7 @@ function EditIssueModal({ issue, isOpen, onClose, onSave, currentUser }) {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             />
           </div>
           <div>
@@ -297,7 +297,7 @@ function EditIssueModal({ issue, isOpen, onClose, onSave, currentUser }) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 resize-none"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 resize-none"
             />
           </div>
           <div>
@@ -305,7 +305,7 @@ function EditIssueModal({ issue, isOpen, onClose, onSave, currentUser }) {
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
