@@ -28,7 +28,8 @@ import {
 import {
   messageMentionsMe,
   requestNotificationPermission,
-  showMentionNotificationIfBackground
+  showMentionNotificationIfBackground,
+  subscribePushSubscription
 } from "./utils/mentionNotifications";
 
 const THEME_KEY = "meeps-theme";
@@ -601,16 +602,22 @@ function App() {
     };
   }, []);
 
-  // Request notification permission for mention alerts (PWA iPhone / Tauri Windows)
+  // Request notification permission and push subscription (PWA iPhone – notifications when app closed)
   const notificationPermissionRequestedRef = useRef(false);
   useEffect(() => {
     if (!isAuthenticated || showProfileSetup || notificationPermissionRequestedRef.current) return;
     notificationPermissionRequestedRef.current = true;
-    const t = setTimeout(() => {
-      requestNotificationPermission().catch(() => {});
+    const t = setTimeout(async () => {
+      try {
+        const granted = await requestNotificationPermission();
+        if (granted && apiBase) {
+          const token = localStorage.getItem("meeps_token");
+          if (token) await subscribePushSubscription(apiBase, token);
+        }
+      } catch (_) {}
     }, 1500);
     return () => clearTimeout(t);
-  }, [isAuthenticated, showProfileSetup]);
+  }, [isAuthenticated, showProfileSetup, apiBase]);
 
   // Close top menu when clicking outside
   useEffect(() => {
@@ -1661,24 +1668,37 @@ function App() {
         onClick={() => setSidebarOpen(false)}
         aria-hidden="true"
       />
+      {/* Mobile users panel backdrop */}
+      <div
+        role="presentation"
+        className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${usersPanelOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        style={{ top: "calc(48px + env(safe-area-inset-top))" }}
+        onClick={() => setUsersPanelOpen(false)}
+        aria-hidden="true"
+      />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-row">
-        <aside
-          className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
-            fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
-            md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
-          style={{
-            ...(isDesktop
-              ? {
-                  width: sidebarWidthPx,
-                  minWidth: SIDEBAR_MIN_PX,
-                  maxWidth: SIDEBAR_MAX_PX,
-                  fontSize: `clamp(0.8125rem, 0.75rem + (${sidebarWidthPx - SIDEBAR_MIN_PX} / ${SIDEBAR_MAX_PX - SIDEBAR_MIN_PX}) * 0.125rem, 0.9375rem)`
-                }
-              : { paddingLeft: "max(0.75rem, env(safe-area-inset-left))" })
-          }}
+        {/* On mobile this wrapper takes 0 flex space so main content fills the screen; sidebar overlays via fixed */}
+        <div
+          className="flex-shrink-0 md:min-w-0 w-0 min-w-0 max-w-0 overflow-visible md:w-auto md:min-w-0 md:max-w-none"
+          aria-hidden={!sidebarOpen && !isDesktop}
         >
+          <aside
+            className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
+              fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
+              md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none md:!w-full
+              ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+            style={{
+              ...(isDesktop
+                ? {
+                    width: sidebarWidthPx,
+                    minWidth: SIDEBAR_MIN_PX,
+                    maxWidth: SIDEBAR_MAX_PX,
+                    fontSize: `clamp(0.8125rem, 0.75rem + (${sidebarWidthPx - SIDEBAR_MIN_PX} / ${SIDEBAR_MAX_PX - SIDEBAR_MIN_PX}) * 0.125rem, 0.9375rem)`
+                  }
+                : { paddingLeft: "max(0.75rem, env(safe-area-inset-left))" })
+            }}
+          >
           <div className="flex flex-shrink-0 justify-end md:hidden">
             <button
               type="button"
@@ -1845,9 +1865,10 @@ function App() {
               }}
             />
           )}
-        </aside>
+          </aside>
+        </div>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden w-full min-w-0">
           {activeTab === "board" ? (
             <Board currentUser={currentUser} apiBase={apiBase} />
           ) : (
@@ -1915,14 +1936,17 @@ function App() {
 
         {usersPanelOpen && (
           <aside
-            className="flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95 relative flex-shrink-0
-              w-40 min-w-[8rem] max-w-[50vw] sm:max-w-[10rem]"
+            className="flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95 relative
+              fixed right-0 top-[calc(3rem+env(safe-area-inset-top))] bottom-0 z-40 w-64 max-w-[85vw] shadow-lg
+              md:relative md:top-0 md:bottom-auto md:z-auto md:shadow-none md:flex-shrink-0 md:w-40 md:min-w-[8rem] md:max-w-[10rem]"
             style={isDesktop ? {
               width: usersPanelWidthPx,
               minWidth: USERS_PANEL_MIN_PX,
               maxWidth: USERS_PANEL_MAX_PX,
               fontSize: `clamp(0.8125rem, 0.75rem + (${usersPanelWidthPx - USERS_PANEL_MIN_PX} / ${USERS_PANEL_MAX_PX - USERS_PANEL_MIN_PX}) * 0.125rem, 0.9375rem)`
-            } : undefined}
+            } : {
+              paddingRight: "max(0.5rem, env(safe-area-inset-right))"
+            }}
           >
             {isDesktop && (
               <div

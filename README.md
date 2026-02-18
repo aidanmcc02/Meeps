@@ -78,6 +78,46 @@ Icons are copied from the Tauri icon by default. For best quality on iOS and And
 Regenerate from the Tauri icon after running `generate-icon`:  
 `npm run generate-pwa-icons`
 
+### iOS PWA Notifications
+
+The app supports notifications on iOS when the PWA is installed, including **when the app is closed** (mention notifications via Web Push).
+
+#### Enabling notifications on your iPhone
+
+1. **Install the PWA**: Open the app URL in Safari on your iPhone and tap "Add to Home Screen"
+2. **Open the PWA**: Launch the app from your home screen (not Safari)
+3. **Enable notifications**: Go to iPhone Settings → [Your PWA Name] → Notifications → Enable "Allow Notifications"
+4. **Grant permission**: When the app prompts you, tap "Allow"
+
+Notifications work when the app is open, backgrounded, or **closed** — if the backend is configured for push (see below).
+
+#### Backend setup: push notifications when the app is closed
+
+To send mention notifications when the app is closed (e.g. someone @mentions you and you get a push on your lock screen), the backend must be configured with **VAPID keys** and the **push_subscriptions** table.
+
+1. **Run the migration** (creates `push_subscriptions`):
+
+   ```bash
+   cd backend
+   npm run migrate
+   ```
+
+2. **Generate VAPID keys** (one-time):
+
+   ```bash
+   cd backend
+   node scripts/generate-vapid-keys.js
+   ```
+
+   This prints a public and private key. Add them to your backend environment (e.g. Railway variables or `.env`):
+
+   - `VAPID_PUBLIC_KEY` = the public key (long base64url string)
+   - `VAPID_PRIVATE_KEY` = the private key (long base64url string)
+
+   **Important:** Keep the private key secret and do not commit it to the repo.
+
+3. **Restart the backend** after setting the variables. The frontend will automatically subscribe to push when the user grants notification permission; the backend will then send a push to mentioned users who are not currently connected (e.g. app closed on iPhone).
+
 ## Tech stack
 
 - React + Vite

@@ -1,5 +1,6 @@
 const { WebSocketServer } = require("ws");
 const db = require("../config/db");
+const pushService = require("../services/pushService");
 
 const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -250,6 +251,62 @@ async function handleIncomingChatMessage(parsed, wss) {
       client.send(outbound);
     }
   }
+
+  // Push notifications for mentioned users who are not connected (e.g. app closed on iPhone)
+  if (pushService.isConfigured() && content) {
+    try {
+      const mentionedIds = await getMentionedUserIds(content);
+      const connectedIds = new Set(socketsByUserId.keys());
+      const toNotify = mentionedIds.filter(
+        (id) => Number(id) !== Number(senderId) && !connectedIds.has(Number(id))
+      );
+      if (toNotify.length > 0) {
+        pushService
+          .sendMentionPushToUsers(toNotify, {
+            channel,
+            sender,
+            body: content
+          })
+          .catch((err) => console.error("[push] sendMentionPushToUsers error:", err.message));
+      }
+    } catch (err) {
+      console.error("[push] getMentionedUserIds error:", err.message);
+    }
+  }
+}
+
+/**
+ * Parse @mentions from message content and return user IDs.
+ * @param {string} content - Message content
+ * @returns {Promise<number[]>} User IDs mentioned (including @everyone)
+ */
+async function getMentionedUserIds(content) {
+  if (!content || typeof content !== "string") return [];
+  const re = /@(\S+)/g;
+  const slugs = new Set();
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    slugs.add((match[1] || "").toLowerCase());
+  }
+  if (slugs.size === 0) return [];
+
+  const ids = new Set();
+  try {
+    const result = await db.query("SELECT id, display_name FROM users");
+    const everyone = slugs.has("everyone");
+    if (everyone) {
+      result.rows.forEach((r) => ids.add(Number(r.id)));
+    }
+    for (const row of result.rows) {
+      const name = row.display_name;
+      if (!name) continue;
+      const slug = name.trim().replace(/\s+/g, "_").toLowerCase();
+      if (slug && slugs.has(slug)) ids.add(Number(row.id));
+    }
+  } catch (_) {
+    return [];
+  }
+  return [...ids];
 }
 
 async function handleMessageEdit(parsed, socket, wss) {
