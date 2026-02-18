@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  channel VARCHAR(255) NOT NULL,
+  sender_name VARCHAR(255) NOT NULL,
+  sender_id INTEGER REFERENCES users(id),
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$ BEGIN
+  ALTER TABLE messages ADD COLUMN sender_id INTEGER REFERENCES users(id);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

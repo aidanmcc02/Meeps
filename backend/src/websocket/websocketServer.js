@@ -134,7 +134,7 @@ async function handleIncomingChatMessage(parsed, wss) {
     console.log("Saving message to database:", { channel, sender, senderId, content });
     try {
       const result = await db.query(
-        "INSERT INTO messages (channel, sender_name, sender_id, content) VALUES ($1, $2, $3, $4) RETURNING id, created_at, sender_id",
+        "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
         [channel, sender, senderId || null, content]
       );
       const row = result.rows[0];
@@ -151,7 +151,7 @@ async function handleIncomingChatMessage(parsed, wss) {
       // Old DBs may lack sender_id column (e.g. 42703 = undefined_column)
       if (insertErr.code === "42703" || insertErr.message?.includes("sender_id")) {
         const result = await db.query(
-          "INSERT INTO messages (channel, sender_name, content) VALUES ($1, $2, $3) RETURNING id, created_at",
+          "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, created_at",
           [channel, sender, content]
         );
         const row = result.rows[0];
