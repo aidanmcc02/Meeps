@@ -30,6 +30,7 @@ let wssInstance = null;
 const presenceByUserId = new Map();
 const socketsByUserId = new Map();
 const voiceRooms = new Map(); // roomId -> Set<userId>
+const voiceRoomPings = new Map(); // roomId -> Map<userId, rttMs>
 let idleCheckInterval = null;
 
 const IDLE_AFTER_MS = 5 * 60 * 1000; // 5 minutes
@@ -88,6 +89,10 @@ function startWebSocketServer(httpServer) {
         handleVoiceSignal(parsed);
       } else if (parsed.type === "voice:get_participants") {
         handleVoiceGetParticipants(socket, parsed);
+      } else if (parsed.type === "voice:ping") {
+        handleVoicePing(socket, parsed);
+      } else if (parsed.type === "voice:ping_report") {
+        handleVoicePingReport(socket, parsed);
       }
     });
 
@@ -119,8 +124,14 @@ function startWebSocketServer(httpServer) {
         for (const [roomId, members] of voiceRooms.entries()) {
           if (members.has(userId)) {
             members.delete(userId);
+            const pings = voiceRoomPings.get(roomId);
+            if (pings) {
+              pings.delete(userId);
+              if (pings.size === 0) voiceRoomPings.delete(roomId);
+            }
             if (members.size === 0) {
               voiceRooms.delete(roomId);
+              voiceRoomPings.delete(roomId);
             } else {
               broadcastVoiceParticipants(roomId);
             }
@@ -526,9 +537,65 @@ function handleVoiceLeave(_socket, payload) {
   if (!members) return;
 
   members.delete(userId);
+  const pings = voiceRoomPings.get(roomId);
+  if (pings) {
+    pings.delete(userId);
+    if (pings.size === 0) voiceRoomPings.delete(roomId);
+  }
   if (members.size === 0) {
     voiceRooms.delete(roomId);
+    voiceRoomPings.delete(roomId);
   }
+  broadcastVoiceParticipants(roomId);
+}
+
+function getVoiceHost(roomId) {
+  const members = voiceRooms.get(roomId);
+  if (!members || members.size === 0) return null;
+  if (members.size === 1) return [...members][0];
+  const pings = voiceRoomPings.get(roomId);
+  if (!pings || pings.size === 0) {
+    return Math.min(...members);
+  }
+  let bestUserId = null;
+  let bestRtt = Infinity;
+  for (const userId of members.values()) {
+    const rtt = pings.get(userId);
+    if (rtt == null) continue;
+    if (rtt < bestRtt || (rtt === bestRtt && (bestUserId == null || userId < bestUserId))) {
+      bestRtt = rtt;
+      bestUserId = userId;
+    }
+  }
+  if (bestUserId != null) return bestUserId;
+  return Math.min(...members);
+}
+
+function handleVoicePing(socket, payload) {
+  if (socket.readyState !== socket.OPEN) return;
+  const clientTime = payload.clientTime;
+  socket.send(
+    JSON.stringify({
+      type: "voice:pong",
+      payload: { clientTime }
+    })
+  );
+}
+
+function handleVoicePingReport(socket, payload) {
+  const userId = socket.userId;
+  const roomId = payload.roomId;
+  const rttMs = typeof payload.rttMs === "number" ? Math.max(0, payload.rttMs) : null;
+  if (!userId || !roomId || rttMs == null) return;
+  const members = voiceRooms.get(roomId);
+  if (!members || !members.has(userId)) return;
+
+  let pings = voiceRoomPings.get(roomId);
+  if (!pings) {
+    pings = new Map();
+    voiceRoomPings.set(roomId, pings);
+  }
+  pings.set(userId, rttMs);
   broadcastVoiceParticipants(roomId);
 }
 
@@ -548,13 +615,15 @@ function getVoiceRoomParticipants(roomId) {
 
 function broadcastVoiceParticipants(roomId) {
   const participants = getVoiceRoomParticipants(roomId);
+  const hostUserId = getVoiceHost(roomId);
   if (!wssInstance) return;
 
   const outbound = JSON.stringify({
     type: "voice:participants",
     payload: {
       roomId,
-      participants
+      participants,
+      hostUserId: hostUserId != null ? hostUserId : undefined
     }
   });
 
@@ -578,10 +647,15 @@ function handleVoiceGetParticipants(socket, parsed) {
   }
   for (const roomId of roomIds) {
     const participants = getVoiceRoomParticipants(roomId);
+    const hostUserId = getVoiceHost(roomId);
     socket.send(
       JSON.stringify({
         type: "voice:participants",
-        payload: { roomId, participants }
+        payload: {
+          roomId,
+          participants,
+          hostUserId: hostUserId != null ? hostUserId : undefined
+        }
       })
     );
   }

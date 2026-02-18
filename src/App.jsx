@@ -48,6 +48,17 @@ const DEFAULT_KEYBINDS = {
 };
 const DEFAULT_USER_NAME = "Meeps User";
 const CURRENT_USER_ID = 1;
+
+const isDev = import.meta.env.DEV || import.meta.env.MODE === "development";
+const voiceDebug = isDev ? {
+  log: (...args) => console.log("[VOICE]", ...args),
+  warn: (...args) => console.warn("[VOICE]", ...args),
+  error: (...args) => console.error("[VOICE]", ...args)
+} : {
+  log: () => {},
+  warn: () => {},
+  error: () => {}
+};
 const TEXT_CHANNELS = [
   { id: "general", name: "general" },
   { id: "dev", name: "dev-chat" },
@@ -116,6 +127,7 @@ function App() {
   const remoteStreamsFlushScheduledRef = useRef(false);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [voicePingMs, setVoicePingMs] = useState(null);
+  const [voiceHostUserId, setVoiceHostUserId] = useState(null);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [localScreenStream, setLocalScreenStream] = useState(null);
   const screenStreamRef = useRef(null);
@@ -140,6 +152,7 @@ function App() {
     return DEFAULT_KEYBINDS;
   });
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
+  const [profileModalAnchor, setProfileModalAnchor] = useState("center");
   const keybindHoldRef = useRef({ mute: false, muteDeafen: false });
   const keybindToggleReleasedRef = useRef({ mute: true, muteDeafen: true });
   const voiceParticipantCountRef = useRef(0);
@@ -253,6 +266,25 @@ function App() {
     joinedVoiceChannelIdRef.current = joinedVoiceChannelId;
   }, [joinedVoiceChannelId]);
 
+  useEffect(() => {
+    if (!joinedVoiceChannelId) return;
+    
+    const ensureAudioContextActive = () => {
+      // Resume audio context if suspended (browser may suspend it when switching views)
+      const ctx = voiceAudioContextRef.current;
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+    };
+    
+    // Check immediately when tab changes or when in a call
+    ensureAudioContextActive();
+    
+    // Also check periodically to catch any suspensions while in board mode
+    const interval = setInterval(ensureAudioContextActive, 2000);
+    return () => clearInterval(interval);
+  }, [activeTab, joinedVoiceChannelId]);
+
   // Detect who is speaking (local + remote) via Web Audio analyser; update speakingUserIds.
   const SPEAK_THRESHOLD = 0.028;
   const SILENCE_THRESHOLD = 0.018;
@@ -261,14 +293,42 @@ function App() {
       setSpeakingUserIds([]);
       return;
     }
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    voiceAudioContextRef.current = ctx;
+    
+    // Reuse existing audio context if available (created during user gesture in joinVoiceChannel)
+    // Otherwise create a new one
+    let ctx = voiceAudioContextRef.current;
+    voiceDebug.log("useEffect audio context setup", { hasExisting: !!ctx, state: ctx?.state });
+    if (!ctx || ctx.state === "closed") {
+      voiceDebug.log("Creating audio context in useEffect");
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      voiceAudioContextRef.current = ctx;
+      voiceDebug.log("Audio context created in useEffect", { state: ctx.state });
+      if (ctx.state === "suspended") {
+        voiceDebug.log("Attempting to resume newly created context");
+        ctx.resume().catch((err) => voiceDebug.warn("Failed to resume new context:", err));
+      }
+    } else {
+      if (ctx.state === "suspended") {
+        voiceDebug.log("Resuming existing suspended context in useEffect");
+        ctx.resume().catch((err) => voiceDebug.warn("Failed to resume existing context:", err));
+      } else {
+        voiceDebug.log("Audio context already running in useEffect", { state: ctx.state });
+      }
+    }
+    
     const analysers = voiceAnalysersRef.current;
 
     const addStream = (userId, stream) => {
       if (!stream || typeof stream.getAudioTracks !== "function") return;
       const audioTracks = stream.getAudioTracks();
       if (!audioTracks.length) return;
+      
+      if (ctx.state === "suspended") {
+        ctx.resume().catch((err) => {
+          voiceDebug.warn("Failed to resume audio context in addStream:", err);
+        });
+      }
+      
       try {
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -276,14 +336,35 @@ function App() {
         analyser.smoothingTimeConstant = 0.6;
         source.connect(analyser);
         analysers[userId] = { source, analyser };
-      } catch (_) {}
+      } catch (err) {
+        console.warn("Failed to create MediaStreamSource:", err);
+      }
     };
 
     const myId = String(currentUser?.id ?? CURRENT_USER_ID);
-    if (localStreamRef.current) addStream(myId, localStreamRef.current);
+    voiceDebug.log("Adding streams to audio context", { 
+      hasLocalStream: !!localStreamRef.current,
+      remoteStreamCount: Object.keys(remoteStreams).length,
+      remoteStreamIds: Object.keys(remoteStreams)
+    });
+    if (localStreamRef.current) {
+      voiceDebug.log("Adding local stream", { myId });
+      addStream(myId, localStreamRef.current);
+    }
     Object.entries(remoteStreams).forEach(([uid, stream]) => {
+      voiceDebug.log("Adding remote stream", { userId: uid });
       addStream(uid, stream);
     });
+
+    const resumeContext = () => {
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+    };
+    resumeContext();
+    // Also try after a brief delay in case the browser suspends it asynchronously
+    setTimeout(resumeContext, 50);
+    setTimeout(resumeContext, 200);
 
     const dataArray = new Uint8Array(128);
     voiceSpeakingIntervalRef.current = setInterval(() => {
@@ -314,7 +395,36 @@ function App() {
       try { ctx.close(); } catch (_) {}
       voiceAudioContextRef.current = null;
     };
-  }, [joinedVoiceChannelId, remoteStreams]);
+  }, [joinedVoiceChannelId, remoteStreams, currentUser?.id]);
+
+  useEffect(() => {
+    if (!joinedVoiceChannelId || Object.keys(remoteStreams).length === 0) return;
+    
+    voiceDebug.log("Remote streams changed, checking audio elements", { 
+      remoteStreamCount: Object.keys(remoteStreams).length,
+      remoteStreamIds: Object.keys(remoteStreams)
+    });
+    
+    const audioElements = document.querySelectorAll('audio[srcObject]');
+    voiceDebug.log("Found audio elements", { count: audioElements.length });
+    audioElements.forEach((el, idx) => {
+      voiceDebug.log("Audio element check", { 
+        index: idx, 
+        paused: el.paused, 
+        hasSrcObject: !!el.srcObject,
+        volume: el.volume,
+        readyState: el.readyState
+      });
+      if (el.paused && el.srcObject) {
+        voiceDebug.log("Attempting to play paused audio element", { index: idx });
+        el.play().then(() => {
+          voiceDebug.log("Audio element playing successfully", { index: idx });
+        }).catch((err) => {
+          voiceDebug.error("Failed to play audio element:", err, { index: idx });
+        });
+      }
+    });
+  }, [remoteStreams, joinedVoiceChannelId]);
 
   // Poll participant mute state when in a voice call (track.enabled is not reactive)
   useEffect(() => {
@@ -457,7 +567,15 @@ function App() {
           setMessages((prev) => [...prev, payload]);
           const myId = currentUser?.id ?? CURRENT_USER_ID;
           const isFromMe = Number(payload.senderId) === Number(myId);
-          if (!isFromMe) playMessageReceivedSound();
+          // Only play notification sound when mentioned (@username or @everyone)
+          // Double-check: ensure content exists and contains @ symbol before checking mentions
+          const hasMention = payload.content && 
+            typeof payload.content === "string" && 
+            payload.content.includes("@") &&
+            messageMentionsMe(payload.content, currentUser?.displayName);
+          if (!isFromMe && hasMention) {
+            playMessageReceivedSound();
+          }
           // Mark channel as unread if we're not viewing it and message isn't from us
           const msgChannel = payload.channel;
           const currentChannel = selectedChannelIdRef.current;
@@ -510,15 +628,19 @@ function App() {
             return copy;
           });
         } else if (data.type === "voice:participants" && data.payload) {
-          const { roomId, participants } = data.payload;
+          const { roomId, participants, hostUserId } = data.payload;
           const list = participants || [];
+          voiceDebug.log("Received voice:participants", { roomId, participantCount: list.length, hostUserId, participants: list.map(p => ({ id: p.id, displayName: p.displayName })) });
           setVoiceChannelParticipants((prev) => ({ ...prev, [roomId]: list }));
           const joinedRoomId = joinedVoiceChannelIdRef.current;
           const isOurRoom = joinedRoomId != null && String(roomId) === String(joinedRoomId);
+          voiceDebug.log("Processing participants for room", { roomId, joinedRoomId, isOurRoom });
           if (isOurRoom) {
+            setVoiceHostUserId(hostUserId != null ? hostUserId : null);
             const newCount = list.length;
             const oldCount = voiceParticipantCountRef.current;
             const isOurOwnJoin = justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
+            voiceDebug.log("Our room participants updated", { newCount, oldCount, isOurOwnJoin });
             if (isOurOwnJoin) {
               justJoinedVoiceRef.current = false;
             } else if (newCount !== oldCount) {
@@ -531,8 +653,20 @@ function App() {
             }
             voiceParticipantCountRef.current = newCount;
             setVoiceParticipants(list);
+            voiceDebug.log("Voice participants state updated", { count: list.length });
+          }
+        } else if (data.type === "voice:pong" && data.payload) {
+          const { clientTime } = data.payload || {};
+          if (typeof clientTime === "number") {
+            const rttMs = Math.round(Date.now() - clientTime);
+            const roomId = joinedVoiceChannelIdRef.current;
+            const socket = socketRef.current;
+            if (roomId != null && socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: "voice:ping_report", roomId, rttMs }));
+            }
           }
         } else if (data.type === "voice:signal" && data.payload) {
+          voiceDebug.log("Received voice:signal", { signalType: data.payload.signalType, fromUserId: data.payload.fromUserId });
           handleIncomingVoiceSignal(data.payload);
         }
       } catch {
@@ -901,6 +1035,21 @@ function App() {
     };
   }, [joinedVoiceChannelId, voiceParticipants.length]);
 
+  // Send voice:ping periodically while in a call so server can measure RTT and assign host
+  useEffect(() => {
+    if (!joinedVoiceChannelId) return;
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const interval = setInterval(() => {
+      const s = socketRef.current;
+      const roomId = joinedVoiceChannelIdRef.current;
+      if (s && s.readyState === WebSocket.OPEN && roomId != null) {
+        s.send(JSON.stringify({ type: "voice:ping", roomId, clientTime: Date.now() }));
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [joinedVoiceChannelId]);
+
   const applyTheme = (nextTheme) => {
     const root = document.documentElement;
     if (nextTheme === "dark") {
@@ -958,7 +1107,11 @@ function App() {
 
     console.log("Sending message:", payload);
     socket.send(JSON.stringify(payload));
-    playMessageSentSound();
+    // Only play sound if message mentions yourself or @everyone
+    const content = trimmed || (attachmentIds?.length > 0 ? " " : "");
+    if (content && typeof content === "string" && messageMentionsMe(content, currentUser?.displayName)) {
+      playMessageSentSound();
+    }
     setInputValue("");
   };
 
@@ -993,7 +1146,10 @@ function App() {
     };
 
     socket.send(JSON.stringify(payload));
-    playMessageSentSound();
+    // Only play sound if message mentions yourself or @everyone
+    if (content && typeof content === "string" && messageMentionsMe(content, currentUser?.displayName)) {
+      playMessageSentSound();
+    }
   };
 
   const channelMessages = messages.filter(
@@ -1050,22 +1206,47 @@ function App() {
   };
 
   const createPeerConnection = async (peerUserId) => {
+    voiceDebug.log("createPeerConnection", { peerUserId, hasExisting: !!peerConnectionsRef.current[peerUserId] });
     if (peerConnectionsRef.current[peerUserId]) {
+      voiceDebug.log("Reusing existing peer connection", { peerUserId });
       return peerConnectionsRef.current[peerUserId];
     }
 
+    const ctx = voiceAudioContextRef.current;
+    voiceDebug.log("createPeerConnection audio context check", { state: ctx?.state });
+    if (ctx && ctx.state === "suspended") {
+      voiceDebug.log("Resuming audio context in createPeerConnection");
+      try {
+        await ctx.resume();
+        voiceDebug.log("Audio context resumed in createPeerConnection", { state: ctx.state });
+      } catch (err) {
+        voiceDebug.error("Failed to resume audio context in createPeerConnection:", err);
+      }
+    }
+
+    voiceDebug.log("Creating RTCPeerConnection", { peerUserId });
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
 
     const localStream = await ensureLocalStream();
+    voiceDebug.log("Got local stream for peer connection", { 
+      hasStream: !!localStream,
+      audioTracks: localStream?.getAudioTracks()?.length || 0
+    });
     const useScreenAsVideo = screenStreamRef.current?.getVideoTracks()?.length > 0;
     const useCameraAsVideo = !useScreenAsVideo && cameraStreamRef.current?.getVideoTracks()?.length > 0;
     if (localStream) {
+      const tracksAdded = [];
       localStream.getTracks().forEach((track) => {
         if (track.kind === "video" && (useScreenAsVideo || useCameraAsVideo)) return;
+        voiceDebug.log("Adding track to peer connection", { peerUserId, kind: track.kind, id: track.id, enabled: track.enabled });
         pc.addTrack(track, localStream);
+        tracksAdded.push({ kind: track.kind, id: track.id });
       });
+      voiceDebug.log("Tracks added to peer connection", { peerUserId, count: tracksAdded.length, tracks: tracksAdded });
+    } else {
+      voiceDebug.warn("No local stream to add to peer connection", { peerUserId });
     }
     if (useScreenAsVideo) {
       const screenStream = screenStreamRef.current;
@@ -1097,23 +1278,30 @@ function App() {
 
     pc.ontrack = (event) => {
       const track = event.track;
-      if (!track || typeof track.kind !== "string") return;
+      voiceDebug.log("ontrack event", { peerUserId, kind: track?.kind, id: track?.id, readyState: track?.readyState });
+      if (!track || typeof track.kind !== "string") {
+        voiceDebug.warn("Invalid track in ontrack", { track });
+        return;
+      }
       try {
         let peerStream = remoteStreamsRef.current[peerUserId];
         if (!peerStream) {
+          voiceDebug.log("Creating new MediaStream for peer", { peerUserId });
           peerStream = new MediaStream();
           remoteStreamsRef.current[peerUserId] = peerStream;
         }
+        voiceDebug.log("Adding track to peer stream", { peerUserId, kind: track.kind, id: track.id });
         peerStream.addTrack(track);
         if (!remoteStreamsFlushScheduledRef.current) {
           remoteStreamsFlushScheduledRef.current = true;
           queueMicrotask(() => {
+            voiceDebug.log("Flushing remote streams to state", { peerIds: Object.keys(remoteStreamsRef.current) });
             setRemoteStreams((prev) => ({ ...prev, ...remoteStreamsRef.current }));
             remoteStreamsFlushScheduledRef.current = false;
           });
         }
       } catch (err) {
-        console.warn("ontrack error:", err);
+        voiceDebug.error("ontrack error:", err);
       }
     };
 
@@ -1164,8 +1352,13 @@ function App() {
     signalType,
     data
   }) => {
-    if (roomId !== joinedVoiceChannelIdRef.current) return;
+    voiceDebug.log("handleIncomingVoiceSignal", { roomId, fromUserId, signalType, currentRoom: joinedVoiceChannelIdRef.current });
+    if (roomId !== joinedVoiceChannelIdRef.current) {
+      voiceDebug.warn("Signal for wrong room, ignoring", { signalRoom: roomId, currentRoom: joinedVoiceChannelIdRef.current });
+      return;
+    }
     const pc = await createPeerConnection(fromUserId);
+    voiceDebug.log("Peer connection obtained for signal", { fromUserId, signalingState: pc.signalingState, connectionState: pc.connectionState });
 
     if (signalType === "offer") {
       await pc.setRemoteDescription(new RTCSessionDescription(data));
@@ -1237,16 +1430,32 @@ function App() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     const run = async () => {
+      const sortedIds = voiceParticipants.map((p) => Number(p.id)).sort((a, b) => a - b);
+      const effectiveHost = voiceHostUserId != null ? voiceHostUserId : (sortedIds[0] ?? myId);
+      const iAmHost = Number(myId) === Number(effectiveHost);
+      voiceDebug.log("Sending offers to peers", { myId, effectiveHost, iAmHost, participants: voiceParticipants.map(p => p.id), participantCount: voiceParticipants.length });
       for (const p of voiceParticipants) {
         const peerId = Number(p.id);
-        if (peerId === myId) continue;
-        if (myId > peerId) continue;
-        if (voiceOfferSentToRef.current.has(peerId)) continue;
+        if (peerId === myId) {
+          voiceDebug.log("Skipping self", { peerId, myId });
+          continue;
+        }
+        if (!iAmHost) {
+          voiceDebug.log("Skipping (not host; host has lowest ping)", { peerId, myId, effectiveHost });
+          continue;
+        }
+        if (voiceOfferSentToRef.current.has(peerId)) {
+          voiceDebug.log("Offer already sent", { peerId });
+          continue;
+        }
+        voiceDebug.log("Sending offer to peer", { peerId });
         voiceOfferSentToRef.current.add(peerId);
         try {
           const pc = await createPeerConnection(peerId);
+          voiceDebug.log("Creating offer", { peerId, signalingState: pc.signalingState });
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
+          voiceDebug.log("Offer created and set as local description", { peerId });
           const s = socketRef.current;
           if (s && s.readyState === WebSocket.OPEN) {
             s.send(
@@ -1259,15 +1468,18 @@ function App() {
                 data: offer
               })
             );
+            voiceDebug.log("Offer sent via WebSocket", { peerId });
+          } else {
+            voiceDebug.warn("Cannot send offer, socket not ready", { peerId, readyState: s?.readyState });
           }
         } catch (err) {
-          console.warn("Voice offer failed:", err);
+          voiceDebug.error("Voice offer failed:", err, { peerId });
           voiceOfferSentToRef.current.delete(peerId);
         }
       }
     };
     run();
-  }, [joinedVoiceChannelId, voiceParticipants, currentUser?.id]);
+  }, [joinedVoiceChannelId, voiceParticipants, currentUser?.id, voiceHostUserId]);
 
   const handleSaveProfile = async (payload) => {
     if (!isAuthenticated) return;
@@ -1297,11 +1509,38 @@ function App() {
   };
 
   const joinVoiceChannel = async (roomId) => {
-    if (!isAuthenticated) return;
+    voiceDebug.log("===== joinVoiceChannel START =====", { roomId, isAuthenticated, hasSocket: !!socketRef.current });
+    if (!isAuthenticated) {
+      voiceDebug.warn("Not authenticated, aborting join");
+      return;
+    }
     const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    // Play sound immediately while still in the user gesture (before any await)
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      voiceDebug.warn("Socket not ready", { hasSocket: !!socket, readyState: socket?.readyState });
+      return;
+    }
     playConnectSound();
+    
+    let ctx = voiceAudioContextRef.current;
+    voiceDebug.log("Audio context check", { hasExistingCtx: !!ctx, state: ctx?.state });
+    if (!ctx || ctx.state === "closed") {
+      voiceDebug.log("Creating new audio context");
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      voiceAudioContextRef.current = ctx;
+      voiceDebug.log("Audio context created", { state: ctx.state });
+    }
+    if (ctx.state === "suspended") {
+      voiceDebug.log("Resuming suspended audio context");
+      try {
+        await ctx.resume();
+        voiceDebug.log("Audio context resumed", { state: ctx.state });
+      } catch (err) {
+        voiceDebug.error("Failed to resume audio context:", err);
+      }
+    } else {
+      voiceDebug.log("Audio context already running", { state: ctx.state });
+    }
+    
     joinedVoiceChannelIdRef.current = roomId;
     setJoinedVoiceChannelId(roomId);
     setVoiceParticipants([]);
@@ -1312,9 +1551,76 @@ function App() {
     setRemoteStreams({});
     voiceParticipantCountRef.current = 0;
     justJoinedVoiceRef.current = true;
+    
+    voiceDebug.log("Requesting local stream");
     await ensureLocalStream();
+    const localStream = localStreamRef.current;
+    voiceDebug.log("Local stream obtained", { 
+      hasStream: !!localStream, 
+      audioTracks: localStream?.getAudioTracks()?.length || 0,
+      videoTracks: localStream?.getVideoTracks()?.length || 0
+    });
+    
+    const finalCtx = voiceAudioContextRef.current;
+    voiceDebug.log("Final audio context check", { state: finalCtx?.state });
+    if (finalCtx && finalCtx.state === "suspended") {
+      voiceDebug.log("Audio context suspended again, resuming");
+      try {
+        await finalCtx.resume();
+        voiceDebug.log("Audio context resumed again", { state: finalCtx.state });
+      } catch (err) {
+        voiceDebug.error("Failed to resume audio context after ensureLocalStream:", err);
+      }
+    }
+    
+    if (localStream) {
+      const audioTracks = localStream.getAudioTracks();
+      voiceDebug.log("Local stream audio tracks", { 
+        count: audioTracks.length,
+        tracks: audioTracks.map(t => ({ id: t.id, enabled: t.enabled, readyState: t.readyState, muted: t.muted }))
+      });
+      if (audioTracks.length === 0) {
+        voiceDebug.warn("Local stream has no audio tracks");
+      } else {
+        audioTracks.forEach(track => {
+          if (!track.enabled) {
+            voiceDebug.log("Enabling disabled audio track", { trackId: track.id });
+            track.enabled = true;
+          }
+        });
+      }
+      
+      if (finalCtx && localStream.getAudioTracks().length > 0) {
+        const analysers = voiceAnalysersRef.current;
+        const myId = String(currentUser?.id ?? CURRENT_USER_ID);
+        if (!analysers[myId]) {
+          voiceDebug.log("Manually adding local stream to analyser");
+          try {
+            if (finalCtx.state === "suspended") {
+              await finalCtx.resume();
+            }
+            const source = finalCtx.createMediaStreamSource(localStream);
+            const analyser = finalCtx.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.6;
+            source.connect(analyser);
+            analysers[myId] = { source, analyser };
+            voiceDebug.log("Local stream added to analyser successfully");
+          } catch (err) {
+            voiceDebug.error("Failed to add local stream to analyser:", err);
+          }
+        } else {
+          voiceDebug.log("Local stream already in analyser");
+        }
+      }
+    } else {
+      voiceDebug.warn("No local stream obtained");
+    }
+    
+    voiceDebug.log("Sending voice:join message");
     socket.send(JSON.stringify({ type: "voice:join", roomId, userId: currentUser?.id ?? CURRENT_USER_ID }));
     preloadNotificationSound();
+    voiceDebug.log("===== joinVoiceChannel END =====");
   };
 
   const leaveVoiceChannel = () => {
@@ -1328,6 +1634,7 @@ function App() {
     joinedVoiceChannelIdRef.current = null;
     setJoinedVoiceChannelId(null);
     setVoiceParticipants([]);
+    setVoiceHostUserId(null);
     setIsDeafened(false);
     voiceParticipantCountRef.current = 0;
     voiceOfferSentToRef.current = new Set();
@@ -1844,9 +2151,11 @@ function App() {
             </section>
           </div>
 
-          <div className="flex flex-shrink-0 flex-col border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
-            <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
-          </div>
+          {!joinedVoiceChannelId && (
+            <div className="mt-auto flex flex-shrink-0 flex-col border-t border-gray-200 dark:border-gray-700 pt-3">
+              <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
+            </div>
+          )}
           {isDesktop && (
             <div
               role="separator"
@@ -1927,8 +2236,20 @@ function App() {
               playsInline
               ref={(el) => {
                 if (el && stream && typeof stream.getTracks === "function") {
+                  voiceDebug.log("Setting up audio element", { userId, hasStream: !!stream, audioTracks: stream.getAudioTracks().length });
                   el.srcObject = stream;
                   el.volume = isDeafened ? 0 : voiceSettings.volume;
+                  voiceDebug.log("Audio element configured", { userId, volume: el.volume, paused: el.paused, deafened: isDeafened });
+                  if (el.paused) {
+                    voiceDebug.log("Audio element paused, attempting to play", { userId });
+                    el.play().then(() => {
+                      voiceDebug.log("Audio element playing", { userId });
+                    }).catch((err) => {
+                      voiceDebug.error("Failed to play audio element:", err, { userId });
+                    });
+                  } else {
+                    voiceDebug.log("Audio element already playing", { userId });
+                  }
                 }
               }}
             />
@@ -1989,6 +2310,7 @@ function App() {
                   users={usersInDb}
                   profiles={profiles}
                   onUserClick={(user) => {
+                    setProfileModalAnchor("center");
                     setSelectedUserForProfile(user);
                   }}
                 />
@@ -1998,12 +2320,19 @@ function App() {
         )}
       </div>
 
-      {/* Voice control bar when in a call - bottom left */}
+      {/* Voice control bar when in a call - bottom left, centered in sidebar column */}
       {joinedVoiceChannelId && (
         <div
-          className="fixed bottom-6 left-6 z-50 flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95"
-          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))", paddingLeft: "max(0.5rem, env(safe-area-inset-left))" }}
+          className="fixed bottom-6 z-50 flex justify-center"
+          style={{
+            left: 0,
+            width: sidebarWidthPx,
+            paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
+            paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
+            paddingRight: "max(0.5rem, env(safe-area-inset-right))"
+          }}
         >
+          <div className="flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
           <button
             type="button"
             onClick={toggleMute}
@@ -2062,6 +2391,19 @@ function App() {
           </button>
           <button
             type="button"
+            onClick={() => {
+              setProfileModalAnchor("bottom-left");
+              setSelectedUserForProfile(currentUser ? { id: currentUser.id ?? CURRENT_USER_ID, displayName: currentUser.displayName } : { id: CURRENT_USER_ID, displayName: "Meeps User" });
+            }}
+            className="rounded-xl p-3 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            aria-label="Profile"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </button>
+          <button
+            type="button"
             onClick={() => setIsSettingsOpen(true)}
             className="rounded-xl p-3 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             aria-label="Settings"
@@ -2071,6 +2413,7 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
+          </div>
         </div>
       )}
 
@@ -2124,13 +2467,17 @@ function App() {
       />
       <UserProfileModal
         isOpen={selectedUserForProfile != null}
-        onClose={() => setSelectedUserForProfile(null)}
+        onClose={() => {
+          setSelectedUserForProfile(null);
+          setProfileModalAnchor("center");
+        }}
         user={selectedUserForProfile}
         initialProfile={
           selectedUserForProfile?.id != null
             ? profiles[selectedUserForProfile.id]
             : null
         }
+        anchorPosition={profileModalAnchor}
       />
     </div>
   );

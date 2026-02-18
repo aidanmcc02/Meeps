@@ -24,26 +24,26 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: meeps-backend
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGHOST: postgres
-      PGPORT: 5432
-      PGDATABASE: meeps
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PORT: 4000
-      NODE_ENV: development
-      JWT_SECRET: dev_jwt_secret_change_me
-    ports:
-      - "4000:4000"
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: meeps-backend
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     PGHOST: postgres
+  #     PGPORT: 5432
+  #     PGDATABASE: meeps
+  #     PGUSER: postgres
+  #     PGPASSWORD: postgres
+  #     PORT: 4000
+  #     NODE_ENV: development
+  #     JWT_SECRET: dev_jwt_secret_change_me
+  #   ports:
+  #     - "4000:4000"
 
 volumes:
   meeps_pgdata:

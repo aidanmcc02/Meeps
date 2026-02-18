@@ -16,6 +16,7 @@ target/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.dev
 
 # IDE files
 .vscode/
