@@ -219,6 +219,47 @@ async function getMatchPlayerSummary(match, puuid) {
   };
 }
 
+/**
+ * val-content-v1: Get game content (acts, agents, etc.). Use for current act ID.
+ */
+async function getContent(region, locale = "en-US") {
+  const base = getValorantBase(region);
+  return riotRequest(
+    "GET",
+    `${base}/val/content/v1/contents?locale=${encodeURIComponent(locale)}`
+  );
+}
+
+/**
+ * val-ranked-v1: Get leaderboard for an act.
+ */
+async function getLeaderboard(region, actId) {
+  const base = getValorantBase(region);
+  return riotRequest(
+    "GET",
+    `${base}/val/ranked/v1/leaderboards/by-act/${actId}`
+  );
+}
+
+/**
+ * val-status-v1: Get platform status.
+ */
+async function getPlatformStatus(region) {
+  const base = getValorantBase(region);
+  return riotRequest("GET", `${base}/val/status/v1/platform-data`);
+}
+
+/**
+ * Get current act ID from content (first active act, or latest act).
+ */
+function getCurrentActId(content) {
+  const acts = content?.acts || content?.Acts || [];
+  const active = acts.find((a) => a.isActive || a.IsActive);
+  if (active?.id || active?.ID) return active.id || active.ID;
+  if (acts.length > 0) return acts[acts.length - 1].id || acts[acts.length - 1].ID;
+  return null;
+}
+
 module.exports = {
   getAccountByRiotId,
   getMatchList,
@@ -227,6 +268,10 @@ module.exports = {
   getRankName,
   getRankIconUrl,
   getMatchPlayerSummary,
+  getContent,
+  getLeaderboard,
+  getPlatformStatus,
+  getCurrentActId,
   REGION_TO_CLUSTER,
   RANK_TIER_NAMES,
 };

@@ -11,14 +11,28 @@ function Neon({ apiBase, token, currentUser }) {
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkError, setLinkError] = useState(null);
   const [linkSuccess, setLinkSuccess] = useState(false);
+  const [statsError, setStatsError] = useState(null);
+  const [platformStatus, setPlatformStatus] = useState(null);
+  const [leaderboard, setLeaderboard] = useState(null);
 
   useEffect(() => {
-    if (!apiBase || !token) return;
+    if (!apiBase) return;
+    fetch(`${apiBase}/api/valorant/status?region=eu`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setPlatformStatus)
+      .catch(() => setPlatformStatus(null));
+    fetch(`${apiBase}/api/valorant/leaderboard?region=eu`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setLeaderboard)
+      .catch(() => setLeaderboard(null));
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (!apiBase) return;
     setLoading(true);
     setError(null);
-    fetch(`${apiBase}/api/valorant/players`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`${apiBase}/api/valorant/players`, { headers })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load players");
         return res.json();
@@ -37,21 +51,29 @@ function Neon({ apiBase, token, currentUser }) {
   }, [apiBase, token]);
 
   useEffect(() => {
-    if (!apiBase || !token || selectedUserId == null) {
+    if (!apiBase || selectedUserId == null) {
       setStats(null);
+      setStatsError(null);
       return;
     }
     setLoadingStats(true);
     setStats(null);
-    fetch(`${apiBase}/api/valorant/players/${selectedUserId}/stats`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load stats");
-        return res.json();
+    setStatsError(null);
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`${apiBase}/api/valorant/players/${selectedUserId}/stats`, { headers })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Failed to load stats");
+        return data;
       })
-      .then(setStats)
-      .catch(() => setStats(null))
+      .then((data) => {
+        setStats(data);
+        setStatsError(null);
+      })
+      .catch((err) => {
+        setStats(null);
+        setStatsError(err.message || "Failed to load stats");
+      })
       .finally(() => setLoadingStats(false));
   }, [apiBase, token, selectedUserId]);
 
@@ -107,6 +129,50 @@ function Neon({ apiBase, token, currentUser }) {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        {(platformStatus || leaderboard) && (
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            {platformStatus && (
+              <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+                <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Valorant status (EU)
+                </h3>
+                {((platformStatus.maintenances || platformStatus.Maintenances || []).length > 0 ||
+                  (platformStatus.incidents || platformStatus.Incidents || []).length > 0) ? (
+                  <ul className="text-sm text-amber-600 dark:text-amber-400">
+                    {(platformStatus.maintenances || platformStatus.Maintenances || []).map((m, i) => (
+                      <li key={`m-${i}`}>{m.maintenance_status || m.MaintenanceStatus || m.name || m.Name || "Maintenance"}</li>
+                    ))}
+                    {(platformStatus.incidents || platformStatus.Incidents || []).map((inc, i) => (
+                      <li key={`i-${i}`}>{inc.incident_severity || inc.IncidentSeverity || inc.name || inc.Name || "Incident"}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400">All systems operational</p>
+                )}
+              </div>
+            )}
+            {leaderboard && (leaderboard.players?.length > 0 || leaderboard.Players?.length > 0) && (
+              <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+                <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {leaderboard.actName ? `Leaderboard — ${leaderboard.actName}` : "Top ranked (EU)"}
+                </h3>
+                <ul className="max-h-32 space-y-0.5 overflow-y-auto text-sm">
+                  {(leaderboard.players || leaderboard.Players || []).slice(0, 10).map((p, i) => (
+                    <li key={i} className="flex justify-between gap-2">
+                      <span className="truncate text-gray-700 dark:text-gray-300">
+                        #{p.leaderboardRank ?? p.LeaderboardRank ?? i + 1} {p.gameName ?? p.GameName}#{p.tagLine ?? p.TagLine}
+                      </span>
+                      <span className="shrink-0 text-gray-500 dark:text-gray-400">
+                        {p.rankedRating ?? p.RankedRating ?? "—"} RR
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
             {error}
@@ -119,7 +185,7 @@ function Neon({ apiBase, token, currentUser }) {
           </div>
         ) : (
           <>
-            {currentUser && !isLinked && (
+            {currentUser && token && !isLinked && (
               <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
                 <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
                   Link your Riot account
@@ -219,6 +285,11 @@ function Neon({ apiBase, token, currentUser }) {
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {stats.gameName}#{stats.tagLine}
+                        {stats._demo && (
+                          <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            Demo
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -227,6 +298,11 @@ function Neon({ apiBase, token, currentUser }) {
                 <div>
                   <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Recent matches
+                    {stats._demo && (
+                      <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                        Sample data
+                      </span>
+                    )}
                   </h2>
                   <div className="space-y-3">
                     {stats.matches && stats.matches.length === 0 ? (
@@ -294,6 +370,9 @@ function Neon({ apiBase, token, currentUser }) {
                 <p className="text-gray-500 dark:text-gray-400">
                   Could not load stats for {selectedPlayer?.display_name || selectedPlayer?.gameName || "this player"}.
                 </p>
+                {statsError && (
+                  <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">{statsError}</p>
+                )}
               </div>
             )}
           </>

@@ -91,7 +91,7 @@ You can later extend this to handle rooms, presence, and typing indicators.
 
 The app has a **Neon** tab to view Valorant rank and match history for linked players. When a linked user finishes a competitive game, a message is posted to the **#Matchs** text channel (win/loss, agent image, rank, K/D/A).
 
-**Setup:** Set `RIOT_API_KEY` in `.env` (from developer.riotgames.com, Valorant product). Tracker polls every 2 min and posts to #Matchs. **Linking:** From Neon tab or API (POST/GET/DELETE /api/valorant/*, auth required).
+**Setup:** Set `RIOT_API_KEY` in `.env`. Use a **Production** key from [developer.riotgames.com](https://developer.riotgames.com/) with **Valorant** enabled (dev keys `RGAPI-...` expire in 24h and often get 403 for match data). **With a temp/dev key:** set `VALORANT_DEMO_MODE=1` to always use mock stats, or leave unset and we’ll automatically return sample stats when Riot returns 403 so the Neon tab still works. Tracker posts to #Matchs every 2 min (skips when using demo/mock). **Linking:** From Neon tab or API (POST/GET/DELETE /api/valorant/*, auth required).
 
 1. **Riot API key** — [developer.riotgames.com](https://developer.riotgames.com/) → create an app and get an API key (Valorant product).
 2. **Environment** (root `.env` or backend `.env`):

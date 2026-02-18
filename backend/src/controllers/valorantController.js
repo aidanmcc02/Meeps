@@ -4,11 +4,36 @@ const {
   getMatchList,
   getMatch,
   getMatchPlayerSummary,
+  getContent,
+  getLeaderboard,
+  getPlatformStatus,
+  getCurrentActId,
 } = require("../services/valorantService");
 const { authenticate } = require("../middleware/authMiddleware");
 
 const MATCHES_CHANNEL_ID = "matches";
 const QUEUE = "competitive";
+
+const DEMO_MODE = process.env.VALORANT_DEMO_MODE === "1" || process.env.VALORANT_DEMO_MODE === "true";
+
+/** Mock match entries for demo mode (when using a dev/temp Riot key that can't access match history). */
+function getMockMatches(gameName, tagLine) {
+  const agents = [
+    { name: "Jett", icon: "https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/displayicon.png" },
+    { name: "Phoenix", icon: "https://media.valorant-api.com/agents/eb93336a-449b-9c1b-0a54-a891f7921d69/displayicon.png" },
+    { name: "Sage", icon: "https://media.valorant-api.com/agents/569fdd95-4d10-43ab-ca70-79becc718b46/displayicon.png" },
+    { name: "Reyna", icon: "https://media.valorant-api.com/agents/a3bfb853-43b2-7238-a4f1-ad90e9e46bcc/displayicon.png" },
+    { name: "Omen", icon: "https://media.valorant-api.com/agents/8e253930-4c05-31dd-1b6c-968525494517/displayicon.png" },
+  ];
+  const now = Date.now();
+  return [
+    { gameName, tagLine, agentName: agents[0].name, agentIcon: agents[0].icon, rankName: "Gold 2", competitiveTier: 13, won: true, scoreline: "13-9", kills: 18, deaths: 12, assists: 4, score: 234, roundsPlayed: 22, startTime: new Date(now - 2 * 60 * 60 * 1000).toISOString() },
+    { gameName, tagLine, agentName: agents[1].name, agentIcon: agents[1].icon, rankName: "Gold 2", competitiveTier: 13, won: false, scoreline: "11-13", kills: 14, deaths: 16, assists: 6, score: 198, roundsPlayed: 24, startTime: new Date(now - 5 * 60 * 60 * 1000).toISOString() },
+    { gameName, tagLine, agentName: agents[2].name, agentIcon: agents[2].icon, rankName: "Gold 1", competitiveTier: 12, won: true, scoreline: "13-7", kills: 16, deaths: 10, assists: 8, score: 221, roundsPlayed: 20, startTime: new Date(now - 24 * 60 * 60 * 1000).toISOString() },
+    { gameName, tagLine, agentName: agents[3].name, agentIcon: agents[3].icon, rankName: "Gold 1", competitiveTier: 12, won: true, scoreline: "13-10", kills: 20, deaths: 14, assists: 3, score: 256, roundsPlayed: 23, startTime: new Date(now - 28 * 60 * 60 * 1000).toISOString() },
+    { gameName, tagLine, agentName: agents[4].name, agentIcon: agents[4].icon, rankName: "Silver 3", competitiveTier: 11, won: false, scoreline: "9-13", kills: 11, deaths: 15, assists: 5, score: 167, roundsPlayed: 22, startTime: new Date(now - 48 * 60 * 60 * 1000).toISOString() },
+  ];
+}
 
 /**
  * POST /api/valorant/link (auth required)
@@ -96,7 +121,44 @@ async function getPlayerStats(req, res) {
       return res.status(404).json({ message: "Player has not linked Valorant" });
     }
     const link = linkResult.rows[0];
-    const history = await getMatchList(link.riot_puuid, link.region, QUEUE, 0, 15);
+
+    if (DEMO_MODE) {
+      const matches = getMockMatches(link.game_name, link.tag_line);
+      return res.json({
+        userId: link.user_id,
+        gameName: link.game_name,
+        tagLine: link.tag_line,
+        region: link.region,
+        currentRank: matches[0].rankName,
+        currentTier: matches[0].competitiveTier,
+        matches,
+        _demo: true,
+      });
+    }
+
+    let history;
+    try {
+      history = await getMatchList(link.riot_puuid, link.region, QUEUE, 0, 15);
+    } catch (e) {
+      if (e.response?.status === 404) {
+        history = [];
+      } else if (e.response?.status === 403) {
+        const matches = getMockMatches(link.game_name, link.tag_line);
+        return res.json({
+          userId: link.user_id,
+          gameName: link.game_name,
+          tagLine: link.tag_line,
+          region: link.region,
+          currentRank: matches[0].rankName,
+          currentTier: matches[0].competitiveTier,
+          matches,
+          _demo: true,
+        });
+      } else {
+        throw e;
+      }
+    }
+    history = history || [];
     const matches = [];
     for (const entry of history) {
       try {
@@ -124,8 +186,22 @@ async function getPlayerStats(req, res) {
       matches,
     });
   } catch (err) {
-    console.error("[Valorant getPlayerStats]", err);
-    return res.status(500).json({ message: "Failed to load stats" });
+    console.error("[Valorant getPlayerStats]", err?.message || err);
+    const status = err.response?.status ?? err.response?.statusCode;
+    const riotMsg = err.response?.data?.message || err.response?.data?.status?.message;
+    let message = "Failed to load stats";
+    if (err.message === "RIOT_API_KEY is not set") {
+      message = "Server: Riot API key not configured.";
+    } else if (status === 403) {
+      message = "Riot API returned 403 Forbidden. Use a Production API key (dev keys like RGAPI-... expire in 24h and often cannot access Valorant match data). Enable Valorant for your app at developer.riotgames.com.";
+    } else if (status === 429) {
+      message = "Riot API rate limited; try again in a minute.";
+    } else if (status === 404 || riotMsg) {
+      message = riotMsg || "Riot account or region may be wrong.";
+    } else if (err.message && err.message !== "Failed to load stats") {
+      message = err.message;
+    }
+    return res.status(status && status >= 400 && status < 600 ? status : 500).json({ message });
   }
 }
 
@@ -153,10 +229,57 @@ async function unlinkAccount(req, res) {
   }
 }
 
+/**
+ * GET /api/valorant/status?region=eu
+ * val-status-v1: platform status (no auth).
+ */
+async function getStatus(req, res) {
+  try {
+    const region = req.query.region || "eu";
+    const data = await getPlatformStatus(region);
+    return res.json(data);
+  } catch (err) {
+    console.error("[Valorant getStatus]", err?.message || err);
+    const status = err.response?.status ?? err.response?.statusCode;
+    return res
+      .status(status && status >= 400 && status < 600 ? status : 500)
+      .json({ message: err.message || "Failed to load status" });
+  }
+}
+
+/**
+ * GET /api/valorant/leaderboard?region=eu
+ * val-content-v1 + val-ranked-v1: current act leaderboard (no auth).
+ */
+async function getLeaderboardData(req, res) {
+  try {
+    const region = req.query.region || "eu";
+    const content = await getContent(region);
+    const actId = getCurrentActId(content);
+    if (!actId) {
+      return res.json({ actId: null, players: [], actName: null });
+    }
+    const leaderboard = await getLeaderboard(region, actId);
+    const players = leaderboard?.players || leaderboard?.Players || [];
+    const actName = content?.acts?.find((a) => (a.id || a.ID) === actId)?.name
+      || content?.Acts?.find((a) => (a.id || a.ID) === actId)?.name
+      || null;
+    return res.json({ actId, actName, players });
+  } catch (err) {
+    console.error("[Valorant getLeaderboard]", err?.message || err);
+    const status = err.response?.status ?? err.response?.statusCode;
+    return res
+      .status(status && status >= 400 && status < 600 ? status : 500)
+      .json({ message: err.message || "Failed to load leaderboard" });
+  }
+}
+
 module.exports = {
   linkAccount,
   listPlayers,
   getPlayerStats,
   unlinkAccount,
+  getStatus,
+  getLeaderboardData,
   MATCHES_CHANNEL_ID,
 };

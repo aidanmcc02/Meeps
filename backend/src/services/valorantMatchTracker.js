@@ -18,7 +18,8 @@ const MATCHES_CHANNEL_ID = "matches";
 let pollInterval = null;
 
 function isConfigured() {
-  return Boolean(process.env.RIOT_API_KEY);
+  const demo = process.env.VALORANT_DEMO_MODE === "1" || process.env.VALORANT_DEMO_MODE === "true";
+  return Boolean(process.env.RIOT_API_KEY) && !demo;
 }
 
 async function getLinkedUsers() {
