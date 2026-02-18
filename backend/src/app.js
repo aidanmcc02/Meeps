@@ -7,7 +7,7 @@ const messageRoutes = require("./routes/messageRoutes");
 const gifRoutes = require("./routes/gifRoutes");
 const buildNotifyRoutes = require("./routes/buildNotifyRoutes");
 const boardRoutes = require("./routes/boardRoutes");
-const uploadRoutes = require("./routes/uploadRoutes");
+const uploadController = require("./controllers/uploadController");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
@@ -24,13 +24,16 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "meeps-backend" });
 });
 
+// Upload routes registered explicitly so POST /api/upload always matches (avoids router mount path issues)
+app.post("/api/upload", uploadController.getMulterUpload(), uploadController.uploadFiles);
+app.get("/api/files/:id", uploadController.serveFile);
+
 app.use("/api", authRoutes);
 app.use("/api", profileRoutes);
 app.use("/api", messageRoutes);
 app.use("/api", gifRoutes);
 app.use("/api", buildNotifyRoutes);
 app.use("/api", boardRoutes);
-app.use("/api", uploadRoutes);
 
 // Debug: Print all registered routes
 function routeMethodLabel(route) {

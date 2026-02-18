@@ -84,21 +84,36 @@ function MessageInput({
 
   const handleFileSelect = async (e) => {
     const files = e.target.files;
-    if (!files?.length || !apiBase) return;
+    if (!files?.length) return;
+    const base = (apiBase || "").replace(/\/$/, "");
+    if (!base) {
+      setUploadError("API URL not configured");
+      e.target.value = "";
+      return;
+    }
     setUploadError(null);
     setUploading(true);
     const formData = new FormData();
     for (let i = 0; i < Math.min(files.length, 5); i++) {
       formData.append("files", files[i]);
     }
+    const uploadUrl = `${base}/api/upload`;
     try {
-      const res = await fetch(`${apiBase}/api/upload`, {
+      const res = await fetch(uploadUrl, {
         method: "POST",
         body: formData
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || `Upload failed: ${res.status}`);
+        const msg = data.message || res.statusText || `Upload failed: ${res.status}`;
+        if (res.status === 404) {
+          setUploadError(
+            "Upload endpoint not found (404). Restart the backend if running locally, or redeploy on Railway to enable file uploads."
+          );
+        } else {
+          setUploadError(msg);
+        }
+        return;
       }
       const data = await res.json();
       const uploads = data.uploads || [];
@@ -107,7 +122,7 @@ function MessageInput({
         ...uploads.map((u) => ({ id: u.id, filename: u.filename, url: u.url }))
       ]);
     } catch (err) {
-      setUploadError(err.message || "Upload failed");
+      setUploadError(err.message || "Upload failed (network error)");
     } finally {
       setUploading(false);
       e.target.value = "";
