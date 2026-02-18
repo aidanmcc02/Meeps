@@ -1,31 +1,18 @@
 import React from "react";
 
-function isGifUrl(url) {
-  return typeof url === "string" && url.toLowerCase().includes(".gif");
-}
-
 function VoiceChannels({
   channels,
   joinedChannelId,
-  channelParticipants = {},
-  profiles = {},
-  speakingUserIds = [],
   onOpenChannelView,
   onJoinChannel,
-  onLeaveChannel,
-  onOpenSoundSettings
+  onLeaveChannel
 }) {
   if (!channels.length) return null;
 
   const ch = channels[0];
   const isJoined = joinedChannelId === ch.id;
-  const participants = channelParticipants[ch.id] || [];
-  const count = participants.length;
 
   const handleCardClick = () => {
-    if (!isJoined) {
-      onJoinChannel?.(ch.id);
-    }
     onOpenChannelView?.(ch.id);
   };
 
@@ -90,60 +77,32 @@ function VoiceChannels({
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex items-center gap-2">
-              {participants.length > 0 ? (
-                <>
-                  <div className="flex -space-x-2" title={participants.map((p) => p.displayName || `User ${p.id}`).join(", ")}>
-                    {participants.slice(0, 3).map((p) => {
-                      const profile = profiles[p.id];
-                      const avatarUrl = profile?.avatarUrl || null;
-                      const name = p.displayName || profile?.displayName || `User ${p.id}`;
-                      const initials = name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
-                      const isSpeaking = speakingUserIds.includes(String(p.id));
-                      return (
-                        <div
-                          key={p.id}
-                          className={`h-6 w-6 rounded-full overflow-hidden border-2 flex items-center justify-center text-[10px] font-semibold transition-all ${
-                            isSpeaking
-                              ? "border-emerald-400 dark:border-emerald-400 ring-2 ring-emerald-400/80 dark:ring-emerald-400/60 shadow-[0_0_10px_rgba(52,211,153,0.6)] dark:shadow-[0_0_10px_rgba(52,211,153,0.5)]"
-                              : "border-white dark:border-gray-900 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200"
-                          }`}
-                        >
-                          {avatarUrl && (isSpeaking || !isGifUrl(avatarUrl)) ? (
-                            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <span className="flex h-full w-full items-center justify-center">{initials}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {count} {count === 1 ? "person" : "people"} in call
-                  </span>
-                </>
-              ) : (
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {isJoined ? "Waiting for others…" : "No one in call"}
-                </span>
-              )}
-            </div>
           </div>
 
-          {/* Sound settings */}
+          {/* Join / Leave call */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onOpenSoundSettings?.();
+              if (isJoined) onLeaveChannel?.();
+              else onJoinChannel?.(ch.id);
             }}
-            className="flex-shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/80 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300 transition-colors"
-            aria-label="Sound settings"
+            className={`flex-shrink-0 rounded-lg p-1.5 transition-colors ${
+              isJoined
+                ? "text-red-500 hover:bg-red-100 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-900/40 dark:hover:text-red-300"
+                : "text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-300"
+            }`}
+            aria-label={isJoined ? "Leave call" : "Join call"}
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            {isJoined ? (
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.517l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            )}
           </button>
         </div>
       </div>

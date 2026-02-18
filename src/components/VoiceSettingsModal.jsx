@@ -125,7 +125,7 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
       <div className="voice-settings-modal w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-600 dark:bg-gray-800">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">

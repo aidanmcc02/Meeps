@@ -7,14 +7,51 @@ function formatMessageTime(createdAt) {
   if (!createdAt) return null;
   const d = new Date(createdAt);
   const now = new Date();
+  const msAgo = now - d;
+  const twentyFourHours = 24 * 60 * 60 * 1000;
+  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (msAgo < twentyFourHours && msAgo >= 0) return timeStr;
+  const dateStr = d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined
+  });
+  return `${dateStr}, ${timeStr}`;
+}
+
+function formatDayLabel(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  const now = new Date();
   const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   const isYesterday = d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth() && d.getFullYear() === yesterday.getFullYear();
-  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (sameDay) return timeStr;
-  if (isYesterday) return `Yesterday, ${timeStr}`;
-  return d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined }) + ", " + timeStr;
+  if (sameDay) return "Today";
+  if (isYesterday) return "Yesterday";
+  return d.toLocaleDateString([], {
+    month: "long",
+    day: "numeric",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined
+  });
+}
+
+function groupMessagesByDay(messages) {
+  const groups = [];
+  let currentDate = null;
+  let currentGroup = null;
+  for (const msg of messages) {
+    const createdAt = msg.createdAt;
+    const dateKey = createdAt
+      ? new Date(createdAt).toISOString().slice(0, 10)
+      : "__nodate__";
+    if (dateKey !== currentDate) {
+      currentDate = dateKey;
+      currentGroup = { dateKey, messages: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.messages.push(msg);
+  }
+  return groups;
 }
 
 function MessageList({
@@ -109,7 +146,16 @@ function MessageList({
         </div>
       )}
 
-      {messages.map((msg) => {
+      {groupMessagesByDay(messages).map(({ dateKey, messages: dayMessages }) => (
+        <div key={dateKey} className="space-y-3">
+          <div className="flex items-center gap-3 py-2">
+            <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">
+              {dateKey === "__nodate__" ? "" : formatDayLabel(dateKey)}
+            </span>
+            <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+          </div>
+          {dayMessages.map((msg) => {
         const isSelf = msg.sender === currentUserName;
         const canManage = isSelf && msg.id != null && onEditMessage && onDeleteMessage;
         const isEditing = editingId === msg.id;
@@ -240,7 +286,9 @@ function MessageList({
             </div>
           </div>
         );
-      })}
+          })}
+        </div>
+      ))}
       </div>
       {showJumpToBottom && (
         <button
