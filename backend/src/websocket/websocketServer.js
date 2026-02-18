@@ -29,9 +29,8 @@ async function getAttachmentsForMessage(messageId) {
 let wssInstance = null;
 const presenceByUserId = new Map();
 const socketsByUserId = new Map();
-const voiceRooms = new Map(); // roomId -> Set<userId> (for broadcast; kept in sync with voiceRoomSockets)
+const voiceRooms = new Map(); // roomId -> Set<userId> (for broadcast; insertion order = join order)
 const voiceRoomSockets = new Map(); // roomId -> Map<userId, Set<socket>> (per-socket membership for multi-device)
-const voiceRoomPings = new Map(); // roomId -> Map<userId, rttMs>
 let idleCheckInterval = null;
 
 /** Remove one socket from a voice room. Only removes userId from room when this is their last socket in the room. */
@@ -41,20 +40,14 @@ function removeSocketFromVoiceRoom(socket, roomId, userId) {
   const userSockets = roomMap.get(userId);
   if (!userSockets) return;
   userSockets.delete(socket);
-  if (userSockets.size === 0) {
+    if (userSockets.size === 0) {
     roomMap.delete(userId);
     const members = voiceRooms.get(roomId);
     if (members) {
       members.delete(userId);
-      const pings = voiceRoomPings.get(roomId);
-      if (pings) {
-        pings.delete(userId);
-        if (pings.size === 0) voiceRoomPings.delete(roomId);
-      }
       if (members.size === 0) {
         voiceRooms.delete(roomId);
         voiceRoomSockets.delete(roomId);
-        voiceRoomPings.delete(roomId);
       } else {
         broadcastVoiceParticipants(roomId);
       }
@@ -118,10 +111,6 @@ function startWebSocketServer(httpServer) {
         handleVoiceSignal(parsed);
       } else if (parsed.type === "voice:get_participants") {
         handleVoiceGetParticipants(socket, parsed);
-      } else if (parsed.type === "voice:ping") {
-        handleVoicePing(socket, parsed);
-      } else if (parsed.type === "voice:ping_report") {
-        handleVoicePingReport(socket, parsed);
       }
     });
 
@@ -569,54 +558,11 @@ function handleVoiceLeave(socket, payload) {
   socket.voiceRoomId = null;
 }
 
+/** Host = first user to join the channel (Set preserves insertion order). */
 function getVoiceHost(roomId) {
   const members = voiceRooms.get(roomId);
   if (!members || members.size === 0) return null;
-  if (members.size === 1) return [...members][0];
-  const pings = voiceRoomPings.get(roomId);
-  if (!pings || pings.size === 0) {
-    return Math.min(...members);
-  }
-  let bestUserId = null;
-  let bestRtt = Infinity;
-  for (const userId of members.values()) {
-    const rtt = pings.get(userId);
-    if (rtt == null) continue;
-    if (rtt < bestRtt || (rtt === bestRtt && (bestUserId == null || userId < bestUserId))) {
-      bestRtt = rtt;
-      bestUserId = userId;
-    }
-  }
-  if (bestUserId != null) return bestUserId;
-  return Math.min(...members);
-}
-
-function handleVoicePing(socket, payload) {
-  if (socket.readyState !== socket.OPEN) return;
-  const clientTime = payload.clientTime;
-  socket.send(
-    JSON.stringify({
-      type: "voice:pong",
-      payload: { clientTime }
-    })
-  );
-}
-
-function handleVoicePingReport(socket, payload) {
-  const userId = socket.userId;
-  const roomId = payload.roomId;
-  const rttMs = typeof payload.rttMs === "number" ? Math.max(0, payload.rttMs) : null;
-  if (!userId || !roomId || rttMs == null) return;
-  const members = voiceRooms.get(roomId);
-  if (!members || !members.has(userId)) return;
-
-  let pings = voiceRoomPings.get(roomId);
-  if (!pings) {
-    pings = new Map();
-    voiceRoomPings.set(roomId, pings);
-  }
-  pings.set(userId, rttMs);
-  broadcastVoiceParticipants(roomId);
+  return [...members][0];
 }
 
 function getVoiceRoomParticipants(roomId) {

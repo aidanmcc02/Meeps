@@ -397,33 +397,46 @@ function App() {
     };
   }, [joinedVoiceChannelId, remoteStreams, currentUser?.id]);
 
+  const tryPlayRemoteAudio = (el) => {
+    if (!el || !el.srcObject || el.paused === false) return;
+    el.play().then(() => {
+      voiceDebug.log("Audio element playing successfully");
+    }).catch((err) => {
+      voiceDebug.error("Failed to play audio element:", err);
+    });
+  };
+
   useEffect(() => {
     if (!joinedVoiceChannelId || Object.keys(remoteStreams).length === 0) return;
-    
-    voiceDebug.log("Remote streams changed, checking audio elements", { 
+
+    voiceDebug.log("Remote streams changed, checking audio elements", {
       remoteStreamCount: Object.keys(remoteStreams).length,
       remoteStreamIds: Object.keys(remoteStreams)
     });
-    
-    const audioElements = document.querySelectorAll('audio[srcObject]');
+
+    const audioElements = document.querySelectorAll("audio[srcObject]");
     voiceDebug.log("Found audio elements", { count: audioElements.length });
     audioElements.forEach((el, idx) => {
-      voiceDebug.log("Audio element check", { 
-        index: idx, 
-        paused: el.paused, 
+      voiceDebug.log("Audio element check", {
+        index: idx,
+        paused: el.paused,
         hasSrcObject: !!el.srcObject,
         volume: el.volume,
         readyState: el.readyState
       });
-      if (el.paused && el.srcObject) {
-        voiceDebug.log("Attempting to play paused audio element", { index: idx });
-        el.play().then(() => {
-          voiceDebug.log("Audio element playing successfully", { index: idx });
-        }).catch((err) => {
-          voiceDebug.error("Failed to play audio element:", err, { index: idx });
-        });
-      }
+      tryPlayRemoteAudio(el);
     });
+    // Delayed retries for late-ready or briefly stalled streams (reduces patchy audio)
+    const t1 = setTimeout(() => {
+      document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
+    }, 400);
+    const t2 = setTimeout(() => {
+      document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
+    }, 1200);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [remoteStreams, joinedVoiceChannelId]);
 
   // Poll participant mute state when in a voice call (track.enabled is not reactive)
@@ -654,16 +667,6 @@ function App() {
             voiceParticipantCountRef.current = newCount;
             setVoiceParticipants(list);
             voiceDebug.log("Voice participants state updated", { count: list.length });
-          }
-        } else if (data.type === "voice:pong" && data.payload) {
-          const { clientTime } = data.payload || {};
-          if (typeof clientTime === "number") {
-            const rttMs = Math.round(Date.now() - clientTime);
-            const roomId = joinedVoiceChannelIdRef.current;
-            const socket = socketRef.current;
-            if (roomId != null && socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ type: "voice:ping_report", roomId, rttMs }));
-            }
           }
         } else if (data.type === "voice:signal" && data.payload) {
           voiceDebug.log("Received voice:signal", { signalType: data.payload.signalType, fromUserId: data.payload.fromUserId });
@@ -1035,21 +1038,6 @@ function App() {
     };
   }, [joinedVoiceChannelId, voiceParticipants.length]);
 
-  // Send voice:ping periodically while in a call so server can measure RTT and assign host
-  useEffect(() => {
-    if (!joinedVoiceChannelId) return;
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    const interval = setInterval(() => {
-      const s = socketRef.current;
-      const roomId = joinedVoiceChannelIdRef.current;
-      if (s && s.readyState === WebSocket.OPEN && roomId != null) {
-        s.send(JSON.stringify({ type: "voice:ping", roomId, clientTime: Date.now() }));
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [joinedVoiceChannelId]);
-
   const applyTheme = (nextTheme) => {
     const root = document.documentElement;
     if (nextTheme === "dark") {
@@ -1205,6 +1193,29 @@ function App() {
     }
   };
 
+  /** Prefer Opus for voice (lower latency, better for real-time). Call before createOffer/createAnswer. */
+  const preferOpusForAudio = (pc) => {
+    try {
+      const caps = RTCRtpReceiver.getCapabilities?.("audio");
+      if (!caps?.codecs?.length) return;
+      const preferred = ["audio/opus", "audio/red", "audio/PCMU", "audio/PCMA"];
+      const sorted = [...caps.codecs].sort((a, b) => {
+        const i = preferred.indexOf(a.mimeType);
+        const j = preferred.indexOf(b.mimeType);
+        const orderA = i >= 0 ? i : preferred.length;
+        const orderB = j >= 0 ? j : preferred.length;
+        return orderA - orderB;
+      });
+      pc.getTransceivers?.().forEach((t) => {
+        if (t.kind === "audio") {
+          try {
+            t.setCodecPreferences(sorted);
+          } catch (_) {}
+        }
+      });
+    } catch (_) {}
+  };
+
   const createPeerConnection = async (peerUserId) => {
     voiceDebug.log("createPeerConnection", { peerUserId, hasExisting: !!peerConnectionsRef.current[peerUserId] });
     if (peerConnectionsRef.current[peerUserId]) {
@@ -1224,9 +1235,35 @@ function App() {
       }
     }
 
-    voiceDebug.log("Creating RTCPeerConnection", { peerUserId });
+    const turnServer = import.meta.env.VITE_TURN_SERVER;
+    const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+    const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+    let iceServers;
+    if (turnServer && turnUsername && turnCredential) {
+      // Metered-style: STUN + multiple TURN endpoints (UDP, TCP, TLS) for better connectivity
+      iceServers = [
+        { urls: "stun:stun.relay.metered.ca:80" },
+        { urls: `turn:${turnServer}:80`, username: turnUsername, credential: turnCredential },
+        { urls: `turn:${turnServer}:80?transport=tcp`, username: turnUsername, credential: turnCredential },
+        { urls: `turn:${turnServer}:443`, username: turnUsername, credential: turnCredential },
+        { urls: `turns:${turnServer}:443?transport=tcp`, username: turnUsername, credential: turnCredential }
+      ];
+    } else {
+      iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+      const turnUrl = import.meta.env.VITE_TURN_URL;
+      if (turnUrl) {
+        iceServers.push({
+          urls: turnUrl,
+          username: import.meta.env.VITE_TURN_USERNAME || undefined,
+          credential: import.meta.env.VITE_TURN_CREDENTIAL || undefined
+        });
+      }
+    }
+
+    voiceDebug.log("Creating RTCPeerConnection", { peerUserId, hasTurn: !!turnServer });
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      iceServers,
+      bundlePolicy: "max-bundle"
     });
 
     const localStream = await ensureLocalStream();
@@ -1305,6 +1342,7 @@ function App() {
       }
     };
 
+    preferOpusForAudio(pc);
     peerConnectionsRef.current[peerUserId] = pc;
     return pc;
   };
@@ -1362,6 +1400,7 @@ function App() {
 
     if (signalType === "offer") {
       await pc.setRemoteDescription(new RTCSessionDescription(data));
+      preferOpusForAudio(pc);
       await drainIceCandidates(pc, fromUserId);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -1441,7 +1480,7 @@ function App() {
           continue;
         }
         if (!iAmHost) {
-          voiceDebug.log("Skipping (not host; host has lowest ping)", { peerId, myId, effectiveHost });
+          voiceDebug.log("Skipping (not host; host is first to join)", { peerId, myId, effectiveHost });
           continue;
         }
         if (voiceOfferSentToRef.current.has(peerId)) {
@@ -2242,16 +2281,13 @@ function App() {
                   voiceDebug.log("Audio element configured", { userId, volume: el.volume, paused: el.paused, deafened: isDeafened });
                   if (el.paused) {
                     voiceDebug.log("Audio element paused, attempting to play", { userId });
-                    el.play().then(() => {
-                      voiceDebug.log("Audio element playing", { userId });
-                    }).catch((err) => {
-                      voiceDebug.error("Failed to play audio element:", err, { userId });
-                    });
+                    tryPlayRemoteAudio(el);
                   } else {
                     voiceDebug.log("Audio element already playing", { userId });
                   }
                 }
               }}
+              onCanPlay={(e) => tryPlayRemoteAudio(e.currentTarget)}
             />
           ))}
         </div>
