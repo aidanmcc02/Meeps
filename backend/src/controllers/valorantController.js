@@ -254,16 +254,26 @@ async function getStatus(req, res) {
 async function getLeaderboardData(req, res) {
   try {
     const region = req.query.region || "eu";
-    const content = await getContent(region);
-    const actId = getCurrentActId(content);
+    const actIdParam = req.query.actId || null;
+    let actId = actIdParam;
+    let content = null;
     if (!actId) {
-      return res.json({ actId: null, players: [], actName: null });
+      content = await getContent(region);
+      actId = getCurrentActId(content);
+      if (!actId) {
+        const keys = content ? Object.keys(content) : [];
+        console.log("[Valorant leaderboard] No act ID from content. Keys:", keys.join(", "));
+        return res.json({ actId: null, players: [], actName: null, error: "No current act in content. Try ?actId=<act-uuid> if you have one." });
+      }
     }
     const leaderboard = await getLeaderboard(region, actId);
     const players = leaderboard?.players || leaderboard?.Players || [];
-    const actName = content?.acts?.find((a) => (a.id || a.ID) === actId)?.name
-      || content?.Acts?.find((a) => (a.id || a.ID) === actId)?.name
-      || null;
+    let actName = null;
+    if (content) {
+      const acts = content.acts || content.Acts || content.Seasons?.filter((s) => (s.Type || s.type) === "act") || [];
+      const actEntry = acts.find((a) => (a.id || a.ID) === actId);
+      actName = actEntry?.name || actEntry?.Name || null;
+    }
     return res.json({ actId, actName, players });
   } catch (err) {
     console.error("[Valorant getLeaderboard]", err?.message || err);

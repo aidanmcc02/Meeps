@@ -250,13 +250,23 @@ async function getPlatformStatus(region) {
 }
 
 /**
- * Get current act ID from content (first active act, or latest act).
+ * Get current act ID from content. Riot may return "acts", "Acts", or "Seasons" (with Type "act").
  */
 function getCurrentActId(content) {
-  const acts = content?.acts || content?.Acts || [];
+  if (!content) return null;
+  let acts = content.acts || content.Acts || [];
+  if (acts.length === 0 && Array.isArray(content.Seasons)) {
+    acts = content.Seasons.filter((s) => (s.Type || s.type) === "act");
+  }
+  if (acts.length === 0 && content.act) {
+    acts = [content.act];
+  }
   const active = acts.find((a) => a.isActive || a.IsActive);
   if (active?.id || active?.ID) return active.id || active.ID;
-  if (acts.length > 0) return acts[acts.length - 1].id || acts[acts.length - 1].ID;
+  if (acts.length > 0) {
+    const last = acts[acts.length - 1];
+    return last.id || last.ID;
+  }
   return null;
 }
 

@@ -151,23 +151,29 @@ function Neon({ apiBase, token, currentUser }) {
                 )}
               </div>
             )}
-            {leaderboard && (leaderboard.players?.length > 0 || leaderboard.Players?.length > 0) && (
+            {leaderboard && (
               <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
                 <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   {leaderboard.actName ? `Leaderboard — ${leaderboard.actName}` : "Top ranked (EU)"}
                 </h3>
-                <ul className="max-h-32 space-y-0.5 overflow-y-auto text-sm">
-                  {(leaderboard.players || leaderboard.Players || []).slice(0, 10).map((p, i) => (
-                    <li key={i} className="flex justify-between gap-2">
-                      <span className="truncate text-gray-700 dark:text-gray-300">
-                        #{p.leaderboardRank ?? p.LeaderboardRank ?? i + 1} {p.gameName ?? p.GameName}#{p.tagLine ?? p.TagLine}
-                      </span>
-                      <span className="shrink-0 text-gray-500 dark:text-gray-400">
-                        {p.rankedRating ?? p.RankedRating ?? "—"} RR
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                {(leaderboard.players?.length > 0 || leaderboard.Players?.length > 0) ? (
+                  <ul className="max-h-32 space-y-0.5 overflow-y-auto text-sm">
+                    {(leaderboard.players || leaderboard.Players || []).slice(0, 10).map((p, i) => (
+                      <li key={i} className="flex justify-between gap-2">
+                        <span className="truncate text-gray-700 dark:text-gray-300">
+                          #{p.leaderboardRank ?? p.LeaderboardRank ?? i + 1} {p.gameName ?? p.GameName}#{p.tagLine ?? p.TagLine}
+                        </span>
+                        <span className="shrink-0 text-gray-500 dark:text-gray-400">
+                          {p.rankedRating ?? p.RankedRating ?? "—"} RR
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {leaderboard.error || "No leaderboard data for current act."}
+                  </p>
+                )}
               </div>
             )}
           </div>
