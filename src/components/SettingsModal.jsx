@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/tauri";
 
 const KEY_MODES = [
   { value: "toggle", label: "Toggle" },
@@ -15,14 +16,24 @@ function formatKeyLabel(code) {
   return code;
 }
 
-function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange }) {
+function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange, isTauri }) {
   const [view, setView] = useState("list"); // 'list' | 'keybinds'
   const [capturing, setCapturing] = useState(null); // 'mute' | 'muteDeafen' | null
   const [localKeybinds, setLocalKeybinds] = useState(keybinds);
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
+  const [launchAtStartupLoading, setLaunchAtStartupLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) setLocalKeybinds(keybinds);
   }, [isOpen, keybinds]);
+
+  useEffect(() => {
+    if (isOpen && isTauri) {
+      invoke("is_launch_at_startup_enabled")
+        .then((v) => setLaunchAtStartup(!!v))
+        .catch(() => setLaunchAtStartup(false));
+    }
+  }, [isOpen, isTauri]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -107,6 +118,42 @@ function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybi
         <div className="p-4">
           {view === "list" && (
             <ul className="space-y-0.5">
+              {isTauri && (
+                <li>
+                  <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200">
+                    <div className="flex items-center gap-3">
+                      <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Open Meeps at startup</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={launchAtStartup}
+                      disabled={launchAtStartupLoading}
+                      onClick={async () => {
+                        setLaunchAtStartupLoading(true);
+                        try {
+                          const next = !launchAtStartup;
+                          await invoke("set_launch_at_startup", { enabled: next });
+                          setLaunchAtStartup(next);
+                        } catch (_) {}
+                        setLaunchAtStartupLoading(false);
+                      }}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 ${
+                        launchAtStartup ? "bg-indigo-600" : "bg-gray-200 dark:bg-gray-600"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                          launchAtStartup ? "translate-x-5" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </li>
+              )}
               <li>
                 <button
                   type="button"

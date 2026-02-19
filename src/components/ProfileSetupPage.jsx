@@ -53,23 +53,26 @@ function ProfileSetupPage({ user, onComplete }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
+    <div
+      className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 flex flex-col items-center p-4 overflow-y-auto"
+      style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+    >
+      <div className="w-full max-w-2xl mt-6 mb-4">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-2xl font-bold text-white">
             Set up your profile
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Add a banner and avatar. You can use images or GIFs.
+          <p className="text-gray-300 mt-1 text-sm">
+            Add a banner and avatar. Images and GIFs will show on your profile card, voice sidebar, and users tab.
           </p>
         </div>
 
         <div className="grid gap-8 md:grid-cols-2">
           {/* Form column */}
-          <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6 shadow-sm">
+          <div className="rounded-xl border border-gray-800/60 bg-gray-950/70 backdrop-blur p-6 shadow-lg">
             <form onSubmit={handleSave} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-100 mb-1">
                   Banner (image or GIF URL)
                 </label>
                 <div className="flex gap-2">
@@ -78,12 +81,12 @@ function ProfileSetupPage({ user, onComplete }) {
                     value={bannerUrl}
                     onChange={(e) => setBannerUrl(e.target.value)}
                     placeholder="https://… or pick a GIF"
-                    className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className="flex-1 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/60"
                   />
                   <button
                     type="button"
                     onClick={() => setGifTarget("banner")}
-                    className="rounded-md border border-indigo-500 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50"
+                    className="rounded-md border border-indigo-500/70 bg-indigo-600/20 px-3 py-2 text-sm font-medium text-indigo-200 hover:bg-indigo-500/30"
                   >
                     Pick GIF
                   </button>
@@ -91,7 +94,7 @@ function ProfileSetupPage({ user, onComplete }) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-100 mb-1">
                   Avatar (image or GIF URL)
                 </label>
                 <div className="flex gap-2">
@@ -100,12 +103,12 @@ function ProfileSetupPage({ user, onComplete }) {
                     value={avatarUrl}
                     onChange={(e) => setAvatarUrl(e.target.value)}
                     placeholder="https://… or pick a GIF"
-                    className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className="flex-1 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/60"
                   />
                   <button
                     type="button"
                     onClick={() => setGifTarget("avatar")}
-                    className="rounded-md border border-indigo-500 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50"
+                    className="rounded-md border border-indigo-500/70 bg-indigo-600/20 px-3 py-2 text-sm font-medium text-indigo-200 hover:bg-indigo-500/30"
                   >
                     Pick GIF
                   </button>
@@ -113,13 +116,13 @@ function ProfileSetupPage({ user, onComplete }) {
               </div>
 
               {error && (
-                <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+                <p className="text-sm text-red-400">{error}</p>
               )}
 
               <button
                 type="submit"
                 disabled={isSaving}
-                className="w-full rounded-md bg-indigo-500 py-2.5 text-sm font-medium text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-md bg-indigo-500 py-2.5 text-sm font-medium text-white hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? "Saving…" : "Save and continue"}
               </button>
@@ -127,11 +130,11 @@ function ProfileSetupPage({ user, onComplete }) {
           </div>
 
           {/* Preview column */}
-          <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6 shadow-sm">
+          <div className="rounded-xl border border-indigo-500/40 bg-gray-950/60 backdrop-blur p-6 shadow-lg">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
               Preview
             </p>
-            <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
+            <div className="rounded-lg overflow-hidden border border-indigo-500/40 bg-gray-950">
               {/* Banner */}
               <div className="h-24 w-full bg-gradient-to-br from-indigo-400 to-sky-500 relative overflow-hidden">
                 {bannerUrl ? (
@@ -146,7 +149,7 @@ function ProfileSetupPage({ user, onComplete }) {
               </div>
               {/* Avatar overlapping + name */}
               <div className="px-3 pb-3 -mt-8 relative">
-                <div className="h-16 w-16 rounded-full border-4 border-white dark:border-gray-800 bg-gray-200 dark:bg-gray-700 overflow-hidden shadow-md flex-shrink-0">
+                <div className="h-16 w-16 rounded-full border-4 border-gray-950 bg-gray-900 overflow-hidden shadow-md flex-shrink-0">
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
@@ -154,15 +157,15 @@ function ProfileSetupPage({ user, onComplete }) {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full rounded-full bg-gradient-to-br from-indigo-500 to-sky-500 text-lg font-semibold text-white flex items-center justify-center">
+                    <div className="h-full w-full rounded-full bg-gradient-to-br from-indigo-500 to-sky-400 text-lg font-semibold text-white flex items-center justify-center">
                       {initials}
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                <p className="mt-2 text-sm font-semibold text-white">
                   {displayName}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-gray-300">
                   {user?.email || "you@example.com"}
                 </p>
               </div>

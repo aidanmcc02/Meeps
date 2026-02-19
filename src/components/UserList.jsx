@@ -16,6 +16,7 @@ function UserList({ users, onUserClick, profiles = {} }) {
         const name = user.displayName || user.name || "Meeps User";
         const profile = user.id != null ? profiles[user.id] : null;
         const avatarUrl = profile?.avatarUrl || null;
+        const bannerUrl = profile?.bannerUrl || null;
         const initials =
           name
             .split(" ")
@@ -36,29 +37,49 @@ function UserList({ users, onUserClick, profiles = {} }) {
                 onUserClick?.(user);
               }
             }}
-            className="flex items-center gap-2 rounded-md px-2 py-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 cursor-pointer"
+            className="group relative cursor-pointer overflow-hidden rounded-md"
           >
-            <div className="relative h-6 w-6 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-[10px] font-semibold text-white flex items-center justify-center">
-              {avatarUrl ? (
+            {bannerUrl && (
+              <div className="pointer-events-none absolute inset-0">
                 <img
-                  src={avatarUrl}
+                  src={bannerUrl}
                   alt=""
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-cover opacity-70 transition-transform duration-300 ease-out group-hover:scale-105"
                 />
-              ) : (
-                initials
-              )}
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-gray-900 ${
-                  statusColor[status] || statusColor.offline
-                }`}
-              />
-            </div>
-            <div className="flex flex-col leading-tight min-w-0">
-              <span className="text-xs font-medium truncate">{name}</span>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400 capitalize">
-                {status}
-              </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/10" />
+              </div>
+            )}
+            <div
+              className={`relative flex items-center gap-2 px-2 py-1 ${
+                bannerUrl
+                  ? "text-white hover:bg-white/5"
+                  : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+              }`}
+            >
+              <div className="relative h-6 w-6 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-[10px] font-semibold text-white flex items-center justify-center ring-1 ring-black/10">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  initials
+                )}
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-gray-900 ${
+                    statusColor[status] || statusColor.offline
+                  }`}
+                />
+              </div>
+              <div className="flex flex-col leading-tight min-w-0">
+                <span className="text-xs font-medium truncate">
+                  {name}
+                </span>
+                <span className="text-[10px] capitalize opacity-80">
+                  {status}
+                </span>
+              </div>
             </div>
           </li>
         );

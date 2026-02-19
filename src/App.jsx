@@ -15,6 +15,7 @@ import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
 import Board from "./components/Board";
 import Neon from "./components/Neon";
+import SplashScreen from "./components/SplashScreen";
 import {
   initSoundElements,
   setUserHasInteracted,
@@ -97,6 +98,7 @@ function App() {
   const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
   const resizeStateRef = useRef({ active: null, startX: 0, startWidth: 0, lastSidebarPx: SIDEBAR_DEFAULT_PX, lastUsersPx: USERS_PANEL_DEFAULT_PX });
 
+  const [showSplash, setShowSplash] = useState(true);
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board" | "neon"
   const [selectedChannelId, setSelectedChannelId] = useState("general");
@@ -1741,6 +1743,17 @@ function App() {
     }
     joinedVoiceChannelIdRef.current = null;
     setJoinedVoiceChannelId(null);
+    // Clear local participants cache for the room we just left so the UI
+    // (e.g. the "In call" list and voice channel card) doesn't keep showing
+    // us as in the call if the server doesn't broadcast an empty participants
+    // list when the last user leaves.
+    if (roomIdToLeave != null) {
+      setVoiceChannelParticipants((prev) => {
+        const next = { ...prev };
+        delete next[roomIdToLeave];
+        return next;
+      });
+    }
     setVoiceParticipants([]);
     setVoiceHostUserId(null);
     setIsDeafened(false);
@@ -1783,8 +1796,13 @@ function App() {
       try {
         stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       } catch (audioErr) {
-        if (audioErr?.name === "NotAllowedError") throw audioErr;
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        // If capturing system audio isn't allowed/available, fall back to screen share
+        // without audio instead of failing entirely.
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        } catch {
+          throw audioErr;
+        }
       }
       if (!stream?.getVideoTracks()?.length) {
         stream?.getTracks().forEach((t) => t.stop());
@@ -1907,7 +1925,7 @@ function App() {
   } else {
     content = (
     <div
-        className="flex h-screen w-screen flex-col overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+        className="app-open-animation flex h-screen w-screen flex-col overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
         style={{
           paddingTop: "env(safe-area-inset-top)",
           paddingLeft: "env(safe-area-inset-left)",
@@ -1916,7 +1934,7 @@ function App() {
           maxHeight: "100vh"
         }}
       >
-      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0" data-tauri-drag-region>
+      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0" data-tauri-drag-region>
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             type="button"
@@ -2112,7 +2130,7 @@ function App() {
           <aside
             className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
               fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
-              md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none md:!w-full
+              md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none
               pt-2 md:pt-3
               ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
             style={{
@@ -2126,7 +2144,7 @@ function App() {
                 : { paddingLeft: "max(0.75rem, env(safe-area-inset-left))" })
             }}
           >
-          <div className="flex flex-shrink-0 justify-end md:hidden -mt-0.5 mb-1">
+          <div className="flex flex-shrink-0 justify-end md:hidden absolute right-3 top-2">
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
@@ -2139,7 +2157,7 @@ function App() {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1 -mt-1 md:mt-0">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1 mt-0 md:mt-0">
             <section>
               <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Text Channels
@@ -2304,7 +2322,9 @@ function App() {
             <Neon apiBase={apiBase} token={localStorage.getItem("meeps_token")} currentUser={currentUser} />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
+              <div className={`flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-0.5 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0 -mt-1 sm:mt-0 ${
+                sidebarOpen && !isDesktop ? "hidden" : ""
+              }`}>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xl font-semibold truncate">
@@ -2438,19 +2458,21 @@ function App() {
         )}
       </div>
 
-      {/* Voice control bar when in a call - bottom left, centered in sidebar column */}
+      {/* Voice control bar when in a call - bottom left, flexes with sidebar width */}
       {joinedVoiceChannelId && (
         <div
-          className="fixed bottom-6 z-50 flex justify-center"
+          className="fixed bottom-6 z-50 flex justify-center transition-[width] duration-150 ease-out"
           style={{
             left: 0,
             width: sidebarWidthPx,
+            minWidth: isDesktop ? SIDEBAR_MIN_PX : undefined,
+            maxWidth: isDesktop ? SIDEBAR_MAX_PX : undefined,
             paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
             paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
             paddingRight: "max(0.5rem, env(safe-area-inset-right))"
           }}
         >
-          <div className="flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+          <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
           <button
             type="button"
             onClick={toggleMute}
@@ -2550,6 +2572,7 @@ function App() {
         }}
         keybinds={keybinds}
         onKeybindsChange={handleKeybindsChange}
+        isTauri={isTauri}
       />
       <VoiceSettingsModal
         isOpen={isVoiceSettingsOpen}
@@ -2600,7 +2623,12 @@ function App() {
     </div>
   );
   }
-  return content;
+  return (
+    <>
+      {content}
+      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+    </>
+  );
 }
 
 export default App;
