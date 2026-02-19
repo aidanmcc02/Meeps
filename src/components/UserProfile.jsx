@@ -106,26 +106,25 @@ function UserProfile({ profile, onSave }) {
             )}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="relative h-9 w-9 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-white/80 dark:ring-gray-900/80">
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt={displayName}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="h-full w-full rounded-full bg-gradient-to-br from-indigo-500 to-sky-500 text-xs font-semibold text-white flex items-center justify-center">
-                    {initials}
-                  </div>
-                )}
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-gray-900 bg-emerald-500" />
+              <div className="relative h-9 w-9 flex-shrink-0">
+                <div className="h-full w-full rounded-full overflow-hidden ring-2 ring-white/80 dark:ring-gray-900/80">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full rounded-full bg-gradient-to-br from-indigo-500 to-sky-500 text-xs font-semibold text-white flex items-center justify-center">
+                      {initials}
+                    </div>
+                  )}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900 bg-emerald-500 shadow-sm z-10" aria-hidden />
               </div>
               <div className="flex flex-col leading-tight">
                 <span className="text-xs font-semibold text-gray-100 dark:text-white">
                   {profile.displayName || "Meeps User"}
-                </span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-400">
-                  {profile.email || "demo@meeps.app"}
                 </span>
               </div>
             </div>
@@ -246,9 +245,6 @@ function UserProfile({ profile, onSave }) {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-white">
                           {displayName || "Meeps User"}
-                        </p>
-                        <p className="truncate text-[11px] text-gray-400">
-                          {profile?.email || "you@example.com"}
                         </p>
                       </div>
                     </div>

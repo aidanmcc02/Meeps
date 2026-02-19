@@ -103,11 +103,6 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
                 <h3 className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
                   {displayName}
                 </h3>
-                {profile.email && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {profile.email}
-                  </p>
-                )}
 
                 {profile.bio && (
                   <div className="mt-4">

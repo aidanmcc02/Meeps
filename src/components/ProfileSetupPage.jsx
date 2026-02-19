@@ -165,9 +165,6 @@ function ProfileSetupPage({ user, onComplete }) {
                 <p className="mt-2 text-sm font-semibold text-white">
                   {displayName}
                 </p>
-                <p className="text-xs text-gray-300">
-                  {user?.email || "you@example.com"}
-                </p>
               </div>
             </div>
           </div>

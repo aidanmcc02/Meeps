@@ -168,6 +168,8 @@ function App() {
   const voiceParticipantCountRef = useRef(0);
   const justJoinedVoiceRef = useRef(false);
   const joinedVoiceChannelIdRef = useRef(null);
+  const voiceRoomToRejoinRef = useRef(null);
+  const joinVoiceChannelRef = useRef(null);
   const pendingIceCandidatesRef = useRef({}); // peerUserId -> RTCIceCandidate[]
   const [speakingUserIds, setSpeakingUserIds] = useState([]);
   const [participantMuted, setParticipantMuted] = useState({}); // userId -> true if muted
@@ -594,14 +596,21 @@ function App() {
             roomIds: VOICE_CHANNELS.map((c) => c.id)
           })
         );
+        const roomToRejoin = voiceRoomToRejoinRef.current;
+        if (roomToRejoin != null) {
+          voiceRoomToRejoinRef.current = null;
+          setTimeout(() => joinVoiceChannelRef.current?.(roomToRejoin), 500);
+        }
       };
 
       socket.onclose = () => {
         console.log("WebSocket connection closed");
         setSocketStatus("disconnected");
+        const roomToRejoin = joinedVoiceChannelIdRef.current ?? null;
         socketRef.current = null;
         joinedVoiceChannelIdRef.current = null;
         setJoinedVoiceChannelId(null);
+        if (roomToRejoin != null) voiceRoomToRejoinRef.current = roomToRejoin;
         scheduleReconnect();
       };
 
@@ -1243,9 +1252,18 @@ function App() {
     return m;
   }, [currentUser?.displayName, presenceUsers, profiles]);
 
-  // Only show in users tab people who exist in the DB (we have their profile)
+  // Only show in users tab people who exist in the DB and have an allowed email
+  const ALLOWED_USERS_EMAILS = new Set([
+    "aidanmccarthy3@gmail.com",
+    "fakeemail@gmail.com",
+    "sullivanlouis0@gmail.com"
+  ]);
   const usersInDb = useMemo(() => {
-    return (presenceUsers || []).filter((u) => u?.id != null && profiles[u.id]);
+    return (presenceUsers || []).filter((u) => {
+      if (u?.id == null || !profiles[u.id]) return false;
+      const email = profiles[u.id]?.email;
+      return email && ALLOWED_USERS_EMAILS.has(email);
+    });
   }, [presenceUsers, profiles]);
 
   const ensureLocalStream = async () => {
@@ -1758,6 +1776,7 @@ function App() {
     preloadNotificationSound();
     voiceDebug.log("===== joinVoiceChannel END =====");
   };
+  joinVoiceChannelRef.current = joinVoiceChannel;
 
   const leaveVoiceChannel = () => {
     // Play sound immediately while still in the user gesture
@@ -2288,7 +2307,7 @@ function App() {
           <aside
             className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
               fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
-              md:relative md:top-0 md:h-auto md:min-h-0 md:flex-shrink-0 md:transform-none
+              md:relative md:top-0 md:h-full md:min-h-0 md:flex-shrink-0 md:transform-none
               pt-2 md:pt-3
               ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
             style={{
@@ -2388,6 +2407,7 @@ function App() {
                     return inCallList.map((p) => {
                       const profile = profiles[p.id];
                       const avatarUrl = profile?.avatarUrl || null;
+                      const bannerUrl = profile?.bannerUrl || null;
                       const name = p.displayName || profile?.displayName || `User ${p.id}`;
                       const initials = (name || "?")
                         .split(" ")
@@ -2400,43 +2420,64 @@ function App() {
                       return (
                         <div
                           key={p.id}
-                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${
-                            isSpeaking ? "bg-emerald-100 dark:bg-emerald-900/30" : ""
-                          }`}
+                          className="group/call relative overflow-hidden rounded-lg"
                         >
+                          {bannerUrl && (
+                            <div className="pointer-events-none absolute inset-0">
+                              <img
+                                src={bannerUrl}
+                                alt=""
+                                className="h-full w-full object-cover opacity-70 transition-transform duration-300 ease-out group-hover/call:scale-105"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/10" />
+                            </div>
+                          )}
                           <div
-                            className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-medium ring-2 ${
-                              isSpeaking ? "ring-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 voice-speaking-glow" : "ring-gray-200 dark:ring-gray-600 bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white"
+                            className={`relative flex items-center gap-2 rounded-lg px-2 py-1.5 ${
+                              bannerUrl
+                                ? "text-white hover:bg-white/5"
+                                : isSpeaking
+                                  ? "bg-emerald-100 dark:bg-emerald-900/30 text-gray-700 dark:text-gray-300"
+                                  : ""
                             }`}
                           >
-                            {avatarUrl ? (
-                              <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                            ) : (
-                              <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">{initials}</span>
+                            <div
+                              className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-medium ring-2 ${
+                                isSpeaking ? "ring-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 voice-speaking-glow" : "ring-gray-200 dark:ring-gray-600 bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white"
+                              }`}
+                            >
+                              {avatarUrl ? (
+                                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">{initials}</span>
+                              )}
+                              {isSpeaking && (
+                                <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white bg-emerald-500 dark:border-gray-900" title="Speaking" />
+                              )}
+                            </div>
+                            <span
+                              className={`min-w-0 flex-1 truncate text-sm ${bannerUrl ? "text-white" : "text-gray-700 dark:text-gray-300"}`}
+                              title={name}
+                            >
+                              {name}
+                            </span>
+                            {showMuteSpeaking && isMuted && (
+                              <span className="flex-shrink-0 text-red-400 dark:text-red-300" title="Muted">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                                </svg>
+                              </span>
                             )}
-                            {isSpeaking && (
-                              <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white bg-emerald-500 dark:border-gray-900" title="Speaking" />
+                            {showMuteSpeaking && String(p.id) === String(myId) && isDeafened && (
+                              <span className="flex-shrink-0 text-red-400 dark:text-red-300" title="Deafened">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
+                                </svg>
+                              </span>
                             )}
                           </div>
-                          <span className="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300" title={name}>
-                            {name}
-                          </span>
-                          {showMuteSpeaking && isMuted && (
-                            <span className="flex-shrink-0 text-red-500 dark:text-red-400" title="Muted">
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                              </svg>
-                            </span>
-                          )}
-                          {showMuteSpeaking && String(p.id) === String(myId) && isDeafened && (
-                            <span className="flex-shrink-0 text-red-500 dark:text-red-400" title="Deafened">
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
-                              </svg>
-                            </span>
-                          )}
                         </div>
                       );
                     });
@@ -2613,7 +2654,7 @@ function App() {
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-0.5">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden pr-0.5">
                 <UserList
                   users={usersInDb}
                   profiles={profiles}
