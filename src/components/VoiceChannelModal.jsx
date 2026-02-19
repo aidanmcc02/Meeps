@@ -107,6 +107,8 @@ function VoiceChannelModal({
 }) {
   const [gifStaticFrames, setGifStaticFrames] = useState({}); // avatarUrl -> dataURL (first frame)
   const [expandedVideoKey, setExpandedVideoKey] = useState(null); // 'local-screen' | 'local-camera' | `remote-${userId}` | null
+  const [isStageFullscreen, setIsStageFullscreen] = useState(false);
+  const stageRef = useRef(null);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -115,6 +117,27 @@ function VoiceChannelModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Keep fullscreen state in sync if user exits via Esc or browser UI
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsStageFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const toggleStageFullscreen = () => {
+    const el = stageRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => {});
+      }
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
 
   // Capture first frame of each GIF avatar (when CORS allows) so we can show static when not speaking
   useEffect(() => {
@@ -279,7 +302,23 @@ function VoiceChannelModal({
               <p className="text-center text-xs font-medium uppercase tracking-wider text-white/50">Video — click a tile to show larger</p>
               {/* Large stage: ~80% of viewport, full shared content scaled to fit (object-contain) */}
               <div className="relative flex-1 min-h-0 w-full flex flex-col items-center justify-center">
-                <div className="relative w-[80vw] h-[80vh] max-w-full max-h-[80vh] rounded-2xl bg-black/80 ring-1 ring-white/10 overflow-hidden">
+                <div
+                  ref={stageRef}
+                  className={`relative rounded-2xl bg-black/80 ring-1 ring-white/10 overflow-hidden ${
+                    isStageFullscreen ? "w-screen h-screen max-w-none max-h-none" : "w-[80vw] h-[80vh] max-w-full max-h-[80vh]"
+                  }`}
+                >
+                  {selectedEntry && (
+                    <div className="absolute right-3 top-3 z-10 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleStageFullscreen}
+                        className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 backdrop-blur"
+                      >
+                        {isStageFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                      </button>
+                    </div>
+                  )}
                   <div className="absolute inset-0">
                     {selectedEntry && selectedEntry.type === "local" && (
                       <LocalVideoTile stream={selectedEntry.stream} label={selectedEntry.label} size="large" />
@@ -292,7 +331,7 @@ function VoiceChannelModal({
               </div>
               {/* Thumbnail strip */}
               <div className="flex flex-wrap justify-center gap-3">
-                {videoEntries.map((entry) =>
+                {videoEntries.filter((entry) => entry.key !== selectedKey).map((entry) =>
                   entry.type === "local" ? (
                     <LocalVideoTile
                       key={entry.key}

@@ -41,6 +41,7 @@ function MessageInput({
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
 
@@ -82,26 +83,31 @@ function MessageInput({
     setSelectedIndex(0);
   }, [value]);
 
-  const handleFileSelect = async (e) => {
-    const files = e.target.files;
-    if (!files?.length) return;
+  const uploadFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
     const base = (apiBase || "").replace(/\/$/, "");
     if (!base) {
       setUploadError("API URL not configured");
-      e.target.value = "";
       return;
     }
     setUploadError(null);
     setUploading(true);
     const formData = new FormData();
-    for (let i = 0; i < Math.min(files.length, 5); i++) {
+    for (let i = 0; i < Math.min(files.length, 5); i += 1) {
       formData.append("files", files[i]);
     }
     const uploadUrl = `${base}/api/upload`;
     try {
+      const token = window.localStorage.getItem("meeps_token");
       const res = await fetch(uploadUrl, {
         method: "POST",
-        body: formData
+        body: formData,
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`
+            }
+          : undefined
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -125,8 +131,38 @@ function MessageInput({
       setUploadError(err.message || "Upload failed (network error)");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleFileSelect = async (e) => {
+    const { files } = e.target;
+    if (!files?.length) return;
+    try {
+      await uploadFiles(files);
+    } finally {
       e.target.value = "";
     }
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const { files } = e.dataTransfer || {};
+    if (!files || files.length === 0) return;
+    await uploadFiles(files);
+  };
+
+  const handlePaste = async (e) => {
+    if (!e.clipboardData) return;
+    const items = Array.from(e.clipboardData.items || []);
+    const imageFiles = items
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (imageFiles.length === 0) return;
+    e.preventDefault();
+    await uploadFiles(imageFiles);
   };
 
   const removePendingAttachment = (id) => {
@@ -189,7 +225,32 @@ function MessageInput({
   const canSend = (value?.trim() || pendingAttachments.length > 0) && !uploading;
 
   return (
-    <div ref={containerRef} className="px-3 py-2 sm:px-4 sm:py-3 min-w-0">
+    <div
+      ref={containerRef}
+      className={`px-3 py-2 sm:px-4 sm:py-3 min-w-0 ${
+        isDragging
+          ? "bg-indigo-50/60 dark:bg-indigo-900/20"
+          : ""
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDragging) setIsDragging(true);
+      }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target === containerRef.current) {
+          setIsDragging(false);
+        }
+      }}
+      onDrop={handleDrop}
+    >
       {pendingAttachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {pendingAttachments.map((a) => (
@@ -230,6 +291,7 @@ function MessageInput({
             placeholder={placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onPaste={handlePaste}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 const completingMention = showMentions && hasOptions && !mentionOptions.some((o) => o.slug === mentionQuery);

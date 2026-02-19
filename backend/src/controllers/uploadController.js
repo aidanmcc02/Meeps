@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs").promises;
+const crypto = require("crypto");
 const db = require("../config/db");
 const multer = require("multer");
 
@@ -45,28 +46,49 @@ const upload = multer({
 exports.getMulterUpload = () => upload.array("files", MAX_FILES);
 
 exports.uploadFiles = async (req, res, next) => {
+  const userId = req.userId || null;
+
   if (!req.files || req.files.length === 0) {
+    console.warn("[uploads] Rejecting upload with no files", {
+      userId,
+      ip: req.ip
+    });
     return res.status(400).json({ message: "No files uploaded" });
   }
   if (req.files.length > MAX_FILES) {
+    console.warn("[uploads] Rejecting upload over file limit", {
+      userId,
+      ip: req.ip,
+      fileCount: req.files.length,
+      maxFiles: MAX_FILES
+    });
     return res.status(400).json({ message: `Maximum ${MAX_FILES} files per upload` });
   }
 
   const apiBase = `${req.protocol}://${req.get("host")}`;
   const results = [];
 
+  console.log("[uploads] Starting upload", {
+    userId,
+    ip: req.ip,
+    fileCount: req.files.length,
+    totalBytes: req.files.reduce((sum, f) => sum + (f.size || 0), 0)
+  });
+
   try {
     for (const file of req.files) {
       const relativePath = path.relative(UPLOADS_PATH, file.path);
+      const publicId = crypto.randomBytes(16).toString("hex");
       const result = await db.query(
-        `INSERT INTO uploads (filename, storage_path, mime_type, size_bytes, created_at)
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-         RETURNING id, filename, mime_type, size_bytes, created_at`,
+        `INSERT INTO uploads (filename, storage_path, mime_type, size_bytes, created_at, public_id)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)
+         RETURNING id, filename, mime_type, size_bytes, created_at, public_id`,
         [
           file.originalname,
           relativePath.replace(/\\/g, "/"),
           file.mimetype || null,
-          file.size
+          file.size,
+          publicId
         ]
       );
       const row = result.rows[0];
@@ -75,34 +97,88 @@ exports.uploadFiles = async (req, res, next) => {
         filename: row.filename,
         mimeType: row.mime_type,
         size: row.size_bytes,
-        url: `${apiBase}/api/files/${row.id}`,
+        publicId: row.public_id,
+        url: `${apiBase}/api.files/${row.public_id}`,
         createdAt: row.created_at
       });
+
+      console.log("[uploads] Stored file", {
+        userId,
+        uploadId: row.id,
+        publicId: row.public_id,
+        filename: row.filename,
+        mimeType: row.mime_type,
+        size: row.size_bytes,
+        storagePath: relativePath.replace(/\\/g, "/")
+      });
     }
+
+    console.log("[uploads] Upload complete", {
+      userId,
+      ip: req.ip,
+      uploadedCount: results.length
+    });
+
     return res.status(201).json({ uploads: results });
   } catch (err) {
+    console.error("[uploads] Upload failed", {
+      userId,
+      ip: req.ip,
+      error: err.message
+    });
     return next(err);
   }
 };
 
 exports.serveFile = async (req, res, next) => {
-  const id = parseInt(req.params.id, 10);
-  if (Number.isNaN(id)) {
+  const token = req.params.id;
+  const userId = req.userId || null;
+
+  if (!token || typeof token !== "string") {
+    console.warn("[uploads] Invalid file token on download", {
+      userId,
+      ip: req.ip
+    });
     return res.status(404).end();
   }
 
   try {
-    const result = await db.query(
-      "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE id = $1",
-      [id]
+    // Prefer lookup by public_id (non-guessable). Fall back to numeric id for
+    // backward compatibility with any older clients that still use integer IDs.
+    let result = await db.query(
+      "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE public_id = $1",
+      [token]
     );
-    const row = result.rows[0];
+    let row = result.rows[0];
+
     if (!row) {
+      const asInt = parseInt(token, 10);
+      if (!Number.isNaN(asInt)) {
+        const legacyResult = await db.query(
+          "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE id = $1",
+          [asInt]
+        );
+        row = legacyResult.rows[0];
+      }
+    }
+
+    if (!row) {
+      console.warn("[uploads] File not found on download", {
+        userId,
+        ip: req.ip,
+        token
+      });
       return res.status(404).json({ message: "File not found" });
     }
 
     const createdAt = new Date(row.created_at).getTime();
     if (Date.now() - createdAt > UPLOAD_MAX_AGE_MS) {
+      console.info("[uploads] File expired on download", {
+        userId,
+        ip: req.ip,
+        uploadId: row.id,
+        token
+      });
       return res.status(410).json({ message: "File expired" });
     }
 
@@ -110,17 +186,49 @@ exports.serveFile = async (req, res, next) => {
     try {
       await fs.access(filePath);
     } catch (_) {
+      console.warn("[uploads] Missing file on disk", {
+        userId,
+        ip: req.ip,
+        uploadId: row.id,
+        token,
+        storagePath: row.storage_path
+      });
       return res.status(404).json({ message: "File not found" });
     }
+
+    console.log("[uploads] Serving file", {
+      userId,
+      ip: req.ip,
+      uploadId: row.id,
+      token,
+      filename: row.filename,
+      mimeType: row.mime_type,
+      storagePath: row.storage_path
+    });
 
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(row.filename)}"`);
     if (row.mime_type) {
       res.setHeader("Content-Type", row.mime_type);
     }
     res.sendFile(path.resolve(filePath), (err) => {
-      if (err && !res.headersSent) next(err);
+      if (err && !res.headersSent) {
+        console.error("[uploads] Error while streaming file", {
+          userId,
+          ip: req.ip,
+          uploadId: row.id,
+          token,
+          error: err.message
+        });
+        next(err);
+      }
     });
   } catch (err) {
+    console.error("[uploads] Unexpected error on download", {
+      userId,
+      ip: req.ip,
+      token,
+      error: err.message
+    });
     return next(err);
   }
 };

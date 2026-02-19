@@ -164,6 +164,7 @@ function MessageList({
   const [editingId, setEditingId] = useState(null);
   const [editContent, setEditContent] = useState("");
   const menuRef = useRef(null);
+  const [lightbox, setLightbox] = useState(null);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -219,6 +220,17 @@ function MessageList({
       });
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const handleKey = (e) => {
+      if (e.key === "Escape") {
+        setLightbox(null);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [lightbox]);
 
   return (
     <div className="relative flex-1 flex min-h-0 flex-col overflow-hidden">
@@ -448,7 +460,7 @@ function MessageList({
                       </ReactMarkdown>
                     </div>
                   )}
-                  {(msg.attachments?.length > 0) && (
+                  {msg.attachments?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.attachments.map((att) => {
                         const url = att.url || (apiBase ? `${apiBase}/api/files/${att.id}` : null);
@@ -457,18 +469,22 @@ function MessageList({
                           <div key={att.id} className="flex flex-col">
                             {url ? (
                               isImage ? (
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="block rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-xs max-h-48"
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLightbox({
+                                      url,
+                                      alt: att.filename
+                                    })
+                                  }
+                                  className="block rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 max-w-xs max-h-48 bg-black/5 dark:bg-white/5"
                                 >
                                   <img
                                     src={url}
                                     alt={att.filename}
                                     className="max-h-48 w-auto object-contain"
                                   />
-                                </a>
+                                </button>
                               ) : (
                                 <a
                                   href={url}
@@ -511,6 +527,31 @@ function MessageList({
         >
           Jump to bottom
         </button>
+      )}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setLightbox(null)}
+          role="presentation"
+        >
+          <div
+            className="relative max-w-5xl max-h-[90vh] w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={lightbox.url}
+              alt={lightbox.alt || ""}
+              className="max-h-[90vh] w-auto max-w-full rounded-lg shadow-2xl object-contain bg-black"
+            />
+            <button
+              type="button"
+              onClick={() => setLightbox(null)}
+              className="absolute top-3 right-3 rounded-full bg-black/70 text-white px-3 py-1 text-xs font-medium hover:bg-black"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

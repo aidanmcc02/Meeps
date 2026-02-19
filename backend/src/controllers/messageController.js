@@ -40,7 +40,7 @@ exports.listMessages = async (req, res, next) => {
       const ids = messages.map((m) => m.id).filter(Boolean);
       if (ids.length > 0) {
         const attachResult = await db.query(
-          `SELECT ma.message_id, u.id AS upload_id, u.filename, u.mime_type, u.size_bytes, u.created_at
+          `SELECT ma.message_id, u.id AS upload_id, u.public_id, u.filename, u.mime_type, u.size_bytes, u.created_at
            FROM message_attachments ma
            JOIN uploads u ON u.id = ma.upload_id
            WHERE ma.message_id = ANY($1::int[]) AND u.created_at > $2
@@ -52,10 +52,11 @@ exports.listMessages = async (req, res, next) => {
           if (!byMessage[r.message_id]) byMessage[r.message_id] = [];
           byMessage[r.message_id].push({
             id: r.upload_id,
+            publicId: r.public_id,
             filename: r.filename,
             mimeType: r.mime_type,
             size: r.size_bytes,
-            url: `${apiBase}/api/files/${r.upload_id}`
+            url: `${apiBase}/api/files/${r.public_id}`
           });
         }
         messages.forEach((m) => {

@@ -7,7 +7,7 @@ const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 async function getAttachmentsForMessage(messageId) {
   try {
     const result = await db.query(
-      `SELECT u.id, u.filename, u.mime_type, u.size_bytes, u.created_at
+      `SELECT u.id, u.public_id, u.filename, u.mime_type, u.size_bytes, u.created_at
        FROM message_attachments ma
        JOIN uploads u ON u.id = ma.upload_id
        WHERE ma.message_id = $1 AND u.created_at > $2
@@ -16,6 +16,7 @@ async function getAttachmentsForMessage(messageId) {
     );
     return result.rows.map((r) => ({
       id: r.id,
+      publicId: r.public_id,
       filename: r.filename,
       mimeType: r.mime_type,
       size: r.size_bytes,

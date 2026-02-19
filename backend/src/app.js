@@ -10,6 +10,7 @@ const boardRoutes = require("./routes/boardRoutes");
 const pushRoutes = require("./routes/pushRoutes");
 const valorantRoutes = require("./routes/valorantRoutes");
 const uploadController = require("./controllers/uploadController");
+const { authenticate } = require("./middleware/authMiddleware");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
@@ -27,8 +28,9 @@ app.get("/health", (req, res) => {
 });
 
 // Upload routes registered explicitly so POST /api/upload always matches (avoids router mount path issues)
-app.post("/api/upload", uploadController.getMulterUpload(), uploadController.uploadFiles);
-app.get("/api/files/:id", uploadController.serveFile);
+// Require authentication for both upload and download.
+app.post("/api/upload", authenticate, uploadController.getMulterUpload(), uploadController.uploadFiles);
+app.get("/api/files/:id", authenticate, uploadController.serveFile);
 
 app.use("/api", authRoutes);
 app.use("/api", profileRoutes);

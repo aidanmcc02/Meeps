@@ -1386,7 +1386,18 @@ function App() {
 
     pc.ontrack = (event) => {
       const track = event.track;
-      voiceDebug.log("ontrack event", { peerUserId, kind: track?.kind, id: track?.id, readyState: track?.readyState });
+      voiceDebug.log("ontrack event", {
+        peerUserId,
+        kind: track?.kind,
+        id: track?.id,
+        readyState: track?.readyState,
+        streamCount: event.streams?.length || 0,
+        streamTrackInfo: event.streams?.map((s) => ({
+          id: s.id,
+          audioTrackIds: s.getAudioTracks().map((t) => t.id),
+          videoTrackIds: s.getVideoTracks().map((t) => t.id)
+        })) || []
+      });
       if (!track || typeof track.kind !== "string") {
         voiceDebug.warn("Invalid track in ontrack", { track });
         return;
@@ -1398,8 +1409,23 @@ function App() {
           peerStream = new MediaStream();
           remoteStreamsRef.current[peerUserId] = peerStream;
         }
-        voiceDebug.log("Adding track to peer stream", { peerUserId, kind: track.kind, id: track.id });
+        voiceDebug.log("Adding track to peer stream", {
+          peerUserId,
+          kind: track.kind,
+          id: track.id,
+          before: {
+            audioTrackIds: peerStream.getAudioTracks().map((t) => t.id),
+            videoTrackIds: peerStream.getVideoTracks().map((t) => t.id)
+          }
+        });
         peerStream.addTrack(track);
+        voiceDebug.log("Added track to peer stream", {
+          peerUserId,
+          after: {
+            audioTrackIds: peerStream.getAudioTracks().map((t) => t.id),
+            videoTrackIds: peerStream.getVideoTracks().map((t) => t.id)
+          }
+        });
         if (!remoteStreamsFlushScheduledRef.current) {
           remoteStreamsFlushScheduledRef.current = true;
           queueMicrotask(() => {
@@ -1791,49 +1817,155 @@ function App() {
   };
 
   const startScreenShare = async () => {
+    voiceDebug.log("startScreenShare: invoked", {
+      existingScreenTracks: screenStreamRef.current?.getTracks()?.map((t) => ({
+        id: t.id,
+        kind: t.kind,
+        enabled: t.enabled,
+        muted: t.muted,
+        readyState: t.readyState
+      })) || []
+    });
     try {
       let stream;
       try {
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        const constraints = {
+          video: true,
+          audio: true,
+          systemAudio: "include"
+        };
+        voiceDebug.log("startScreenShare: calling getDisplayMedia", { constraints });
+        stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+        voiceDebug.log("startScreenShare: got stream from getDisplayMedia", {
+          videoTrackCount: stream.getVideoTracks().length,
+          audioTrackCount: stream.getAudioTracks().length,
+          videoTracks: stream.getVideoTracks().map((t) => ({
+            id: t.id,
+            enabled: t.enabled,
+            muted: t.muted,
+            readyState: t.readyState
+          })),
+          audioTracks: stream.getAudioTracks().map((t) => ({
+            id: t.id,
+            enabled: t.enabled,
+            muted: t.muted,
+            readyState: t.readyState
+          }))
+        });
       } catch (audioErr) {
-        // If capturing system audio isn't allowed/available, fall back to screen share
-        // without audio instead of failing entirely.
+        voiceDebug.warn("startScreenShare: getDisplayMedia with system audio failed", {
+          error: audioErr,
+          name: audioErr?.name,
+          message: audioErr?.message
+        });
+        // NotReadableError often happens on Windows when system audio capture fails.
+        // Try tab/window audio only (systemAudio: "exclude") — e.g. share a Chrome tab with "Share tab audio".
         try {
-          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        } catch {
-          throw audioErr;
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true,
+            systemAudio: "exclude"
+          });
+          voiceDebug.log("startScreenShare: got stream with tab/window audio (systemAudio: exclude)", {
+            videoTrackCount: stream.getVideoTracks().length,
+            audioTrackCount: stream.getAudioTracks().length
+          });
+        } catch (tabAudioErr) {
+          voiceDebug.warn("startScreenShare: tab/window audio also failed, falling back to video-only", {
+            error: tabAudioErr,
+            name: tabAudioErr?.name,
+            message: tabAudioErr?.message
+          });
+          try {
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            voiceDebug.log("startScreenShare: got fallback video-only stream", {
+              videoTrackCount: stream.getVideoTracks().length,
+              audioTrackCount: stream.getAudioTracks().length
+            });
+          } catch {
+            voiceDebug.error("startScreenShare: fallback getDisplayMedia without audio also failed", { error: audioErr });
+            throw audioErr;
+          }
         }
       }
       if (!stream?.getVideoTracks()?.length) {
+        voiceDebug.warn("startScreenShare: no video tracks in stream, stopping tracks and aborting");
         stream?.getTracks().forEach((t) => t.stop());
         return;
       }
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
-      stream.getVideoTracks()[0].onended = () => stopScreenShare();
+      stream.getVideoTracks()[0].onended = () => {
+        voiceDebug.log("startScreenShare: video track onended fired, stopping screen share");
+        stopScreenShare();
+      };
       setIsSharingScreen(true);
       const videoTrack = stream.getVideoTracks()[0];
       const audioTrack = stream.getAudioTracks()[0] ?? null;
+      voiceDebug.log("startScreenShare: prepared tracks for peers", {
+        videoTrack: videoTrack ? {
+          id: videoTrack.id,
+          enabled: videoTrack.enabled,
+          muted: videoTrack.muted,
+          readyState: videoTrack.readyState
+        } : null,
+        audioTrack: audioTrack ? {
+          id: audioTrack.id,
+          enabled: audioTrack.enabled,
+          muted: audioTrack.muted,
+          readyState: audioTrack.readyState
+        } : null
+      });
       const peersToRenegotiate = [];
       for (const [peerUserId, pc] of Object.entries(peerConnectionsRef.current)) {
+        voiceDebug.log("startScreenShare: iterating peer for screen share", {
+          peerUserId,
+          connectionState: pc.connectionState,
+          signalingState: pc.signalingState,
+          senderKinds: pc.getSenders().map((s) => ({
+            trackId: s.track?.id,
+            kind: s.track?.kind,
+            readyState: s.track?.readyState
+          }))
+        });
         if (pc.connectionState !== "closed") {
           const videoSender = pc.getSenders().find((s) => s.track?.kind === "video");
-          if (videoSender) videoSender.replaceTrack(videoTrack);
-          else {
+          if (videoSender) {
+            voiceDebug.log("startScreenShare: replacing existing video sender track with screen video", {
+              peerUserId,
+              senderTrackId: videoSender.track?.id,
+              newTrackId: videoTrack?.id
+            });
+            videoSender.replaceTrack(videoTrack);
+          } else {
+            voiceDebug.log("startScreenShare: adding new video track for screen share", {
+              peerUserId,
+              trackId: videoTrack?.id
+            });
             pc.addTrack(videoTrack, stream);
             peersToRenegotiate.push(Number(peerUserId));
           }
           if (audioTrack) {
             const hasScreenAudio = pc.getSenders().some((s) => s.track?.id === audioTrack.id);
+            voiceDebug.log("startScreenShare: checking/adding screen audio sender", {
+              peerUserId,
+              hasScreenAudio,
+              audioTrackId: audioTrack.id
+            });
             if (!hasScreenAudio) {
               pc.addTrack(audioTrack, stream);
               peersToRenegotiate.push(Number(peerUserId));
             }
+          } else {
+            voiceDebug.log("startScreenShare: no audio track present on screen stream", { peerUserId });
           }
         }
       }
+      voiceDebug.log("startScreenShare: renegotiating with peers", { peersToRenegotiate });
       for (const peerId of peersToRenegotiate) await sendOfferToPeer(peerId);
+      voiceDebug.log("startScreenShare: completed");
     } catch (err) {
+      voiceDebug.error("startScreenShare: failed", { error: err });
       console.warn("Screen share failed:", err);
     }
   };
@@ -1841,10 +1973,26 @@ function App() {
   const stopScreenShare = () => {
     const stream = screenStreamRef.current;
     const screenAudioTrack = stream?.getAudioTracks()[0] ?? null;
+    voiceDebug.log("stopScreenShare: invoked", {
+      hasStream: !!stream,
+      videoTrackCount: stream?.getVideoTracks().length || 0,
+      audioTrackCount: stream?.getAudioTracks().length || 0,
+      screenAudioTrack: screenAudioTrack ? {
+        id: screenAudioTrack.id,
+        enabled: screenAudioTrack.enabled,
+        muted: screenAudioTrack.muted,
+        readyState: screenAudioTrack.readyState
+      } : null
+    });
     if (stream) {
       for (const pc of Object.values(peerConnectionsRef.current)) {
         if (pc.connectionState !== "closed" && screenAudioTrack) {
           const audioSender = pc.getSenders().find((s) => s.track?.id === screenAudioTrack.id);
+          voiceDebug.log("stopScreenShare: cleaning up screen audio sender", {
+            connectionState: pc.connectionState,
+            foundAudioSender: !!audioSender,
+            audioTrackId: screenAudioTrack.id
+          });
           if (audioSender) audioSender.replaceTrack(null);
         }
       }
@@ -1855,6 +2003,15 @@ function App() {
     setIsSharingScreen(false);
     const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
     const peerIds = Object.keys(peerConnectionsRef.current).map(Number);
+    voiceDebug.log("stopScreenShare: restoring camera video (if any)", {
+      cameraTrack: cameraTrack ? {
+        id: cameraTrack.id,
+        enabled: cameraTrack.enabled,
+        muted: cameraTrack.muted,
+        readyState: cameraTrack.readyState
+      } : null,
+      peerIds
+    });
     for (const pc of Object.values(peerConnectionsRef.current)) {
       if (pc.connectionState !== "closed") {
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
@@ -1862,6 +2019,7 @@ function App() {
       }
     }
     for (const peerId of peerIds) sendOfferToPeer(peerId);
+    voiceDebug.log("stopScreenShare: completed");
   };
 
   const startCamera = async () => {
@@ -2377,10 +2535,22 @@ function App() {
               playsInline
               ref={(el) => {
                 if (el && stream && typeof stream.getTracks === "function") {
-                  voiceDebug.log("Setting up audio element", { userId, hasStream: !!stream, audioTracks: stream.getAudioTracks().length });
+                  voiceDebug.log("Setting up audio element", {
+                    userId,
+                    hasStream: !!stream,
+                    audioTracks: stream.getAudioTracks().length,
+                    videoTracks: stream.getVideoTracks().length,
+                    audioTrackIds: stream.getAudioTracks().map((t) => t.id),
+                    videoTrackIds: stream.getVideoTracks().map((t) => t.id)
+                  });
                   el.srcObject = stream;
                   el.volume = isDeafened ? 0 : voiceSettings.volume;
-                  voiceDebug.log("Audio element configured", { userId, volume: el.volume, paused: el.paused, deafened: isDeafened });
+                  voiceDebug.log("Audio element configured", {
+                    userId,
+                    volume: el.volume,
+                    paused: el.paused,
+                    deafened: isDeafened
+                  });
                   if (el.paused) {
                     voiceDebug.log("Audio element paused, attempting to play", { userId });
                     tryPlayRemoteAudio(el);
