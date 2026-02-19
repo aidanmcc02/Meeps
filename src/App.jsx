@@ -278,6 +278,34 @@ function App() {
     joinedVoiceChannelIdRef.current = joinedVoiceChannelId;
   }, [joinedVoiceChannelId]);
 
+  // Merged in-call list: server list + peers we have active streams for (fixes UI when voice:participants is stale)
+  const effectiveInCallParticipants = useMemo(() => {
+    if (!joinedVoiceChannelId) return [];
+    const myId = currentUser?.id ?? CURRENT_USER_ID;
+    const seen = new Set();
+    const list = [];
+    const myProfile = profiles[myId];
+    const myDisplayName = currentUser?.displayName ?? myProfile?.displayName ?? `User ${myId}`;
+    let me = voiceParticipants.find((p) => String(p.id) === String(myId));
+    if (!me) me = { id: myId, displayName: myDisplayName };
+    else me = { ...me, displayName: me.displayName || myDisplayName };
+    list.push(me);
+    seen.add(String(me.id));
+    voiceParticipants.forEach((p) => {
+      if (!seen.has(String(p.id))) {
+        list.push(p);
+        seen.add(String(p.id));
+      }
+    });
+    Object.keys(remoteStreams).forEach((peerId) => {
+      if (seen.has(String(peerId))) return;
+      const profile = profiles[peerId];
+      list.push({ id: peerId, displayName: profile?.displayName ?? `User ${peerId}` });
+      seen.add(String(peerId));
+    });
+    return list;
+  }, [joinedVoiceChannelId, voiceParticipants, remoteStreams, profiles, currentUser?.id, currentUser?.displayName]);
+
   useEffect(() => {
     if (!joinedVoiceChannelId) return;
     
@@ -2384,22 +2412,7 @@ function App() {
                     const myId = currentUser?.id ?? CURRENT_USER_ID;
                     let inCallList;
                     if (joinedVoiceChannelId) {
-                      const seen = new Set();
-                      const list = [];
-                      const myProfile = profiles[myId];
-                      const myDisplayName = currentUser?.displayName ?? myProfile?.displayName ?? `User ${myId}`;
-                      let me = voiceParticipants.find((p) => String(p.id) === String(myId));
-                      if (!me) me = { id: myId, displayName: myDisplayName };
-                      else me = { ...me, displayName: me.displayName || myDisplayName };
-                      list.push(me);
-                      seen.add(String(me.id));
-                      voiceParticipants.forEach((p) => {
-                        if (!seen.has(String(p.id))) {
-                          list.push(p);
-                          seen.add(String(p.id));
-                        }
-                      });
-                      inCallList = list;
+                      inCallList = effectiveInCallParticipants;
                     } else {
                       inCallList = voiceChannelParticipants[voiceChannelId] || [];
                     }
@@ -2798,7 +2811,7 @@ function App() {
         isOpen={voiceChannelModalRoomId != null}
         onClose={() => setVoiceChannelModalRoomId(null)}
         channel={VOICE_CHANNELS.find((c) => c.id === voiceChannelModalRoomId) || null}
-        participants={voiceChannelModalRoomId ? (voiceChannelParticipants[voiceChannelModalRoomId] || []) : []}
+        participants={voiceChannelModalRoomId ? (joinedVoiceChannelId === voiceChannelModalRoomId ? effectiveInCallParticipants : (voiceChannelParticipants[voiceChannelModalRoomId] || [])) : []}
         profiles={profiles}
         isJoined={joinedVoiceChannelId === voiceChannelModalRoomId}
         speakingUserIds={speakingUserIds}
