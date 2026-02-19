@@ -611,6 +611,7 @@ function App() {
       console.log("WebSocket reconnecting in", delay, "ms (attempt", attempt + 1, ")");
       reconnectTimeoutRef.current = setTimeout(() => {
         reconnectTimeoutRef.current = null;
+        if (socketRef.current?.readyState === WebSocket.OPEN) return;
         connect();
       }, delay);
     };
@@ -795,18 +796,23 @@ function App() {
         socketRef.current = null;
       }
     };
-  }, [isAuthenticated, currentUser?.id, currentUser?.displayName, wsUrl]);
+  }, [isAuthenticated, currentUser?.id, wsUrl]);
 
   // When app becomes visible again (e.g. after sleep or Windows lock), reconnect if socket is dead.
-  // The connection is often dropped by OS/server but the close event may not fire immediately.
+  // Only reconnect when socket is actually closed/closing so we don't abort an in-flight connection.
   useEffect(() => {
     if (!isAuthenticated) return;
     const onVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
       const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        connectWsRef.current?.();
+      const closed = !socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING;
+      if (!closed) return;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
+      reconnectAttemptRef.current = 0;
+      connectWsRef.current?.();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);

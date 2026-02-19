@@ -101,8 +101,6 @@ function startWebSocketServer(httpServer) {
   }
 
   wss.on("connection", (socket) => {
-    // eslint-disable-next-line no-console
-    console.log("WebSocket client connected");
     socket.isAlive = true;
     socket.on("pong", () => {
       socket.isAlive = true;
@@ -139,8 +137,6 @@ function startWebSocketServer(httpServer) {
     });
 
     socket.on("close", () => {
-      // eslint-disable-next-line no-console
-      console.log("WebSocket client disconnected");
       if (socket.userId) {
         const userId = socket.userId;
 
