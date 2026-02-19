@@ -463,7 +463,17 @@ function MessageList({
                   {msg.attachments?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.attachments.map((att) => {
-                        const url = att.url || (apiBase ? `${apiBase}/api/files/${att.id}` : null);
+                        const fileId = att.publicId || att.id;
+                        let url = null;
+                        if (att.url) {
+                          url = att.url.startsWith("http")
+                            ? att.url
+                            : apiBase
+                            ? `${apiBase.replace(/\/$/, "")}${att.url}`
+                            : null;
+                        } else if (apiBase && fileId) {
+                          url = `${apiBase.replace(/\/$/, "")}/api/files/${fileId}`;
+                        }
                         const isImage = att.mimeType?.startsWith("image/");
                         return (
                           <div key={att.id} className="flex flex-col">

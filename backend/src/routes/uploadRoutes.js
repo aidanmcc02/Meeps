@@ -6,6 +6,6 @@ const router = express.Router();
 const upload = uploadController.getMulterUpload();
 
 router.post("/upload", authenticate, upload, uploadController.uploadFiles);
-router.get("/files/:id", authenticate, uploadController.serveFile);
+router.get("/files/:id", uploadController.serveFile);
 
 module.exports = router;

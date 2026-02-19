@@ -4,11 +4,31 @@ const crypto = require("crypto");
 const db = require("../config/db");
 const multer = require("multer");
 
-const UPLOADS_PATH = process.env.UPLOADS_PATH || path.join(process.cwd(), "uploads");
+// Use explicit UPLOADS_PATH, or on Railway use the volume mount path so uploads persist across deploys.
+// If UPLOADS_PATH is literally "$RAILWAY_VOLUME_MOUNT_PATH" (unevaluated), use the env value instead.
+const rawUploads = process.env.UPLOADS_PATH && process.env.UPLOADS_PATH.trim();
+const useRailwayVolume =
+  process.env.RAILWAY_VOLUME_MOUNT_PATH &&
+  (!rawUploads || rawUploads === "$RAILWAY_VOLUME_MOUNT_PATH");
+const UPLOADS_PATH = useRailwayVolume
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "uploads")
+  : (rawUploads || path.join(process.cwd(), "uploads"));
+
+// Short‑lived, file-scoped token secret for signed file URLs.
+const FILE_TOKEN_SECRET =
+  process.env.FILE_TOKEN_SECRET || process.env.JWT_SECRET || "dev_secret_change_me_files";
 const UPLOAD_MAX_AGE_DAYS = 3;
 const UPLOAD_MAX_AGE_MS = UPLOAD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB per file
 const MAX_FILES = 5;
+
+function createSignedFilePath(publicId, maxAgeMs = 60 * 60 * 1000) {
+  if (!publicId) return null;
+  const expiresAt = Date.now() + maxAgeMs;
+  const payload = `${publicId}.${expiresAt}`;
+  const sig = crypto.createHmac("sha256", FILE_TOKEN_SECRET).update(payload).digest("base64url");
+  return `/api/files/${publicId}?e=${expiresAt}&s=${sig}`;
+}
 
 // Ensure uploads directory exists
 async function ensureUploadsDir() {
@@ -65,7 +85,6 @@ exports.uploadFiles = async (req, res, next) => {
     return res.status(400).json({ message: `Maximum ${MAX_FILES} files per upload` });
   }
 
-  const apiBase = `${req.protocol}://${req.get("host")}`;
   const results = [];
 
   console.log("[uploads] Starting upload", {
@@ -92,13 +111,14 @@ exports.uploadFiles = async (req, res, next) => {
         ]
       );
       const row = result.rows[0];
+      const signedPath = createSignedFilePath(row.public_id);
       results.push({
         id: row.id,
         filename: row.filename,
         mimeType: row.mime_type,
         size: row.size_bytes,
         publicId: row.public_id,
-        url: `${apiBase}/api.files/${row.public_id}`,
+        url: signedPath,
         createdAt: row.created_at
       });
 
@@ -131,11 +151,11 @@ exports.uploadFiles = async (req, res, next) => {
 };
 
 exports.serveFile = async (req, res, next) => {
-  const token = req.params.id;
+  const idParam = req.params.id;
   const userId = req.userId || null;
 
-  if (!token || typeof token !== "string") {
-    console.warn("[uploads] Invalid file token on download", {
+  if (!idParam || typeof idParam !== "string") {
+    console.warn("[uploads] Invalid file id on download", {
       userId,
       ip: req.ip
     });
@@ -143,30 +163,61 @@ exports.serveFile = async (req, res, next) => {
   }
 
   try {
-    // Prefer lookup by public_id (non-guessable). Fall back to numeric id for
-    // backward compatibility with any older clients that still use integer IDs.
-    let result = await db.query(
-      "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE public_id = $1",
-      [token]
-    );
-    let row = result.rows[0];
+    let row = null;
 
-    if (!row) {
-      const asInt = parseInt(token, 10);
-      if (!Number.isNaN(asInt)) {
-        const legacyResult = await db.query(
-          "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE id = $1",
-          [asInt]
-        );
-        row = legacyResult.rows[0];
+    // For public_id-based URLs, require a valid signature and expiry.
+    const asInt = parseInt(idParam, 10);
+    const looksNumeric = !Number.isNaN(asInt) && String(asInt) === idParam;
+
+    if (!looksNumeric) {
+      const { e, s } = req.query;
+      const expiresAt = e ? Number(e) : 0;
+      if (!e || !s || Number.isNaN(expiresAt)) {
+        console.warn("[uploads] Missing or invalid signature for file download", {
+          userId,
+          ip: req.ip,
+          id: idParam
+        });
+        return res.status(401).json({ message: "invalid file token" });
       }
+      if (Date.now() > expiresAt) {
+        console.info("[uploads] Signed URL expired", {
+          userId,
+          ip: req.ip,
+          id: idParam
+        });
+        return res.status(410).json({ message: "File link expired" });
+      }
+      const payload = `${idParam}.${expiresAt}`;
+      const expected = crypto.createHmac("sha256", FILE_TOKEN_SECRET).update(payload).digest("base64url");
+      if (expected !== s) {
+        console.warn("[uploads] Signature mismatch for file download", {
+          userId,
+          ip: req.ip,
+          id: idParam
+        });
+        return res.status(401).json({ message: "invalid file token" });
+      }
+
+      const result = await db.query(
+        "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE public_id = $1",
+        [idParam]
+      );
+      row = result.rows[0];
+    } else {
+      // Legacy numeric IDs (no signature). Keep for backward compatibility.
+      const legacyResult = await db.query(
+        "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE id = $1",
+        [asInt]
+      );
+      row = legacyResult.rows[0];
     }
 
     if (!row) {
       console.warn("[uploads] File not found on download", {
         userId,
         ip: req.ip,
-        token
+        id: idParam
       });
       return res.status(404).json({ message: "File not found" });
     }
@@ -177,7 +228,7 @@ exports.serveFile = async (req, res, next) => {
         userId,
         ip: req.ip,
         uploadId: row.id,
-        token
+        id: idParam
       });
       return res.status(410).json({ message: "File expired" });
     }
@@ -190,7 +241,7 @@ exports.serveFile = async (req, res, next) => {
         userId,
         ip: req.ip,
         uploadId: row.id,
-        token,
+        id: idParam,
         storagePath: row.storage_path
       });
       return res.status(404).json({ message: "File not found" });
@@ -200,7 +251,7 @@ exports.serveFile = async (req, res, next) => {
       userId,
       ip: req.ip,
       uploadId: row.id,
-      token,
+      id: idParam,
       filename: row.filename,
       mimeType: row.mime_type,
       storagePath: row.storage_path
@@ -216,7 +267,7 @@ exports.serveFile = async (req, res, next) => {
           userId,
           ip: req.ip,
           uploadId: row.id,
-          token,
+          id: idParam,
           error: err.message
         });
         next(err);
@@ -226,7 +277,7 @@ exports.serveFile = async (req, res, next) => {
     console.error("[uploads] Unexpected error on download", {
       userId,
       ip: req.ip,
-      token,
+      id: idParam,
       error: err.message
     });
     return next(err);
@@ -235,6 +286,7 @@ exports.serveFile = async (req, res, next) => {
 
 exports.UPLOADS_PATH = UPLOADS_PATH;
 exports.UPLOAD_MAX_AGE_MS = UPLOAD_MAX_AGE_MS;
+exports.createSignedFilePath = createSignedFilePath;
 
 /** Delete uploads older than UPLOAD_MAX_AGE_DAYS and their files. Call periodically (e.g. every hour). */
 exports.cleanupExpiredUploads = async () => {

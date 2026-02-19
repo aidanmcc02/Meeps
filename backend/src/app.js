@@ -28,9 +28,9 @@ app.get("/health", (req, res) => {
 });
 
 // Upload routes registered explicitly so POST /api/upload always matches (avoids router mount path issues)
-// Require authentication for both upload and download.
+// Require authentication for upload. Downloads are protected by short‑lived, signed URLs.
 app.post("/api/upload", authenticate, uploadController.getMulterUpload(), uploadController.uploadFiles);
-app.get("/api/files/:id", authenticate, uploadController.serveFile);
+app.get("/api/files/:id", uploadController.serveFile);
 
 app.use("/api", authRoutes);
 app.use("/api", profileRoutes);

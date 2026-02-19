@@ -1,11 +1,11 @@
 const db = require("../config/db");
+const { createSignedFilePath } = require("./uploadController");
 
 const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 // GET /api/messages?channel=general
 exports.listMessages = async (req, res, next) => {
   const channel = req.query.channel || "general";
-  const apiBase = `${req.protocol}://${req.get("host")}`;
 
   try {
     let result;
@@ -56,7 +56,7 @@ exports.listMessages = async (req, res, next) => {
             filename: r.filename,
             mimeType: r.mime_type,
             size: r.size_bytes,
-            url: `${apiBase}/api/files/${r.public_id}`
+            url: createSignedFilePath(r.public_id)
           });
         }
         messages.forEach((m) => {

@@ -1,5 +1,6 @@
 const { WebSocketServer } = require("ws");
 const db = require("../config/db");
+const { createSignedFilePath } = require("./uploadController");
 const pushService = require("../services/pushService");
 
 const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
@@ -20,7 +21,7 @@ async function getAttachmentsForMessage(messageId) {
       filename: r.filename,
       mimeType: r.mime_type,
       size: r.size_bytes,
-      url: null
+      url: createSignedFilePath(r.public_id)
     }));
   } catch (_) {
     return [];
