@@ -59,10 +59,28 @@ function removeSocketFromVoiceRoom(socket, roomId, userId) {
 
 const IDLE_AFTER_MS = 5 * 60 * 1000; // 5 minutes
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds
+const WS_PING_INTERVAL_MS = 30 * 1000; // 30 seconds – keep connections alive so proxies don't drop after ~10–15 min
+
+let heartbeatInterval = null;
 
 function startWebSocketServer(httpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   wssInstance = wss;
+
+  // Ping all clients periodically so connections are not considered idle (prevents proxy/load balancer timeouts)
+  if (!heartbeatInterval) {
+    heartbeatInterval = setInterval(() => {
+      if (!wssInstance) return;
+      wssInstance.clients.forEach((socket) => {
+        if (socket.isAlive === false) {
+          socket.terminate();
+          return;
+        }
+        socket.isAlive = false;
+        socket.ping();
+      });
+    }, WS_PING_INTERVAL_MS);
+  }
 
   if (!idleCheckInterval) {
     idleCheckInterval = setInterval(() => {
@@ -85,6 +103,10 @@ function startWebSocketServer(httpServer) {
   wss.on("connection", (socket) => {
     // eslint-disable-next-line no-console
     console.log("WebSocket client connected");
+    socket.isAlive = true;
+    socket.on("pong", () => {
+      socket.isAlive = true;
+    });
 
     socket.on("message", async (data) => {
       let parsed;
