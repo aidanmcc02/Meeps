@@ -82,6 +82,15 @@ function UserList({ users, onUserClick, profiles = {} }) {
                 <span className="text-[11px] capitalize opacity-80">
                   {status}
                 </span>
+                {user.activity?.name && (
+                  <span
+                    className="text-[10px] opacity-70 truncate w-full mt-0.5"
+                    title={user.activity.details || user.activity.name}
+                  >
+                    {user.activity.type === "game" ? "Playing " : "In "}
+                    {user.activity.name}
+                  </span>
+                )}
               </div>
             </div>
           </li>

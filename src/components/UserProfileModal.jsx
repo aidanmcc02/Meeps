@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 
 const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
-function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPosition = "center" }) {
+function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPosition = "center", activity }) {
   const [profile, setProfile] = useState(initialProfile || null);
   const [loading, setLoading] = useState(false);
 
@@ -103,6 +103,16 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
                 <h3 className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
                   {displayName}
                 </h3>
+
+                {activity?.name && (
+                  <p
+                    className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate"
+                    title={activity.details || activity.name}
+                  >
+                    {activity.type === "game" ? "Playing " : "In "}
+                    {activity.name}
+                  </p>
+                )}
 
                 {profile.bio && (
                   <div className="mt-4">

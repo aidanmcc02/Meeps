@@ -4,7 +4,7 @@ import GifPickerModal from "./GifPickerModal";
 
 const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
-function UserProfile({ profile, onSave }) {
+function UserProfile({ profile, onSave, activity }) {
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -122,10 +122,19 @@ function UserProfile({ profile, onSave }) {
                 </div>
                 <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900 bg-emerald-500 shadow-sm z-10" aria-hidden />
               </div>
-              <div className="flex flex-col leading-tight">
+              <div className="flex flex-col leading-tight min-w-0">
                 <span className="text-xs font-semibold text-gray-100 dark:text-white">
                   {profile.displayName || "Meeps User"}
                 </span>
+                {activity?.name && (
+                  <span
+                    className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5"
+                    title={activity.details || activity.name}
+                  >
+                    {activity.type === "game" ? "Playing " : "In "}
+                    {activity.name}
+                  </span>
+                )}
               </div>
             </div>
             <button

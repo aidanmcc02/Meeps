@@ -64,6 +64,38 @@ fn set_launch_at_startup(_enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns the title of the currently focused window. Uses only GetForegroundWindow + GetWindowTextW
+/// (no process memory access, no injection) so it is safe with respect to game anticheats.
+#[tauri::command]
+#[cfg(target_os = "windows")]
+fn get_foreground_window_title() -> Result<Option<String>, String> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW};
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.0.is_null() {
+            return Ok(None);
+        }
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, &mut buf);
+        if len <= 0 {
+            return Ok(None);
+        }
+        let s = String::from_utf16_lossy(&buf[..len as usize]);
+        let s = s.trim();
+        if s.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(s.to_string()))
+    }
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+fn get_foreground_window_title() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
 fn main() {
     let show_item = CustomMenuItem::new("show".to_string(), "Show Meeps");
     let quit_item = CustomMenuItem::new("quit".to_string(), "Quit");
@@ -103,6 +135,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
         is_launch_at_startup_enabled,
         set_launch_at_startup,
+        get_foreground_window_title,
     ])
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {

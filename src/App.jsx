@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { appWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/tauri";
 import TextChannels from "./components/TextChannels";
 import VoiceChannels from "./components/VoiceChannels";
 import UserList from "./components/UserList";
@@ -68,6 +69,27 @@ const TEXT_CHANNELS = [
   { id: "matches", name: "Matchs" }
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
+
+// Known window title substrings that indicate a game (for activity display). Only used for labeling, no anticheat impact.
+const ACTIVITY_KNOWN_GAMES = [
+  "Valorant", "League of Legends", "Counter-Strike", "Overwatch", "Minecraft", "Fortnite",
+  "Roblox", "Among Us", "Rocket League", "Apex Legends", "Call of Duty", "Dota 2", "Genshin",
+  "Elden Ring", "Steam", "RuneScape", "World of Warcraft", "Hearthstone", "Diablo", "Path of Exile",
+  "Destiny 2", "FIFA", "Rocket League", "Fall Guys", "Sea of Thieves", "Halo", "Battlefield"
+];
+
+function buildActivityFromWindowTitle(title) {
+  if (!title || typeof title !== "string") return null;
+  const t = title.trim();
+  if (!t || t === "Meeps") return null;
+  const lower = t.toLowerCase();
+  const isGame = ACTIVITY_KNOWN_GAMES.some((g) => lower.includes(g.toLowerCase()));
+  return {
+    type: isGame ? "game" : "app",
+    name: t.length > 60 ? t.slice(0, 57) + "…" : t,
+    details: t.length > 60 ? t : undefined
+  };
+}
 
 const DEFAULT_HTTP =
   import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
@@ -996,6 +1018,34 @@ function App() {
       window.removeEventListener("focus", handleActivity);
       window.removeEventListener("visibilitychange", handleActivity);
     };
+  }, [isAuthenticated, currentUser]);
+
+  // Activity tracker (Tauri only): poll foreground window title and send as presence activity. Uses only GetWindowText, no anticheat impact.
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || !window.__TAURI__) return;
+    const ACTIVITY_POLL_MS = 15 * 1000;
+    let lastTitleRef = "";
+    const poll = async () => {
+      try {
+        const title = await invoke("get_foreground_window_title");
+        const t = title != null ? String(title).trim() : "";
+        if (t === lastTitleRef) return;
+        lastTitleRef = t;
+        const socket = socketRef.current;
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        const activity = t === "" || t === "Meeps" ? null : buildActivityFromWindowTitle(t);
+        socket.send(JSON.stringify({
+          type: "presence:activity",
+          userId: currentUser.id || CURRENT_USER_ID,
+          ...(activity != null ? { activity } : { activity: null })
+        }));
+      } catch (_) {
+        // ignore (e.g. not in Tauri or API unavailable)
+      }
+    };
+    poll();
+    const interval = setInterval(poll, ACTIVITY_POLL_MS);
+    return () => clearInterval(interval);
   }, [isAuthenticated, currentUser]);
 
   useEffect(() => {
@@ -2502,7 +2552,11 @@ function App() {
 
           {!joinedVoiceChannelId && (
             <div className="mt-auto flex flex-shrink-0 flex-col border-t border-gray-200 dark:border-gray-700 pt-3">
-              <UserProfile profile={currentUserProfile} onSave={handleSaveProfile} />
+              <UserProfile
+                profile={currentUserProfile}
+                onSave={handleSaveProfile}
+                activity={presenceUsers?.find((u) => String(u.id) === String(currentUser?.id ?? CURRENT_USER_ID))?.activity}
+              />
             </div>
           )}
           {isDesktop && (
@@ -2843,6 +2897,7 @@ function App() {
             : null
         }
         anchorPosition={profileModalAnchor}
+        activity={presenceUsers?.find((u) => String(u.id) === String(selectedUserForProfile?.id))?.activity}
       />
     </div>
   );

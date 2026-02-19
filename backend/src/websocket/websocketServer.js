@@ -490,7 +490,8 @@ function handlePresenceHello(socket, payload) {
   const snapshot = Array.from(presenceByUserId.values()).map((p) => ({
     id: p.id,
     displayName: p.displayName,
-    status: p.status
+    status: p.status,
+    ...(p.activity != null ? { activity: p.activity } : {})
   }));
 
   socket.send(
@@ -504,8 +505,19 @@ function handlePresenceHello(socket, payload) {
   broadcastPresenceUpdate({
     id: entry.id,
     displayName: entry.displayName,
-    status: entry.status
+    status: entry.status,
+    ...(entry.activity != null ? { activity: entry.activity } : {})
   });
+}
+
+function normalizeActivity(activity) {
+  if (activity == null) return null;
+  if (typeof activity !== "object") return null;
+  const type = activity.type === "game" ? "game" : "app";
+  const name = typeof activity.name === "string" ? activity.name.trim() : "";
+  if (!name) return null;
+  const details = typeof activity.details === "string" ? activity.details.trim() : undefined;
+  return { type, name, ...(details ? { details } : {}) };
 }
 
 function handlePresenceActivity(socket, payload) {
@@ -513,6 +525,7 @@ function handlePresenceActivity(socket, payload) {
   if (!userId) return;
 
   const now = Date.now();
+  const activity = normalizeActivity(payload.activity);
   const existing = presenceByUserId.get(userId);
 
   if (!existing) {
@@ -520,28 +533,40 @@ function handlePresenceActivity(socket, payload) {
       id: userId,
       displayName: payload.displayName || "Meeps User",
       status: "online",
-      lastActivity: now
+      lastActivity: now,
+      ...(activity != null ? { activity } : {})
     };
     presenceByUserId.set(userId, entry);
     broadcastPresenceUpdate({
       id: entry.id,
       displayName: entry.displayName,
-      status: entry.status
+      status: entry.status,
+      ...(entry.activity != null ? { activity: entry.activity } : {})
     });
     return;
   }
 
   existing.lastActivity = now;
-  if (existing.status !== "online") {
+  const activityChanged = activity !== undefined;
+  if (activityChanged) {
+    existing.activity = activity || undefined;
+    if (activity === null) delete existing.activity;
+  }
+  const wasOfflineOrIdle = existing.status !== "online";
+  if (wasOfflineOrIdle) {
     existing.status = "online";
-    broadcastPresenceUpdate({
+  }
+  presenceByUserId.set(userId, existing);
+  if (activityChanged || wasOfflineOrIdle) {
+    const payload = {
       id: existing.id,
       displayName: existing.displayName,
       status: existing.status
-    });
+    };
+    if (existing.activity != null) payload.activity = existing.activity;
+    else if (activityChanged) payload.activity = null;
+    broadcastPresenceUpdate(payload);
   }
-
-  presenceByUserId.set(userId, existing);
 }
 
 function handleVoiceJoin(socket, payload) {

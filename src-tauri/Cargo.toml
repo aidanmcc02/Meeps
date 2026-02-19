@@ -16,6 +16,7 @@ tauri = { version = "1", features = [ "notification-all", "window-all", "system-
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 default = ["custom-protocol"]
