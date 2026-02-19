@@ -1,6 +1,6 @@
 const { WebSocketServer } = require("ws");
 const db = require("../config/db");
-const { createSignedFilePath } = require("./uploadController");
+const { createSignedFilePath } = require("../controllers/uploadController");
 const pushService = require("../services/pushService");
 
 const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
