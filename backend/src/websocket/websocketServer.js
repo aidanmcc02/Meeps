@@ -741,6 +741,7 @@ function broadcastMessagePayload(payload) {
   }
 }
 
+
 /**
  * Insert a message into a channel and broadcast to all clients (e.g. Valorant match updates).
  * @param {string} channel - Channel id (e.g. "matches")
@@ -792,4 +793,9 @@ async function postMessageToChannel(channel, senderId, senderName, content) {
   }
 }
 
-module.exports = { startWebSocketServer, broadcastProfileUpdate, broadcastMessagePayload, postMessageToChannel };
+module.exports = {
+  startWebSocketServer,
+  broadcastProfileUpdate,
+  broadcastMessagePayload,
+  postMessageToChannel
+};

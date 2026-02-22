@@ -15,7 +15,7 @@ import SettingsModal from "./components/SettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
 import UserProfileModal from "./components/UserProfileModal";
 import Board from "./components/Board";
-import Neon from "./components/Neon";
+import Games from "./components/Games";
 import SplashScreen from "./components/SplashScreen";
 import {
   initSoundElements,
@@ -95,6 +95,8 @@ const DEFAULT_HTTP =
   import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 const DEFAULT_WS =
   import.meta.env.VITE_BACKEND_WS_URL || "ws://localhost:4000/ws";
+const DEFAULT_DIANA_API =
+  import.meta.env.VITE_DIANA_API_URL || "http://localhost:3000";
 
 function App() {
   const [apiBase, setApiBase] = useState(DEFAULT_HTTP);
@@ -122,12 +124,13 @@ function App() {
 
   const [showSplash, setShowSplash] = useState(true);
   const [theme, setTheme] = useState("dark");
-  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board" | "neon"
+  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board" | "games"
   const [selectedChannelId, setSelectedChannelId] = useState("general");
   const [unreadChannelIds, setUnreadChannelIds] = useState(new Set());
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [socketStatus, setSocketStatus] = useState("disconnected");
+  const [dianaApiBase, setDianaApiBase] = useState(DEFAULT_DIANA_API);
   const [profiles, setProfiles] = useState({});
   const [presenceUsers, setPresenceUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -287,6 +290,9 @@ function App() {
         }
         if (data?.VITE_BACKEND_WS_URL) {
           setWsUrl(data.VITE_BACKEND_WS_URL);
+        }
+        if (data?.VITE_DIANA_API_URL) {
+          setDianaApiBase(data.VITE_DIANA_API_URL.replace(/\/$/, ""));
         }
       })
       .catch(() => {});
@@ -2238,14 +2244,14 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("neon")}
+              onClick={() => setActiveTab("games")}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === "neon"
+                activeTab === "games"
                   ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
                   : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
               }`}
             >
-              Neon
+              Games
             </button>
           </nav>
           <div className="flex items-center gap-1">
@@ -2434,7 +2440,7 @@ function App() {
                     next.delete(id);
                     return next;
                   });
-                  if (activeTab === "board" || activeTab === "neon") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "games") setActiveTab("chat");
                   setSidebarOpen(false);
                 }}
               />
@@ -2451,7 +2457,7 @@ function App() {
                 profiles={profiles}
                 speakingUserIds={speakingUserIds}
                 onOpenChannelView={(roomId) => {
-                  if (activeTab === "board" || activeTab === "neon") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "games") setActiveTab("chat");
                   setVoiceChannelModalRoomId(roomId);
                   setSidebarOpen(false);
                 }}
@@ -2590,8 +2596,13 @@ function App() {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden w-full min-w-0">
           {activeTab === "board" ? (
             <Board currentUser={currentUser} apiBase={apiBase} />
-          ) : activeTab === "neon" ? (
-            <Neon apiBase={apiBase} token={localStorage.getItem("meeps_token")} currentUser={currentUser} />
+          ) : activeTab === "games" ? (
+            <Games
+              dianaApiBase={dianaApiBase}
+              apiBase={apiBase}
+              token={localStorage.getItem("meeps_token")}
+              currentUser={currentUser}
+            />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className={`flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-0.5 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0 -mt-1 sm:mt-0 ${
