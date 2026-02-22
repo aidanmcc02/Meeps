@@ -96,7 +96,7 @@ const DEFAULT_HTTP =
 const DEFAULT_WS =
   import.meta.env.VITE_BACKEND_WS_URL || "ws://localhost:4000/ws";
 const DEFAULT_DIANA_API =
-  import.meta.env.VITE_DIANA_API_URL || "http://localhost:3000";
+  import.meta.env.VITE_DIANA_API_URL || "https://diana-bot-production.up.railway.app";
 
 function App() {
   const [apiBase, setApiBase] = useState(DEFAULT_HTTP);

@@ -9,12 +9,14 @@ const path = require("path");
 const publicDir = path.join(__dirname, "..", "public");
 const httpUrl = process.env.VITE_BACKEND_HTTP_URL || "";
 const wsUrl = process.env.VITE_BACKEND_WS_URL || "";
+const dianaUrl = process.env.VITE_DIANA_API_URL || "";
 
 fs.mkdirSync(publicDir, { recursive: true });
 
 const config = {};
 if (httpUrl) config.VITE_BACKEND_HTTP_URL = httpUrl.replace(/\/$/, "");
 if (wsUrl) config.VITE_BACKEND_WS_URL = wsUrl;
+if (dianaUrl) config.VITE_DIANA_API_URL = dianaUrl.replace(/\/$/, "");
 
 fs.writeFileSync(
   path.join(publicDir, "config.json"),
