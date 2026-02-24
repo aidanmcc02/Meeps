@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { appWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/tauri";
 import TextChannels from "./components/TextChannels";
@@ -128,6 +128,8 @@ function App() {
   const [selectedChannelId, setSelectedChannelId] = useState("general");
   const [unreadChannelIds, setUnreadChannelIds] = useState(new Set());
   const [messages, setMessages] = useState([]);
+  const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [socketStatus, setSocketStatus] = useState("disconnected");
   const [dianaApiBase, setDianaApiBase] = useState(DEFAULT_DIANA_API);
@@ -1060,6 +1062,8 @@ function App() {
     return () => clearInterval(interval);
   }, [isAuthenticated, currentUser]);
 
+  const MESSAGES_PAGE_SIZE = 100; // per text channel
+
   useEffect(() => {
     if (!isAuthenticated) return;
     
@@ -1074,6 +1078,7 @@ function App() {
         const data = await res.json();
         if (Array.isArray(data.messages)) {
           setMessages(data.messages);
+          setHasMoreOlderMessages(data.messages.length >= MESSAGES_PAGE_SIZE);
         }
       } catch {
         // ignore for skeleton
@@ -1082,6 +1087,41 @@ function App() {
 
     loadMessages();
   }, [selectedChannelId, isAuthenticated, apiBase]);
+
+  const loadOlderMessages = useCallback(
+    async (beforeId) => {
+      if (!isAuthenticated || loadingOlderMessages || !hasMoreOlderMessages) return;
+      setLoadingOlderMessages(true);
+      try {
+        const res = await fetch(
+          `${apiBase}/api/messages?channel=${encodeURIComponent(
+            selectedChannelId
+          )}&before=${encodeURIComponent(beforeId)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!Array.isArray(data.messages)) return;
+        setMessages((prev) => {
+          const other = prev.filter((m) => m.channel !== selectedChannelId);
+          const current = prev.filter((m) => m.channel === selectedChannelId);
+          const merged = [...data.messages, ...current];
+          return [...other, ...merged];
+        });
+        setHasMoreOlderMessages(data.messages.length >= MESSAGES_PAGE_SIZE);
+      } catch {
+        // ignore
+      } finally {
+        setLoadingOlderMessages(false);
+      }
+    },
+    [
+      isAuthenticated,
+      loadingOlderMessages,
+      hasMoreOlderMessages,
+      selectedChannelId,
+      apiBase
+    ]
+  );
 
   // Preload profiles for message senders so avatars show in channel
   useEffect(() => {
@@ -2621,6 +2661,7 @@ function App() {
 
               <MessageList
                 messages={channelMessages}
+                channelId={selectedChannelId}
                 currentUserName={currentUser.displayName || DEFAULT_USER_NAME}
                 currentUserId={currentUser?.id}
                 profiles={profiles}
@@ -2628,6 +2669,9 @@ function App() {
                 mentionSlugToName={mentionSlugToName}
                 onEditMessage={handleEditMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onLoadOlder={loadOlderMessages}
+                hasMoreOlder={hasMoreOlderMessages}
+                loadingOlder={loadingOlderMessages}
                 apiBase={apiBase}
               />
 
