@@ -3,23 +3,67 @@ const { createSignedFilePath } = require("./uploadController");
 
 const UPLOAD_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
-// GET /api/messages?channel=general
+const PAGE_SIZE = 100; // per text channel
+
+// GET /api/messages?channel=general&before=123 (optional: load messages older than id 123)
 exports.listMessages = async (req, res, next) => {
   const channel = req.query.channel || "general";
+  const beforeId = req.query.before != null ? parseInt(req.query.before, 10) : null;
+  const isOlderPage = Number.isInteger(beforeId) && beforeId > 0;
 
   try {
     let result;
     try {
-      result = await db.query(
-        "SELECT id, channel, sender_name, sender_id, content, created_at FROM messages WHERE channel = $1 ORDER BY created_at ASC LIMIT 200",
-        [channel]
-      );
+      if (isOlderPage) {
+        result = await db.query(
+          `SELECT id, channel, sender_name, sender_id, content, created_at
+           FROM messages
+           WHERE channel = $1 AND id < $2
+           ORDER BY id DESC
+           LIMIT $3`,
+          [channel, beforeId, PAGE_SIZE]
+        );
+        result.rows.reverse();
+      } else {
+        result = await db.query(
+          `SELECT id, channel, sender_name, sender_id, content, created_at
+           FROM (
+             SELECT id, channel, sender_name, sender_id, content, created_at
+             FROM messages
+             WHERE channel = $1
+             ORDER BY created_at DESC
+             LIMIT $2
+           ) sub
+           ORDER BY created_at ASC`,
+          [channel, PAGE_SIZE]
+        );
+      }
     } catch (selectErr) {
       if (selectErr.code === "42703" || selectErr.message?.includes("sender_id")) {
-        result = await db.query(
-          "SELECT id, channel, sender_name, content, created_at FROM messages WHERE channel = $1 ORDER BY created_at ASC LIMIT 200",
-          [channel]
-        );
+        if (isOlderPage) {
+          result = await db.query(
+            `SELECT id, channel, sender_name, content, created_at
+             FROM messages
+             WHERE channel = $1 AND id < $2
+             ORDER BY id DESC
+             LIMIT $3`,
+            [channel, beforeId, PAGE_SIZE]
+          );
+          result.rows.reverse();
+        } else {
+          result = await db.query(
+            `SELECT id, channel, sender_name, content, created_at
+             FROM (
+               SELECT id, channel, sender_name, content, created_at
+               FROM messages
+               WHERE channel = $1
+               ORDER BY created_at DESC
+               LIMIT $2
+             ) sub
+             ORDER BY created_at ASC`,
+            [channel, PAGE_SIZE]
+          );
+        }
       } else {
         throw selectErr;
       }

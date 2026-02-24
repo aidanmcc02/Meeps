@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 const SCROLL_THRESHOLD = 100;
+const SCROLL_TOP_LOAD_OLDER = 150;
 
 function formatMessageTime(createdAt) {
   if (!createdAt) return null;
@@ -147,6 +148,7 @@ function MentionLink({ href, children, mentionSlugToName }) {
 
 function MessageList({
   messages,
+  channelId,
   currentUserName,
   currentUserId,
   profiles = {},
@@ -154,11 +156,17 @@ function MessageList({
   mentionSlugToName = {},
   onEditMessage,
   onDeleteMessage,
+  onLoadOlder,
+  hasMoreOlder = false,
+  loadingOlder = false,
   apiBase = ""
 }) {
   const containerRef = useRef(null);
   const prevCountRef = useRef(0);
   const lastMessageKeyRef = useRef(null);
+  const prevChannelIdRef = useRef(channelId);
+  const savedScrollHeightRef = useRef(null);
+  const loadOlderRequestedRef = useRef(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -185,7 +193,28 @@ function MessageList({
 
   const handleScroll = () => {
     setShowJumpToBottom(!checkAtBottom(containerRef.current));
+    const el = containerRef.current;
+    if (
+      onLoadOlder &&
+      hasMoreOlder &&
+      !loadingOlder &&
+      !loadOlderRequestedRef.current &&
+      messages.length > 0 &&
+      el &&
+      el.scrollTop <= SCROLL_TOP_LOAD_OLDER
+    ) {
+      const firstId = messages[0].id;
+      if (firstId != null) {
+        loadOlderRequestedRef.current = true;
+        savedScrollHeightRef.current = el.scrollHeight;
+        onLoadOlder(firstId);
+      }
+    }
   };
+
+  useEffect(() => {
+    if (!loadingOlder) loadOlderRequestedRef.current = false;
+  }, [loadingOlder]);
 
   const jumpToBottom = () => {
     const el = containerRef.current;
@@ -194,6 +223,24 @@ function MessageList({
       setShowJumpToBottom(false);
     }
   };
+
+  // When user switches back to this channel, scroll to bottom so new messages (received while away) are visible
+  useEffect(() => {
+    if (channelId == null || channelId === prevChannelIdRef.current) return;
+    prevChannelIdRef.current = channelId;
+    const el = containerRef.current;
+    if (!el) return;
+    const scrollToBottom = () => {
+      if (containerRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        setShowJumpToBottom(false);
+      }
+    };
+    scrollToBottom();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToBottom);
+    });
+  }, [channelId]);
 
   // Only scroll to bottom when new messages are added or channel changed, not on every parent re-render
   // (e.g. when profiles load, channelMessages gets a new array reference and would otherwise scroll)
@@ -221,6 +268,19 @@ function MessageList({
     }
   }, [messages]);
 
+  // Restore scroll position after prepending older messages
+  useEffect(() => {
+    const el = containerRef.current;
+    const saved = savedScrollHeightRef.current;
+    if (el && saved != null) {
+      const delta = el.scrollHeight - saved;
+      if (delta > 0) {
+        el.scrollTop += delta;
+      }
+      savedScrollHeightRef.current = null;
+    }
+  }, [messages]);
+
   useEffect(() => {
     if (!lightbox) return;
     const handleKey = (e) => {
@@ -240,6 +300,11 @@ function MessageList({
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-sm space-y-3"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
+      {loadingOlder && (
+        <div className="flex justify-center py-2 text-gray-500 dark:text-gray-400 text-xs">
+          Loading older messages…
+        </div>
+      )}
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 dark:text-gray-500">
           <p className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">
