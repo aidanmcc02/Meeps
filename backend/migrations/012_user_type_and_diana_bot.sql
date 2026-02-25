@@ -1,6 +1,8 @@
 -- Add user_type: 'user' (default) or 'bot'
 ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type VARCHAR(50) NOT NULL DEFAULT 'user';
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
 -- Insert Diana bot user (used when posting match updates to Matches channel).
 -- password_hash is a bcrypt hash of a placeholder; bots do not log in.
 INSERT INTO users (email, password_hash, display_name, user_type, created_at, updated_at)
