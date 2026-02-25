@@ -59,7 +59,8 @@ function removeSocketFromVoiceRoom(socket, roomId, userId) {
 
 const IDLE_AFTER_MS = 5 * 60 * 1000; // 5 minutes
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds
-const WS_PING_INTERVAL_MS = 30 * 1000; // 30 seconds – keep connections alive so proxies don't drop after ~10–15 min
+const WS_PING_INTERVAL_MS = 25 * 1000; // 25 seconds – keep connections alive so proxies don't drop after ~10–15 min
+const MAX_MISSED_PINGS = 2; // Allow 2 missed pongs before terminating (~50s grace for network blips)
 
 let heartbeatInterval = null;
 
@@ -73,8 +74,13 @@ function startWebSocketServer(httpServer) {
       if (!wssInstance) return;
       wssInstance.clients.forEach((socket) => {
         if (socket.isAlive === false) {
-          socket.terminate();
-          return;
+          socket.missedPings = (socket.missedPings || 0) + 1;
+          if (socket.missedPings >= MAX_MISSED_PINGS) {
+            socket.terminate();
+            return;
+          }
+        } else {
+          socket.missedPings = 0;
         }
         socket.isAlive = false;
         socket.ping();
@@ -102,8 +108,10 @@ function startWebSocketServer(httpServer) {
 
   wss.on("connection", (socket) => {
     socket.isAlive = true;
+    socket.missedPings = 0;
     socket.on("pong", () => {
       socket.isAlive = true;
+      socket.missedPings = 0;
     });
 
     socket.on("message", async (data) => {
