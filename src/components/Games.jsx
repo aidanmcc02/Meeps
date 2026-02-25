@@ -161,67 +161,11 @@ function DianaMatchCard({ match, showDetails }) {
   );
 }
 
-function NotificationCard({ payload, compact }) {
-  if (!payload) return null;
-  const fields = Array.isArray(payload.fields) ? payload.fields : [];
-  const accent = typeof payload.colorHex === "number"
-    ? `#${payload.colorHex.toString(16).padStart(6, "0")}`
-    : null;
-  return (
-    <div
-      className={`rounded-2xl border bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/80 ${compact ? "p-3" : ""}`}
-      style={accent ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}22` } : undefined}
-    >
-      <div className="flex items-start gap-3">
-        {payload.thumbnailUrl ? (
-          <img
-            src={payload.thumbnailUrl}
-            alt={payload.title || "Diana update"}
-            className="h-10 w-10 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-gray-700"
-          />
-        ) : null}
-        <div className="min-w-0 flex-1 space-y-1">
-          {payload.title && (
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              {payload.title.replace(/\*\*/g, "")}
-            </h3>
-          )}
-          {payload.description && (
-            <p className="text-xs text-gray-600 dark:text-gray-300">
-              {payload.description.replace(/\*\*/g, "")}
-            </p>
-          )}
-        </div>
-      </div>
-      {fields.length > 0 && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {fields.map((field, index) => (
-            <div
-              key={`${field.name || "field"}-${index}`}
-              className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-gray-700 dark:bg-gray-800/70"
-            >
-              <div className="font-semibold text-gray-500 dark:text-gray-400">
-                {String(field.name).replace(/\*\*/g, "")}
-              </div>
-              <div className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">
-                {String(field.value).replace(/\*\*/g, "")}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
   const LIMIT = 20;
-  const LIVE_LIMIT = 5;
   const [activeView, setActiveView] = useState("diana");
-  const [dianaTab, setDianaTab] = useState("history");
   const [page, setPage] = useState(0);
   const [matches, setMatches] = useState([]);
-  const [liveMatches, setLiveMatches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -246,14 +190,6 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
       return bTime - aTime;
     });
   }, [matches]);
-
-  const sortedLiveMatches = useMemo(() => {
-    return [...liveMatches].sort((a, b) => {
-      const aTime = new Date(a.gameCreation || 0).getTime();
-      const bTime = new Date(b.gameCreation || 0).getTime();
-      return bTime - aTime;
-    });
-  }, [liveMatches]);
 
   const playerOptions = useMemo(() => {
     return ["all", ...filterOptions.players];
@@ -324,14 +260,14 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
   }, [dianaApiBase]);
 
   useEffect(() => {
-    if (activeView !== "diana" || dianaTab !== "history") return;
+    if (activeView !== "diana") return;
     loadPage(0, filters);
-  }, [dianaApiBase, filters, activeView, dianaTab]);
+  }, [dianaApiBase, filters, activeView]);
 
   useEffect(() => {
     if (!dianaApiBase) return;
     const poll = () => {
-      if (activeView !== "diana" || dianaTab !== "history") return;
+      if (activeView !== "diana") return;
       if (page !== 0) return;
       if (filters.player !== "all" || filters.matchType !== "all" || filters.result !== "all") return;
       fetch(`${dianaApiBase.replace(/\/$/, "")}/match/recent?limit=${LIMIT}&offset=0`, {
@@ -350,36 +286,7 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     };
     const interval = setInterval(poll, 20000);
     return () => clearInterval(interval);
-  }, [dianaApiBase, page, sortedMatches, filters, activeView, dianaTab]);
-
-  useEffect(() => {
-    if (!dianaApiBase) return;
-    if (activeView !== "diana" || dianaTab !== "live") return;
-    let cancelled = false;
-    const fetchLatest = () => {
-      fetch(`${dianaApiBase.replace(/\/$/, "")}/match/recent?limit=${LIVE_LIMIT}&offset=0`, {
-        headers: { "Cache-Control": "no-cache" }
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (cancelled) return;
-          if (!data?.matches || !Array.isArray(data.matches)) return;
-          setLiveMatches((prev) => {
-            const existingIds = new Set(prev.map((m) => m.matchId));
-            const fresh = data.matches.filter((m) => !existingIds.has(m.matchId));
-            if (fresh.length === 0) return prev;
-            return [...fresh, ...prev].slice(0, LIVE_LIMIT);
-          });
-        })
-        .catch(() => {});
-    };
-    fetchLatest();
-    const interval = setInterval(fetchLatest, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [dianaApiBase, activeView, dianaTab, LIVE_LIMIT]);
+  }, [dianaApiBase, page, sortedMatches, filters, activeView]);
 
   const showNewMatches = () => {
     if (!newMatches.length) return;
@@ -431,7 +338,7 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M6 12h12M10 19h4" />
                 </svg>
               </button>
-              {filtersOpen && dianaTab === "history" && (
+              {filtersOpen && (
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
                   <div className="space-y-3">
                     <div>
@@ -494,7 +401,7 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
         )}
       </div>
 
-      {activeView === "diana" && dianaTab === "history" && newMatches.length > 0 && page === 0 && filters.player === "all" && filters.matchType === "all" && filters.result === "all" && (
+      {activeView === "diana" && newMatches.length > 0 && page === 0 && filters.player === "all" && filters.matchType === "all" && filters.result === "all" && (
         <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
           <span>{newMatches.length} new match{newMatches.length === 1 ? "" : "es"} completed.</span>
           <button
@@ -507,7 +414,7 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
         </div>
       )}
 
-      {activeView === "diana" && dianaTab === "history" && error && (
+      {activeView === "diana" && error && (
         <div className="flex-shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
           {error}
         </div>
@@ -519,57 +426,29 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
         </div>
       ) : (
         <>
-          <div className="flex flex-shrink-0 items-center gap-2 border-b border-gray-200 bg-white/70 px-4 py-2 text-sm font-medium text-gray-600 dark:border-gray-800 dark:bg-gray-900/70 dark:text-gray-300">
-            {["history", "live"].map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setDianaTab(tab)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  dianaTab === tab
-                    ? "bg-indigo-600 text-white"
-                    : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                }`}
-              >
-                {tab === "history" ? "Match History" : "Live Feed"}
-              </button>
-            ))}
-          </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            {dianaTab === "history" && loading ? (
+            {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
               </div>
-            ) : (dianaTab === "history" ? sortedMatches : sortedLiveMatches).length === 0 ? (
+            ) : sortedMatches.length === 0 ? (
               <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
-                {dianaTab === "live" ? "No live updates yet." : "No matches found yet."}
+                No matches found yet.
               </div>
             ) : (
               <div className="space-y-4">
-                {dianaTab === "history" ? (
-                  sortedMatches.map((match) => (
-                    <DianaMatchCard
-                      key={match.id || match.matchId}
-                      match={match}
-                      showDetails={false}
-                    />
-                  ))
-                ) : (
-                  sortedLiveMatches.map((match) => (
-                    <div key={match.id || match.matchId} className="space-y-3">
-                      <NotificationCard payload={match.notificationPayload} />
-                      {match.rankNotificationPayload ? (
-                        <NotificationCard payload={match.rankNotificationPayload} compact />
-                      ) : null}
-                    </div>
-                  ))
-                )}
+                {sortedMatches.map((match) => (
+                  <DianaMatchCard
+                    key={match.id || match.matchId}
+                    match={match}
+                    showDetails={false}
+                  />
+                ))}
               </div>
             )}
           </div>
 
-          {dianaTab === "history" && (
-            <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-300">
+          <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-300">
               {page > 0 ? (
                 <button
                   type="button"
@@ -596,7 +475,6 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
                 <span />
               )}
             </div>
-          )}
         </>
       )}
     </div>
