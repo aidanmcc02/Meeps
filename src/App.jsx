@@ -66,7 +66,7 @@ const TEXT_CHANNELS = [
   { id: "general", name: "general" },
   { id: "dev", name: "dev-chat" },
   { id: "Builds", name: "Builds" },
-  { id: "matches", name: "Matchs" }
+  { id: "matches", name: "Matches" }
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 
