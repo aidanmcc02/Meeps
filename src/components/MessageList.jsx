@@ -369,6 +369,11 @@ function MessageList({
               <div className="flex items-baseline gap-2 flex-1 min-w-0">
                 <span className="text-xs font-semibold shrink-0">
                   {msg.sender || "Unknown"}
+                  {profile?.userType === "bot" && (
+                    <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300">
+                      Bot
+                    </span>
+                  )}
                   {isSelf && (
                     <span className="ml-1 text-[10px] uppercase tracking-wide text-indigo-400">
                       you
