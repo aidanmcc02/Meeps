@@ -4,20 +4,31 @@ function isGifUrl(url) {
   return typeof url === "string" && url.toLowerCase().includes(".gif");
 }
 
+function hasLiveVideoTrack(stream) {
+  if (!stream || typeof stream.getVideoTracks !== "function") return false;
+  return stream.getVideoTracks().some((t) => t.readyState !== "ended");
+}
+
 /** Renders a single remote video stream; only updates srcObject when the track changes to avoid glitching. */
 function RemoteVideoTile({ stream, displayName, size = "thumb", isSelected, onClick }) {
   const videoRef = useRef(null);
   const videoTracks = stream && typeof stream.getVideoTracks === "function" ? stream.getVideoTracks() : [];
-  const liveTrack = videoTracks.find((t) => t.readyState !== "ended") ?? videoTracks[0];
+  const liveTrack = videoTracks.find((t) => t.readyState !== "ended") ?? null;
   const trackId = liveTrack?.id ?? null;
 
   useEffect(() => {
-    if (!trackId || !stream) return;
-    const tracks = stream.getVideoTracks();
-    const live = tracks.find((t) => t.readyState !== "ended") ?? tracks[0];
-    if (!live) return;
-    const ms = new MediaStream([live]);
     const el = videoRef.current;
+    if (!stream) {
+      if (el) el.srcObject = null;
+      return;
+    }
+    const tracks = stream.getVideoTracks();
+    const live = tracks.find((t) => t.readyState !== "ended") ?? null;
+    if (!live) {
+      if (el) el.srcObject = null;
+      return;
+    }
+    const ms = new MediaStream([live]);
     if (el) el.srcObject = ms;
     return () => {
       if (el) el.srcObject = null;
@@ -52,14 +63,20 @@ function RemoteVideoTile({ stream, displayName, size = "thumb", isSelected, onCl
 /** Local video (camera or screen); sets srcObject once when stream changes. */
 function LocalVideoTile({ stream, label, size = "thumb", isSelected, onClick }) {
   const videoRef = useRef(null);
+  const hasLive = hasLiveVideoTrack(stream);
   useEffect(() => {
     const el = videoRef.current;
-    if (el && stream) el.srcObject = stream;
+    if (!el) return;
+    if (stream && hasLiveVideoTrack(stream)) {
+      el.srcObject = stream;
+    } else {
+      el.srcObject = null;
+    }
     return () => {
       if (el) el.srcObject = null;
     };
-  }, [stream]);
-  if (!stream) return null;
+  }, [stream, hasLive]);
+  if (!stream || !hasLive) return null;
   const isLarge = size === "large";
   const wrapperClass = `overflow-hidden rounded-2xl bg-black/60 ring-1 transition-all ${
     isSelected ? "ring-2 ring-emerald-400" : "ring-white/10"
@@ -286,10 +303,10 @@ function VoiceChannelModal({
         {/* Screen shares + camera - when in call: stage (large) + thumbnails */}
         {isJoined && (() => {
           const videoEntries = [];
-          if (localScreenStream) videoEntries.push({ key: "local-screen", type: "local", stream: localScreenStream, label: "Your screen" });
-          if (localCameraStream) videoEntries.push({ key: "local-camera", type: "local", stream: localCameraStream, label: "Your camera" });
+          if (localScreenStream && hasLiveVideoTrack(localScreenStream)) videoEntries.push({ key: "local-screen", type: "local", stream: localScreenStream, label: "Your screen" });
+          if (localCameraStream && hasLiveVideoTrack(localCameraStream)) videoEntries.push({ key: "local-camera", type: "local", stream: localCameraStream, label: "Your camera" });
           Object.entries(remoteStreams).forEach(([userId, stream]) => {
-            if (!stream || typeof stream.getVideoTracks !== "function" || !stream.getVideoTracks().length) return;
+            if (!hasLiveVideoTrack(stream)) return;
             const participant = participants.find((p) => String(p.id) === String(userId));
             const displayName = participant?.displayName ?? participant?.name ?? `User ${userId}`;
             videoEntries.push({ key: `remote-${userId}`, type: "remote", stream, displayName });

@@ -157,6 +157,7 @@ function App() {
   });
   const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
   const resizeStateRef = useRef({ active: null, startX: 0, startWidth: 0, lastSidebarPx: SIDEBAR_DEFAULT_PX, lastUsersPx: USERS_PANEL_DEFAULT_PX });
+  const resizeRafRef = useRef(null);
 
   const [showSplash, setShowSplash] = useState(true);
   const [theme, setTheme] = useState("dark");
@@ -354,17 +355,25 @@ function App() {
       const delta = active === "sidebar" ? e.clientX - startX : startX - e.clientX;
       const next = Math.round(Math.max(0, startWidth + delta));
       if (active === "sidebar") {
-        const clamped = Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, next));
-        r.lastSidebarPx = clamped;
-        setSidebarWidthPx(clamped);
+        r.lastSidebarPx = Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, next));
       } else {
-        const clamped = Math.min(USERS_PANEL_MAX_PX, Math.max(USERS_PANEL_MIN_PX, next));
-        r.lastUsersPx = clamped;
-        setUsersPanelWidthPx(clamped);
+        r.lastUsersPx = Math.min(USERS_PANEL_MAX_PX, Math.max(USERS_PANEL_MIN_PX, next));
+      }
+      if (resizeRafRef.current == null) {
+        resizeRafRef.current = requestAnimationFrame(() => {
+          resizeRafRef.current = null;
+          const rr = resizeStateRef.current;
+          setSidebarWidthPx(rr.lastSidebarPx);
+          setUsersPanelWidthPx(rr.lastUsersPx);
+        });
       }
     };
     const onUp = () => {
       const r = resizeStateRef.current;
+      if (resizeRafRef.current != null) {
+        cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = null;
+      }
       if (r.active === "sidebar") {
         try {
           localStorage.setItem(SIDEBAR_WIDTH_KEY, String(r.lastSidebarPx));
@@ -383,6 +392,10 @@ function App() {
     return () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      if (resizeRafRef.current != null) {
+        cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = null;
+      }
     };
   }, []);
 
@@ -1730,6 +1743,10 @@ function App() {
           }
         });
         peerStream.addTrack(track);
+        track.onended = () => {
+          voiceDebug.log("Remote track ended, flushing streams for UI update", { peerUserId, kind: track.kind });
+          setRemoteStreams((prev) => ({ ...prev, ...remoteStreamsRef.current }));
+        };
         voiceDebug.log("Added track to peer stream", {
           peerUserId,
           after: {
@@ -2480,7 +2497,7 @@ function App() {
         }}
       >
       <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0" data-tauri-drag-region>
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
@@ -2495,6 +2512,8 @@ function App() {
             <span className="text-base font-semibold truncate">Meeps</span>
           </div>
         </div>
+
+        <div className="flex-1 min-w-0 min-h-[24px] self-stretch" data-tauri-drag-region aria-hidden="true" />
 
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0" data-tauri-drag-region="false">
           <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
@@ -2983,29 +3002,22 @@ function App() {
               autoPlay
               playsInline
               ref={(el) => {
-                if (el && stream && typeof stream.getTracks === "function") {
+                if (!el || !stream || typeof stream.getTracks !== "function") return;
+                const targetVolume = isDeafened ? 0 : voiceSettings.volume;
+                if (el.srcObject !== stream) {
                   voiceDebug.log("Setting up audio element", {
                     userId,
                     hasStream: !!stream,
                     audioTracks: stream.getAudioTracks().length,
-                    videoTracks: stream.getVideoTracks().length,
-                    audioTrackIds: stream.getAudioTracks().map((t) => t.id),
-                    videoTrackIds: stream.getVideoTracks().map((t) => t.id)
+                    videoTracks: stream.getVideoTracks().length
                   });
                   el.srcObject = stream;
-                  el.volume = isDeafened ? 0 : voiceSettings.volume;
-                  voiceDebug.log("Audio element configured", {
-                    userId,
-                    volume: el.volume,
-                    paused: el.paused,
-                    deafened: isDeafened
-                  });
-                  if (el.paused) {
-                    voiceDebug.log("Audio element paused, attempting to play", { userId });
-                    tryPlayRemoteAudio(el);
-                  } else {
-                    voiceDebug.log("Audio element already playing", { userId });
-                  }
+                  voiceDebug.log("Audio element configured", { userId, volume: targetVolume, deafened: isDeafened });
+                }
+                if (el.volume !== targetVolume) el.volume = targetVolume;
+                if (el.paused) {
+                  voiceDebug.log("Audio element paused, attempting to play", { userId });
+                  tryPlayRemoteAudio(el);
                 }
               }}
               onCanPlay={(e) => tryPlayRemoteAudio(e.currentTarget)}
