@@ -84,8 +84,10 @@ async function sendMessagePushToUsers(userIds, payload) {
 
   for (const userId of userIds) {
     try {
+      // Send to only one subscription per user to avoid duplicate notifications on the same
+      // device (e.g. iPhone with both Safari and PWA subscriptions).
       const result = await db.query(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1",
         [userId]
       );
       for (const row of result.rows) {

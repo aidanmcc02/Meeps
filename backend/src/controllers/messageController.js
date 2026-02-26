@@ -16,7 +16,7 @@ exports.listMessages = async (req, res, next) => {
     try {
       if (isOlderPage) {
         result = await db.query(
-          `SELECT id, channel, sender_name, sender_id, content, embed, created_at
+          `SELECT id, channel, sender_name, sender_id, content, embed, created_at, reply_to_id
            FROM messages
            WHERE channel = $1 AND id < $2
            ORDER BY id DESC
@@ -26,9 +26,9 @@ exports.listMessages = async (req, res, next) => {
         result.rows.reverse();
       } else {
         result = await db.query(
-          `SELECT id, channel, sender_name, sender_id, content, embed, created_at
+          `SELECT id, channel, sender_name, sender_id, content, embed, created_at, reply_to_id
            FROM (
-             SELECT id, channel, sender_name, sender_id, content, embed, created_at
+             SELECT id, channel, sender_name, sender_id, content, embed, created_at, reply_to_id
              FROM messages
              WHERE channel = $1
              ORDER BY created_at DESC
@@ -40,7 +40,9 @@ exports.listMessages = async (req, res, next) => {
       }
     } catch (selectErr) {
       const needsLegacy = selectErr.code === "42703" && (
-        selectErr.message?.includes("sender_id") || selectErr.message?.includes("embed")
+        selectErr.message?.includes("sender_id") ||
+        selectErr.message?.includes("embed") ||
+        selectErr.message?.includes("reply_to_id")
       );
       if (needsLegacy) {
         if (isOlderPage) {
@@ -80,7 +82,9 @@ exports.listMessages = async (req, res, next) => {
       content: row.content,
       embed: row.embed ?? undefined,
       createdAt: row.created_at,
-      attachments: []
+      replyToId: row.reply_to_id ?? undefined,
+      attachments: [],
+      reactions: {}
     }));
 
     try {
@@ -113,6 +117,50 @@ exports.listMessages = async (req, res, next) => {
       }
     } catch (_) {
       // message_attachments or uploads table may not exist
+    }
+
+    // Reply previews for messages that have reply_to_id
+    const replyToIds = [...new Set(messages.map((m) => m.replyToId).filter(Boolean))];
+    let replyPreviewById = {};
+    if (replyToIds.length > 0) {
+      try {
+        const replyResult = await db.query(
+          `SELECT id, sender_name, content FROM messages WHERE id = ANY($1::int[])`,
+          [replyToIds]
+        );
+        for (const r of replyResult.rows) {
+          const content = r.content || "";
+          replyPreviewById[r.id] = {
+            id: r.id,
+            sender: r.sender_name,
+            content: content.length > 100 ? content.slice(0, 97) + "..." : content
+          };
+        }
+      } catch (_) {}
+      messages.forEach((m) => {
+        if (m.replyToId && replyPreviewById[m.replyToId]) {
+          m.replyTo = replyPreviewById[m.replyToId];
+        }
+      });
+    }
+
+    // Reactions: message_id -> { emoji -> [userId, ...] }
+    try {
+      const reactResult = await db.query(
+        `SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id = ANY($1::int[])`,
+        [messages.map((m) => m.id)]
+      );
+      const byMessage = {};
+      for (const r of reactResult.rows) {
+        if (!byMessage[r.message_id]) byMessage[r.message_id] = {};
+        if (!byMessage[r.message_id][r.emoji]) byMessage[r.message_id][r.emoji] = [];
+        byMessage[r.message_id][r.emoji].push(r.user_id);
+      }
+      messages.forEach((m) => {
+        m.reactions = byMessage[m.id] || {};
+      });
+    } catch (_) {
+      // message_reactions may not exist yet
     }
 
     return res.json({ channel, messages });

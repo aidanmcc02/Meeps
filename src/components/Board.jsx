@@ -757,6 +757,8 @@ export default function Board({ currentUser, apiBase }) {
           priority: updated.priority || "medium",
           assigneeId: updated.assigneeId ?? null,
           assigneeName: updated.assigneeName ?? null,
+          movedBy: currentUser?.displayName ?? "Someone",
+          movedById: currentUser?.id ?? null,
         }),
       });
       if (!res.ok) throw new Error(await res.text() || "Update failed");
@@ -766,7 +768,7 @@ export default function Board({ currentUser, apiBase }) {
     } catch (err) {
       setError(err.message || "Failed to update");
     }
-  }, [base]);
+  }, [base, currentUser]);
 
   const refetch = useCallback(() => {
     fetch(`${base}/api/board/issues`)
@@ -802,7 +804,11 @@ export default function Board({ currentUser, apiBase }) {
       const res = await fetch(`${base}/api/board/issues/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          status: newStatus,
+          movedBy: currentUser?.displayName ?? "Someone",
+          movedById: currentUser?.id ?? null,
+        }),
       });
       if (!res.ok) throw new Error(await res.text() || "Move failed");
       const data = await res.json();
@@ -811,7 +817,7 @@ export default function Board({ currentUser, apiBase }) {
       setError(err.message || "Failed to move");
       refetch();
     }
-  }, [base, refetch]);
+  }, [base, refetch, currentUser]);
 
   const deleteIssue = useCallback(async (issueId) => {
     const id = String(issueId);

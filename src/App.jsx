@@ -15,6 +15,7 @@ import SettingsModal from "./components/SettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
 import Board from "./components/Board";
 import Games from "./components/Games";
+import Dashboard from "./components/Dashboard";
 import SplashScreen from "./components/SplashScreen";
 import {
   initSoundElements,
@@ -67,7 +68,8 @@ const TEXT_CHANNELS = [
   { id: "general", name: "general" },
   { id: "dev", name: "dev-chat" },
   { id: "Builds", name: "Builds" },
-  { id: "matches", name: "Matches" }
+  { id: "matches", name: "Matches" },
+  { id: "board-activity", name: "Board activity" }
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 
@@ -161,7 +163,9 @@ function App() {
 
   const [showSplash, setShowSplash] = useState(true);
   const [theme, setTheme] = useState("dark");
-  const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board" | "games"
+  const [activeTab, setActiveTab] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches ? "dashboard" : "chat"
+  ); // "dashboard" (desktop only) | "chat" | "board" | "games"
   const [selectedChannelId, setSelectedChannelId] = useState(() => {
     if (typeof window === "undefined") return "general";
     const params = new URLSearchParams(window.location.search);
@@ -175,6 +179,7 @@ function App() {
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [replyToMessage, setReplyToMessage] = useState(null);
   const [socketStatus, setSocketStatus] = useState("disconnected");
   const [dianaApiBase, setDianaApiBase] = useState(DEFAULT_DIANA_API);
   const [profiles, setProfiles] = useState({});
@@ -258,10 +263,16 @@ function App() {
   const previousSpeakingRef = useRef(new Set());
   const voiceTryPlayAllRemoteAudioRef = useRef(null); // set in effect: () => try play all audio[srcObject]
   const [isTauri, setIsTauri] = useState(false);
+  const doNotDisturbRef = useRef(false);
 
   useEffect(() => {
     userStatusRef.current = userStatus;
   }, [userStatus]);
+
+  useEffect(() => {
+    const profile = profiles[currentUser?.id ?? CURRENT_USER_ID];
+    doNotDisturbRef.current = profile?.doNotDisturb === true;
+  }, [profiles, currentUser?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return;
@@ -345,6 +356,10 @@ function App() {
     mq.addEventListener("change", handle);
     return () => mq.removeEventListener("change", handle);
   }, []);
+
+  useEffect(() => {
+    if (!isDesktop && activeTab === "dashboard") setActiveTab("chat");
+  }, [isDesktop, activeTab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -841,7 +856,7 @@ function App() {
             setMessages((prev) => [...prev, payload]);
             const myId = currentUserRef.current?.id ?? CURRENT_USER_ID;
             const isFromMe = Number(payload.senderId) === Number(myId);
-            if (!isFromMe) {
+            if (!isFromMe && !doNotDisturbRef.current) {
               playMessageReceivedSound();
             }
             const msgChannel = payload.channel;
@@ -849,7 +864,7 @@ function App() {
             if (msgChannel && msgChannel !== currentChannel && !isFromMe) {
               setUnreadChannelIds((prev) => new Set(prev).add(msgChannel));
             }
-            if (!isFromMe) {
+            if (!isFromMe && !doNotDisturbRef.current) {
               showMentionNotificationIfBackground(
                 payload.sender || "Someone",
                 payload.content || (payload.attachments?.length ? "sent an attachment" : "New message"),
@@ -863,6 +878,11 @@ function App() {
             );
           } else if (data.type === "message:deleted" && data.payload?.id != null) {
             setMessages((prev) => prev.filter((m) => m.id !== data.payload.id));
+          } else if (data.type === "message:reactions" && data.payload?.messageId != null) {
+            const { messageId, reactions } = data.payload;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === messageId ? { ...m, reactions: reactions || {} } : m))
+            );
           } else if (data.type === "profileUpdated" && data.payload) {
             const profile = data.payload;
             setProfiles((prev) => ({
@@ -909,7 +929,7 @@ function App() {
               }
               if (isOurOwnJoin) {
                 justJoinedVoiceRef.current = false;
-              } else if (newCount !== oldCount) {
+              } else if (newCount !== oldCount && !doNotDisturbRef.current) {
                 unlockAudio();
                 if (newCount > oldCount) {
                   setTimeout(() => playUserJoinedSound(), 0);
@@ -1460,7 +1480,7 @@ function App() {
     }
   };
 
-  const handleSend = (contentOrTrimmed, attachmentIds = []) => {
+  const handleSend = (contentOrTrimmed, attachmentIds = [], replyToId = null) => {
     const trimmed = typeof contentOrTrimmed === "string" ? contentOrTrimmed : inputValue.trim();
     if (!trimmed && (!attachmentIds || attachmentIds.length === 0)) return;
 
@@ -1470,23 +1490,25 @@ function App() {
       return;
     }
 
+    const idToSend = replyToId != null ? Number(replyToId) : null;
     const payload = {
       type: "message",
       channel: selectedChannelId,
       sender: currentUser?.displayName || DEFAULT_USER_NAME,
       senderId: currentUser?.id ?? undefined,
       content: trimmed || (attachmentIds?.length > 0 ? " " : ""),
-      attachmentIds: Array.isArray(attachmentIds) ? attachmentIds : []
+      attachmentIds: Array.isArray(attachmentIds) ? attachmentIds : [],
+      ...(idToSend != null && idToSend > 0 && { replyToId: idToSend })
     };
 
     console.log("Sending message:", payload);
     socket.send(JSON.stringify(payload));
-    // Only play sound if message directly mentions you (not @everyone — that would ping yourself)
     const content = trimmed || (attachmentIds?.length > 0 ? " " : "");
-    if (content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
+    if (!doNotDisturbRef.current && content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
       playMessageSentSound();
     }
     setInputValue("");
+    setReplyToMessage(null);
   };
 
   const handleEditMessage = (messageId, content) => {
@@ -1501,6 +1523,13 @@ function App() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     const senderName = currentUser?.displayName || DEFAULT_USER_NAME;
     socket.send(JSON.stringify({ type: "message:delete", messageId, senderName }));
+  };
+
+  const handleReaction = (messageId, emoji, add) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!messageId || !emoji) return;
+    socket.send(JSON.stringify({ type: "message:reaction", messageId, emoji, add }));
   };
 
   const handleSelectGif = (gif) => {
@@ -1518,10 +1547,9 @@ function App() {
       senderId: currentUser?.id ?? undefined,
       content
     };
-
     socket.send(JSON.stringify(payload));
     // Only play sound if message directly mentions you (not @everyone — that would ping yourself)
-    if (content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
+    if (!doNotDisturbRef.current && content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
       playMessageSentSound();
     }
   };
@@ -1980,7 +2008,9 @@ function App() {
           bannerUrl: payload.bannerUrl,
           leagueUsername: payload.leagueUsername,
           theme,
-          ...(payload.activityLoggingEnabled !== undefined && { activityLoggingEnabled: payload.activityLoggingEnabled })
+          ...(payload.activityLoggingEnabled !== undefined && { activityLoggingEnabled: payload.activityLoggingEnabled }),
+          ...(payload.activityDetailLevel !== undefined && { activityDetailLevel: payload.activityDetailLevel }),
+          ...(payload.doNotDisturb !== undefined && { doNotDisturb: payload.doNotDisturb })
         })
       });
       if (!res.ok) return;
@@ -2143,8 +2173,8 @@ function App() {
 
   const leaveVoiceChannel = () => {
     setVoiceConnectionStatus("idle");
-    // Play sound immediately while still in the user gesture
-    playUserLeftSound();
+    // Play sound immediately while still in the user gesture (unless DND)
+    if (!doNotDisturbRef.current) playUserLeftSound();
     const socket = socketRef.current;
     const roomIdToLeave = joinedVoiceChannelIdRef.current ?? joinedVoiceChannelId;
     if (roomIdToLeave && socket && socket.readyState === WebSocket.OPEN) {
@@ -2517,6 +2547,19 @@ function App() {
 
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0" data-tauri-drag-region="false">
           <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
+            {isDesktop && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("dashboard")}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === "dashboard"
+                    ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                }`}
+              >
+                Dashboard
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setActiveTab("chat")}
@@ -2737,7 +2780,7 @@ function App() {
                     next.delete(id);
                     return next;
                   });
-                  if (activeTab === "board" || activeTab === "games") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard") setActiveTab("chat");
                   setSidebarOpen(false);
                 }}
               />
@@ -2754,7 +2797,7 @@ function App() {
                 profiles={profiles}
                 speakingUserIds={speakingUserIds}
                 onOpenChannelView={(roomId) => {
-                  if (activeTab === "board" || activeTab === "games") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard") setActiveTab("chat");
                   setVoiceChannelModalRoomId(roomId);
                   setSidebarOpen(false);
                 }}
@@ -2931,7 +2974,9 @@ function App() {
         </div>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden w-full min-w-0">
-          {activeTab === "board" ? (
+          {activeTab === "dashboard" && isDesktop ? (
+            <Dashboard onNavigate={setActiveTab} />
+          ) : activeTab === "board" ? (
             <Board currentUser={currentUser} apiBase={apiBase} />
           ) : activeTab === "games" ? (
             <Games
@@ -2966,6 +3011,9 @@ function App() {
                 mentionSlugToName={mentionSlugToName}
                 onEditMessage={handleEditMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onReaction={handleReaction}
+                replyToMessage={replyToMessage}
+                onReplyMessage={setReplyToMessage}
                 onLoadOlder={loadOlderMessages}
                 hasMoreOlder={hasMoreOlderMessages}
                 loadingOlder={loadingOlderMessages}
@@ -2983,6 +3031,8 @@ function App() {
                   value={inputValue}
                   onChange={setInputValue}
                   onSend={handleSend}
+                  replyTo={replyToMessage}
+                  onClearReply={() => setReplyToMessage(null)}
                   onGifClick={() => setIsGifModalOpen(true)}
                   placeholder={`Message #${selectedChannelId} (Markdown supported, @ to mention)…`}
                   presenceUsers={presenceUsers}
@@ -3092,7 +3142,7 @@ function App() {
       {/* Voice control bar when in a call - bottom left, flexes with sidebar width */}
       {joinedVoiceChannelId && (
         <div
-          className="fixed bottom-6 z-50 flex justify-center transition-[width] duration-150 ease-out"
+          className="fixed bottom-6 md:bottom-8 z-50 flex justify-center transition-[width] duration-150 ease-out"
           style={{
             left: 0,
             width: sidebarWidthPx,
@@ -3103,11 +3153,11 @@ function App() {
             paddingRight: "max(0.5rem, env(safe-area-inset-right))"
           }}
         >
-          <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+          <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 md:gap-1.5 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 md:px-3 md:py-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
           <button
             type="button"
             onClick={toggleMute}
-            className={`rounded-xl p-3 transition-colors ${
+            className={`rounded-xl p-3 md:p-3.5 transition-colors ${
               participantMuted[currentUser?.id ?? CURRENT_USER_ID]
                 ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -3115,12 +3165,12 @@ function App() {
             aria-label={participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? "Unmute" : "Mute"}
           >
             {participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
               </svg>
             ) : (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
               </svg>
             )}
@@ -3128,7 +3178,7 @@ function App() {
           <button
             type="button"
             onClick={() => setIsDeafened((d) => !d)}
-            className={`rounded-xl p-3 transition-colors ${
+            className={`rounded-xl p-3 md:p-3.5 transition-colors ${
               isDeafened
                 ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -3136,12 +3186,12 @@ function App() {
             aria-label={isDeafened ? "Undeafen" : "Deafen"}
           >
             {isDeafened ? (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
               </svg>
             ) : (
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
               </svg>
             )}
@@ -3152,10 +3202,10 @@ function App() {
               leaveVoiceChannel();
               setVoiceChannelModalRoomId(null);
             }}
-            className="rounded-xl bg-red-100 p-3 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+            className="rounded-xl bg-red-100 p-3 md:p-3.5 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
             aria-label="Leave call"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 3l-2 2m0 0l-2 2m2-2l2-2m-2 2l-2-2" />
             </svg>
@@ -3166,20 +3216,20 @@ function App() {
               setProfileModalAnchor("bottom-left");
               setSelectedUserForProfile(currentUser ? { id: currentUser.id ?? CURRENT_USER_ID, displayName: currentUser.displayName } : { id: CURRENT_USER_ID, displayName: "Meeps User" });
             }}
-            className="rounded-xl p-3 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            className="rounded-xl p-3 md:p-3.5 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             aria-label="Profile"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </button>
           <button
             type="button"
             onClick={() => setIsSettingsOpen(true)}
-            className="rounded-xl p-3 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            className="rounded-xl p-3 md:p-3.5 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             aria-label="Settings"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
@@ -3213,6 +3263,11 @@ function App() {
         onActivityDetailLevelChange={async (level) => {
           const userId = currentUser?.id ?? CURRENT_USER_ID;
           await handleSaveProfileForUser(userId, { activityDetailLevel: level });
+        }}
+        doNotDisturb={currentUserProfile?.doNotDisturb === true}
+        onDoNotDisturbChange={async (enabled) => {
+          const userId = currentUser?.id ?? CURRENT_USER_ID;
+          await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
         }}
       />
       <VoiceSettingsModal
@@ -3302,7 +3357,7 @@ function App() {
   return (
     <>
       {content}
-      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {showSplash && isDesktop && <SplashScreen onDone={() => setShowSplash(false)} />}
     </>
   );
 }
