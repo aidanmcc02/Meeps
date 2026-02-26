@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 const COLUMNS = [
   { id: "todo", label: "To Do", color: "bg-slate-100 dark:bg-slate-800/60" },
@@ -93,10 +93,13 @@ function IssueCard({ issue, currentUser, onEdit, onDelete, onDragStart, onDragMo
         >
           {assigneeName}
         </button>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div
+          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
-            onClick={() => onEdit(issue)}
+            onClick={(e) => { e.stopPropagation(); onEdit(issue); }}
             className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
             title="Edit"
           >
@@ -106,7 +109,7 @@ function IssueCard({ issue, currentUser, onEdit, onDelete, onDragStart, onDragMo
           </button>
           <button
             type="button"
-            onClick={() => onDelete(issue.id)}
+            onClick={(e) => { e.stopPropagation(); onDelete(issue.id); }}
             className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
             title="Delete"
           >
@@ -120,35 +123,74 @@ function IssueCard({ issue, currentUser, onEdit, onDelete, onDragStart, onDragMo
   );
 }
 
-function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("medium");
-  const [assignToMe, setAssignToMe] = useState(true);
+function IssueModal({ issue, isOpen, onClose, onCreate, onSave, currentUser, users = [] }) {
+  const isEdit = issue != null;
+  const [title, setTitle] = useState(issue?.title ?? "");
+  const [description, setDescription] = useState(issue?.description ?? "");
+  const [priority, setPriority] = useState(issue?.priority ?? "medium");
+  const [assignToMe, setAssignToMe] = useState(
+    isEdit ? (issue.assigneeId === currentUser?.id) : true
+  );
+  const [selectedUserId, setSelectedUserId] = useState(issue?.assigneeId ?? null);
 
   const reset = useCallback(() => {
-    setTitle("");
-    setDescription("");
-    setPriority("medium");
-    setAssignToMe(true);
-  }, []);
+    if (issue) {
+      setTitle(issue.title);
+      setDescription(issue.description ?? "");
+      setPriority(issue.priority ?? "medium");
+      setAssignToMe(issue.assigneeId === currentUser?.id);
+      setSelectedUserId(issue.assigneeId ?? null);
+    } else {
+      setTitle("");
+      setDescription("");
+      setPriority("medium");
+      setAssignToMe(true);
+      setSelectedUserId(null);
+    }
+  }, [issue, currentUser?.id]);
 
   useEffect(() => {
     if (isOpen) reset();
   }, [isOpen, reset]);
 
+  const assigneeId = assignToMe ? (currentUser?.id ?? null) : (selectedUserId ? Number(selectedUserId) : null);
+  const assigneeName = assignToMe
+    ? (currentUser?.displayName || "Me")
+    : selectedUserId
+      ? (users.find((u) => u.id === Number(selectedUserId))?.displayName ?? issue?.assigneeName ?? null)
+      : null;
+
+  const usersForDropdown = useMemo(() => {
+    const list = [...users];
+    if (issue && issue.assigneeId && issue.assigneeId !== currentUser?.id && !list.some((u) => u.id === issue.assigneeId)) {
+      list.unshift({ id: issue.assigneeId, displayName: issue.assigneeName || `User #${issue.assigneeId}` });
+    }
+    return list;
+  }, [users, issue, currentUser?.id]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const t = title.trim();
     if (!t) return;
-    onCreate({
-      title: t,
-      description: description.trim() || null,
-      status: "todo",
-      priority: priority || "medium",
-      assigneeId: assignToMe ? (currentUser?.id ?? null) : null,
-      assigneeName: assignToMe ? (currentUser?.displayName || "Me") : null,
-    });
+    if (isEdit) {
+      onSave({
+        ...issue,
+        title: t,
+        description: description.trim() || null,
+        priority: priority || "medium",
+        assigneeId,
+        assigneeName,
+      });
+    } else {
+      onCreate({
+        title: t,
+        description: description.trim() || null,
+        status: "todo",
+        priority: priority || "medium",
+        assigneeId,
+        assigneeName,
+      });
+    }
     onClose();
   };
 
@@ -161,8 +203,12 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">New issue</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Add title, description, and assign yourself or leave unassigned.</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {isEdit ? "Edit issue" : "New issue"}
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {isEdit ? `#${String(issue.id).slice(-7)}` : "Add title, description, and assign yourself or leave unassigned."}
+          </p>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
@@ -173,7 +219,7 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Fix login button"
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-              autoFocus
+              autoFocus={!isEdit}
             />
           </div>
           <div>
@@ -186,30 +232,43 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 resize-none"
             />
           </div>
-          <div className="flex flex-wrap gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Assignee</label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={assignToMe}
+                onChange={(e) => setAssignToMe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Assign to me</span>
+            </label>
+            {!assignToMe && (
               <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                value={selectedUserId ?? ""}
+                onChange={(e) => setSelectedUserId(e.target.value ? Number(e.target.value) : null)}
+                className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+                <option value="">Unassigned</option>
+                {usersForDropdown.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName}
+                  </option>
+                ))}
               </select>
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={assignToMe}
-                  onChange={(e) => setAssignToMe(e.target.checked)}
-                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">Assign to me</span>
-              </label>
-            </div>
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -224,125 +283,7 @@ function CreateIssueModal({ isOpen, onClose, onCreate, currentUser }) {
               disabled={!title.trim()}
               className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create issue
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function EditIssueModal({ issue, isOpen, onClose, onSave, currentUser }) {
-  const [title, setTitle] = useState(issue?.title ?? "");
-  const [description, setDescription] = useState(issue?.description ?? "");
-  const [priority, setPriority] = useState(issue?.priority ?? "medium");
-  const [assigneeId, setAssigneeId] = useState(issue?.assigneeId ?? null);
-  const [assigneeName, setAssigneeName] = useState(issue?.assigneeName ?? null);
-
-  useEffect(() => {
-    if (issue) {
-      setTitle(issue.title);
-      setDescription(issue.description ?? "");
-      setPriority(issue.priority ?? "medium");
-      setAssigneeId(issue.assigneeId ?? null);
-      setAssigneeName(issue.assigneeName ?? null);
-    }
-  }, [issue]);
-
-  if (!isOpen || !issue) return null;
-
-  const assignToMe = () => {
-    setAssigneeId(currentUser?.id ?? null);
-    setAssigneeName(currentUser?.displayName || "Me");
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    onSave({
-      ...issue,
-      title: title.trim(),
-      description: description.trim() || null,
-      priority: priority || "medium",
-      assigneeId,
-      assigneeName: assigneeId === currentUser?.id ? (currentUser?.displayName || "Me") : assigneeName,
-    });
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit issue</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">#{String(issue.id).slice(-7)}</p>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Title *</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 resize-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Assignee</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={assignToMe}
-                className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-200 dark:hover:bg-indigo-900/60"
-              >
-                Assign to me
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAssigneeId(null);
-                  setAssigneeName("Unassigned");
-                }}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-              >
-                Unassign
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {assigneeId === currentUser?.id ? (currentUser?.displayName || "You") : (assigneeName || "Unassigned")}
-            </p>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
-              Cancel
-            </button>
-            <button type="submit" disabled={!title.trim()} className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed">
-              Save
+              {isEdit ? "Save" : "Create issue"}
             </button>
           </div>
         </form>
@@ -353,6 +294,7 @@ function EditIssueModal({ issue, isOpen, onClose, onSave, currentUser }) {
 
 export default function Board({ currentUser, apiBase }) {
   const [issues, setIssues] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -365,6 +307,13 @@ export default function Board({ currentUser, apiBase }) {
   dropTargetColumnIdRef.current = dropTargetColumnId;
 
   const base = apiBase || "";
+
+  useEffect(() => {
+    fetch(`${base}/api/users`)
+      .then((res) => (res.ok ? res.json() : { users: [] }))
+      .then((data) => setUsers(Array.isArray(data.users) ? data.users : []))
+      .catch(() => setUsers([]));
+  }, [base]);
 
   useEffect(() => {
     let cancelled = false;
@@ -405,7 +354,7 @@ export default function Board({ currentUser, apiBase }) {
       });
       if (!res.ok) throw new Error(await res.text() || "Create failed");
       const created = await res.json();
-      setIssues((prev) => [...prev, normalizeIssue(created)]);
+      setIssues((prev) => [normalizeIssue(created), ...prev]);
     } catch (err) {
       setError(err.message || "Failed to create issue");
     }
@@ -541,19 +490,15 @@ export default function Board({ currentUser, apiBase }) {
       <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-3 sm:px-5 sm:py-4 dark:border-gray-800">
         <div>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Board</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Drag cards between columns. Create issues and assign yourself or others.
-          </p>
         </div>
         <button
           type="button"
-          onClick={() => setCreateModalOpen(true)}
+          onClick={() => { setEditingIssue(null); setCreateModalOpen(true); }}
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-600 transition-colors"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          New issue
         </button>
       </div>
 
@@ -603,18 +548,17 @@ export default function Board({ currentUser, apiBase }) {
         )}
       </div>
 
-      <CreateIssueModal
-        isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onCreate={addIssue}
-        currentUser={currentUser}
-      />
-      <EditIssueModal
+      <IssueModal
         issue={editingIssue}
-        isOpen={editingIssue != null}
-        onClose={() => setEditingIssue(null)}
+        isOpen={createModalOpen || editingIssue != null}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setEditingIssue(null);
+        }}
+        onCreate={addIssue}
         onSave={updateIssue}
         currentUser={currentUser}
+        users={users}
       />
     </div>
   );

@@ -298,61 +298,41 @@ async function handleIncomingChatMessage(parsed, wss) {
     }
   }
 
-  // Push notifications for mentioned users who are not connected (e.g. app closed on iPhone)
-  if (pushService.isConfigured() && content) {
+  // Push notifications for all users with push subscriptions who are not connected (e.g. app closed on iPhone)
+  if (pushService.isConfigured() && (content || attachmentIds.length > 0)) {
     try {
-      const mentionedIds = await getMentionedUserIds(content);
+      const allPushUserIds = await getUserIdsWithPushSubscriptions();
       const connectedIds = new Set(socketsByUserId.keys());
-      const toNotify = mentionedIds.filter(
+      const toNotify = allPushUserIds.filter(
         (id) => Number(id) !== Number(senderId) && !connectedIds.has(Number(id))
       );
       if (toNotify.length > 0) {
+        const bodyPreview = content || (attachmentIds.length > 0 ? "sent an attachment" : "New message");
         pushService
-          .sendMentionPushToUsers(toNotify, {
+          .sendMessagePushToUsers(toNotify, {
             channel,
             sender,
-            body: content
+            body: bodyPreview
           })
-          .catch((err) => console.error("[push] sendMentionPushToUsers error:", err.message));
+          .catch((err) => console.error("[push] sendMessagePushToUsers error:", err.message));
       }
     } catch (err) {
-      console.error("[push] getMentionedUserIds error:", err.message);
+      console.error("[push] getUserIdsWithPushSubscriptions error:", err.message);
     }
   }
 }
 
 /**
- * Parse @mentions from message content and return user IDs.
- * @param {string} content - Message content
- * @returns {Promise<number[]>} User IDs mentioned (including @everyone)
+ * Get all user IDs that have push subscriptions (for notifying on any new message).
+ * @returns {Promise<number[]>} User IDs with push subscriptions
  */
-async function getMentionedUserIds(content) {
-  if (!content || typeof content !== "string") return [];
-  const re = /@(\S+)/g;
-  const slugs = new Set();
-  let match;
-  while ((match = re.exec(content)) !== null) {
-    slugs.add((match[1] || "").toLowerCase());
-  }
-  if (slugs.size === 0) return [];
-
-  const ids = new Set();
+async function getUserIdsWithPushSubscriptions() {
   try {
-    const result = await db.query("SELECT id, display_name FROM users");
-    const everyone = slugs.has("everyone");
-    if (everyone) {
-      result.rows.forEach((r) => ids.add(Number(r.id)));
-    }
-    for (const row of result.rows) {
-      const name = row.display_name;
-      if (!name) continue;
-      const slug = name.trim().replace(/\s+/g, "_").toLowerCase();
-      if (slug && slugs.has(slug)) ids.add(Number(row.id));
-    }
+    const result = await db.query("SELECT DISTINCT user_id FROM push_subscriptions");
+    return result.rows.map((r) => Number(r.user_id));
   } catch (_) {
     return [];
   }
-  return [...ids];
 }
 
 async function handleMessageEdit(parsed, socket, wss) {
@@ -756,13 +736,17 @@ function broadcastMessagePayload(payload) {
  * @param {number} senderId - Meeps user id
  * @param {string} senderName - Display name
  * @param {string} content - Message content (markdown)
+ * @param {object} [embed] - Optional Diana-style embed payload (title, description, url, colorHex, thumbnailUrl, fields, footer, timestamp)
  * @returns {Promise<object|null>} Saved message or null
  */
-async function postMessageToChannel(channel, senderId, senderName, content) {
+async function postMessageToChannel(channel, senderId, senderName, content, embed = null) {
+  const embedJson = embed ? JSON.stringify(embed) : null;
   try {
     const result = await db.query(
-      "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, sender_id, content, created_at",
-      [channel, senderName || "Meeps", senderId || null, content || ""]
+      `INSERT INTO messages (channel, sender_name, sender_id, content, embed, created_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, CURRENT_TIMESTAMP)
+       RETURNING id, channel, sender_name, sender_id, content, embed, created_at`,
+      [channel, senderName || "Meeps", senderId || null, content || "", embedJson]
     );
     const row = result.rows[0];
     if (!row) return null;
@@ -772,12 +756,32 @@ async function postMessageToChannel(channel, senderId, senderName, content) {
       sender: row.sender_name,
       senderId: row.sender_id ?? undefined,
       content: row.content,
+      embed: row.embed ?? undefined,
       createdAt: row.created_at,
       attachments: []
     };
     broadcastMessagePayload(payload);
     return payload;
   } catch (err) {
+    if (err.code === "42703" || err.message?.includes("embed")) {
+      const result = await db.query(
+        "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, sender_id, content, created_at",
+        [channel, senderName || "Meeps", senderId || null, content || ""]
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      const payload = {
+        id: row.id,
+        channel: row.channel,
+        sender: row.sender_name,
+        senderId: row.sender_id ?? undefined,
+        content: row.content,
+        createdAt: row.created_at,
+        attachments: []
+      };
+      broadcastMessagePayload(payload);
+      return payload;
+    }
     if (err.code === "42703" || err.message?.includes("sender_id")) {
       const result = await db.query(
         "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, content, created_at",

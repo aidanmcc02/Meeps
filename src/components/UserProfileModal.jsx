@@ -104,7 +104,7 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
                   {displayName}
                 </h3>
 
-                {activity?.name && (
+                {activity?.name && profile?.activityLoggingEnabled !== false && (
                   <p
                     className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate"
                     title={activity.details || activity.name}

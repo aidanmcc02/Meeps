@@ -19,7 +19,7 @@ exports.listIssues = async (req, res, next) => {
     const result = await db.query(
       `SELECT id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at
        FROM board_issues
-       ORDER BY created_at ASC`
+       ORDER BY created_at DESC`
     );
     const issues = result.rows.map(rowToIssue);
     return res.json({ issues });

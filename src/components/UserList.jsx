@@ -15,6 +15,7 @@ function UserList({ users, onUserClick, profiles = {} }) {
         const status = user.status || "offline";
         const name = user.displayName || user.name || "Meeps User";
         const profile = user.id != null ? profiles[user.id] : null;
+        const showActivity = profile?.activityLoggingEnabled !== false && user.activity?.name;
         const avatarUrl = profile?.avatarUrl || null;
         const bannerUrl = profile?.bannerUrl || null;
         const initials =
@@ -82,7 +83,7 @@ function UserList({ users, onUserClick, profiles = {} }) {
                 <span className="text-[11px] capitalize opacity-80">
                   {status}
                 </span>
-                {user.activity?.name && (
+                {showActivity && (
                   <span
                     className="text-[10px] opacity-70 truncate w-full mt-0.5"
                     title={user.activity.details || user.activity.name}
