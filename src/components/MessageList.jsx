@@ -101,10 +101,26 @@ function groupConsecutiveBySender(messages) {
   return runs;
 }
 
-// Match @mention (e.g. @person1, @everyone, @Person_One) - turn into markdown links so we can render with custom component
+// Match @mention (e.g. @person1, @everyone, @Person_One)
 const MENTION_PATTERN = /@(\S+)/g;
-function contentWithMentionLinks(content) {
-  return content.replace(MENTION_PATTERN, (_, slug) => `[@${slug}](mention:${slug})`);
+/** Split content into segments: { type: 'text', value } or { type: 'mention', slug } - so we never render mentions as links */
+function splitContentSegments(content) {
+  if (!content || typeof content !== "string") return [{ type: "text", value: "" }];
+  const segments = [];
+  let lastIndex = 0;
+  const re = new RegExp(MENTION_PATTERN.source, "g");
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", value: content.slice(lastIndex, match.index) });
+    }
+    segments.push({ type: "mention", slug: match[1] || "" });
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < content.length) {
+    segments.push({ type: "text", value: content.slice(lastIndex) });
+  }
+  return segments.length ? segments : [{ type: "text", value: content }];
 }
 
 // True if message content mentions the current user (by slug or @everyone)
@@ -135,23 +151,74 @@ function messageMentionsCurrentUser(content, currentUserName, mentionSlugToName)
   return false;
 }
 
-function MessageLink({ href, children, mentionSlugToName }) {
-  if (href?.startsWith("mention:")) {
-    const slug = href.slice(8);
-    const displayName = mentionSlugToName[slug] ?? slug;
+/** Mention as a plain span only - never a link. */
+function MentionSpan({ slug, mentionSlugToName = {}, onMentionHover, onMentionLeave }) {
+  const displayName = mentionSlugToName[slug] ?? slug.replace(/_/g, " ");
+  const stopInteraction = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  return (
+    <span
+      data-mention={slug}
+      role="button"
+      tabIndex={-1}
+      className="mention inline-flex items-center rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 font-medium cursor-pointer select-none"
+      onMouseDown={stopInteraction}
+      onClick={stopInteraction}
+      onMouseEnter={(e) => {
+        if (onMentionHover) onMentionHover(slug, e.currentTarget.getBoundingClientRect());
+      }}
+      onMouseLeave={() => {
+        if (onMentionLeave) onMentionLeave();
+      }}
+    >
+      @{displayName}
+    </span>
+  );
+}
+
+/** Renders only real URLs as links. Mention-like hrefs render as MentionSpan (never <a>). */
+function MessageLink({
+  href,
+  children,
+  mentionSlugToName = {},
+  onMentionHover,
+  onMentionLeave
+}) {
+  const isMention = href && typeof href === "string" && /mention:/i.test(href) && !href.startsWith("http");
+  if (isMention) {
+    const slug = (href.replace(/^[^:]*mention:/i, "").trim() || href.slice(8).trim());
     return (
-      <span className="mention inline-flex items-center rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 font-medium">
-        @{displayName}
-      </span>
+      <MentionSpan
+        slug={slug}
+        mentionSlugToName={mentionSlugToName}
+        onMentionHover={onMentionHover}
+        onMentionLeave={onMentionLeave}
+      />
     );
   }
-  // External links: open in default browser, styled and accessible
+  // External links: open in default browser (Tauri: shell.open; web: target=_blank)
   const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
+  const handleClick = async (e) => {
+    if (!isExternal || !href) return;
+    if (window.__TAURI__) {
+      e.preventDefault();
+      try {
+        const { open } = await import("@tauri-apps/api/shell");
+        await open(href);
+      } catch (err) {
+        console.warn("Failed to open link in browser:", err);
+        window.open(href, "_blank", "noopener,noreferrer");
+      }
+    }
+  };
   return (
     <a
       href={href}
-      target={isExternal ? "_blank" : undefined}
+      target={isExternal && !window.__TAURI__ ? "_blank" : undefined}
       rel={isExternal ? "noopener noreferrer" : undefined}
+      onClick={handleClick}
       className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium break-all"
     >
       {children}
@@ -187,6 +254,8 @@ function MessageList({
   const [editContent, setEditContent] = useState("");
   const menuRef = useRef(null);
   const [lightbox, setLightbox] = useState(null);
+  const [hoveredMention, setHoveredMention] = useState(null);
+  const mentionHandlersRef = useRef({ setHoveredMention: () => {}, resolveMentionProfile: () => null });
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -207,6 +276,9 @@ function MessageList({
 
   const handleScroll = () => {
     setShowJumpToBottom(!checkAtBottom(containerRef.current));
+    if (hoveredMention) {
+      setHoveredMention(null);
+    }
     const el = containerRef.current;
     if (
       onLoadOlder &&
@@ -306,11 +378,148 @@ function MessageList({
     return () => window.removeEventListener("keydown", handleKey);
   }, [lightbox]);
 
+  const resolveMentionProfile = (slug) => {
+    if (!slug) return null;
+    const displayName =
+      mentionSlugToName[slug] ??
+      slug.replace(/_/g, " ");
+    if (!displayName) return null;
+    const trimmed = displayName.trim();
+    const lower = trimmed.toLowerCase();
+    const allProfiles = Object.values(profiles || {});
+    const byDisplayName = allProfiles.find(
+      (p) => (p?.displayName || "").trim().toLowerCase() === lower
+    );
+    return (
+      byDisplayName || {
+        displayName: trimmed || null,
+        avatarUrl: null,
+        bannerUrl: null
+      }
+    );
+  };
+
+  const handleMentionHover = (slug, rect) => {
+    const profile = resolveMentionProfile(slug);
+    if (!profile || !rect) {
+      setHoveredMention(null);
+      return;
+    }
+    const centerX = rect.left + rect.width / 2;
+    const top = rect.bottom + 8;
+    setHoveredMention({
+      slug,
+      profile,
+      position: {
+        top,
+        left: centerX
+      }
+    });
+  };
+
+  const handleMentionLeave = () => {
+    setHoveredMention(null);
+  };
+
+  mentionHandlersRef.current = {
+    setHoveredMention,
+    resolveMentionProfile
+  };
+
+  useEffect(() => {
+    const onDocMousedown = (e) => {
+      const target = e.target;
+      if (!target || typeof target.closest !== "function") return;
+      if (target.closest("[data-mention]") || target.closest("a[href^='mention:']")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    const onDocClick = (e) => {
+      const target = e.target;
+      if (!target || typeof target.closest !== "function") return;
+      if (target.closest("[data-mention]") || target.closest("a[href^='mention:']")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    const onDocMouseOver = (e) => {
+      const el = e.target && typeof e.target.closest === "function" ? e.target.closest("[data-mention]") : null;
+      if (!el) {
+        mentionHandlersRef.current.setHoveredMention(null);
+        return;
+      }
+      const slug = el.getAttribute("data-mention");
+      if (!slug) return;
+      const rect = el.getBoundingClientRect();
+      const profile = mentionHandlersRef.current.resolveMentionProfile(slug);
+      if (!profile) {
+        mentionHandlersRef.current.setHoveredMention(null);
+        return;
+      }
+      const centerX = rect.left + rect.width / 2;
+      mentionHandlersRef.current.setHoveredMention({
+        slug,
+        profile,
+        position: { top: rect.bottom + 8, left: centerX }
+      });
+    };
+    const onDocMouseOut = (e) => {
+      const from = e.target && typeof e.target.closest === "function" ? e.target.closest("[data-mention]") : null;
+      const to = e.relatedTarget && typeof e.relatedTarget.closest === "function" ? e.relatedTarget.closest("[data-mention]") : null;
+      if (from && !to) mentionHandlersRef.current.setHoveredMention(null);
+    };
+    document.addEventListener("mousedown", onDocMousedown, true);
+    document.addEventListener("click", onDocClick, true);
+    document.addEventListener("mouseover", onDocMouseOver, true);
+    document.addEventListener("mouseout", onDocMouseOut, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMousedown, true);
+      document.removeEventListener("click", onDocClick, true);
+      document.removeEventListener("mouseover", onDocMouseOver, true);
+      document.removeEventListener("mouseout", onDocMouseOut, true);
+    };
+  }, []);
+
+  const handleRootClickCapture = (e) => {
+    const mentionEl = e.target?.closest?.("[data-mention]");
+    const mentionLink = e.target?.closest?.("a[href^='mention:']");
+    if (mentionEl || mentionLink) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  const handleRootMouseOver = (e) => {
+    const mentionEl = e.target?.closest?.("[data-mention]");
+    const mentionLink = e.target?.closest?.("a[href^='mention:']");
+    const el = mentionEl || mentionLink;
+    if (!el) {
+      if (hoveredMention) handleMentionLeave();
+      return;
+    }
+    const slug = mentionEl
+      ? (mentionEl.getAttribute("data-mention") || "")
+      : (() => {
+          const h = (mentionLink.getAttribute("href") || "").replace(/^mention:/i, "");
+          return h;
+        })();
+    if (!slug) {
+      if (hoveredMention) handleMentionLeave();
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    handleMentionHover(slug, rect);
+  };
+
   return (
     <div className="relative flex-1 flex min-h-0 flex-col overflow-hidden">
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        onClickCapture={handleRootClickCapture}
+        onMouseOver={handleRootMouseOver}
+        onMouseLeave={handleMentionLeave}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-sm space-y-3"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
@@ -586,35 +795,73 @@ function MessageList({
                         <DianaEmbed embed={legacyEmbed} />
                       ) : (
                         <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg [&_.mention]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-bold [&_strong]:text-inherit [&_em]:italic [&_del]:line-through [&_a]:text-indigo-600 [&_a]:dark:text-indigo-400 [&_a]:hover:underline">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              a: ({ href, children }) => (
-                                <MessageLink href={href} mentionSlugToName={mentionSlugToName}>
-                                  {children}
-                                </MessageLink>
-                              )
-                            }}
-                          >
-                            {contentWithMentionLinks(msg.content)}
-                          </ReactMarkdown>
+                          {splitContentSegments(msg.content).map((seg, i) =>
+                            seg.type === "mention" ? (
+                              <MentionSpan
+                                key={i}
+                                slug={seg.slug}
+                                mentionSlugToName={mentionSlugToName}
+                                onMentionHover={handleMentionHover}
+                                onMentionLeave={handleMentionLeave}
+                              />
+                            ) : (
+                              <ReactMarkdown
+                                key={i}
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  a: ({ href, children }) => (
+                                    <MessageLink
+                                      href={href}
+                                      mentionSlugToName={mentionSlugToName}
+                                      onMentionHover={handleMentionHover}
+                                      onMentionLeave={handleMentionLeave}
+                                    >
+                                      {children}
+                                    </MessageLink>
+                                  ),
+                                  p: ({ children }) => <span className="inline">{children}</span>
+                                }}
+                              >
+                                {seg.value}
+                              </ReactMarkdown>
+                            )
+                          )}
                         </div>
                       );
                     })()
                   ) : (msg.content?.trim() || "") !== "" ? (
                     <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg [&_.mention]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-bold [&_strong]:text-inherit [&_em]:italic [&_del]:line-through [&_a]:text-indigo-600 [&_a]:dark:text-indigo-400 [&_a]:hover:underline">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          a: ({ href, children }) => (
-                            <MessageLink href={href} mentionSlugToName={mentionSlugToName}>
-                              {children}
-                            </MessageLink>
-                          )
-                        }}
-                      >
-                        {contentWithMentionLinks(msg.content)}
-                      </ReactMarkdown>
+                      {splitContentSegments(msg.content).map((seg, i) =>
+                        seg.type === "mention" ? (
+                          <MentionSpan
+                            key={i}
+                            slug={seg.slug}
+                            mentionSlugToName={mentionSlugToName}
+                            onMentionHover={handleMentionHover}
+                            onMentionLeave={handleMentionLeave}
+                          />
+                        ) : (
+                          <ReactMarkdown
+                            key={i}
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ href, children }) => (
+                                <MessageLink
+                                  href={href}
+                                  mentionSlugToName={mentionSlugToName}
+                                  onMentionHover={handleMentionHover}
+                                  onMentionLeave={handleMentionLeave}
+                                >
+                                  {children}
+                                </MessageLink>
+                              ),
+                              p: ({ children }) => <span className="inline">{children}</span>
+                            }}
+                          >
+                            {seg.value}
+                          </ReactMarkdown>
+                        )
+                      )}
                     </div>
                   ) : null}
                   {msg.attachments?.length > 0 && (
@@ -717,6 +964,58 @@ function MessageList({
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+      {hoveredMention && hoveredMention.profile && (
+        <div
+          className="pointer-events-none fixed z-[100]"
+          style={{
+            top: hoveredMention.position.top,
+            left: (() => {
+              const cardWidth = 256;
+              const centerX = hoveredMention.position.left;
+              const left = centerX - cardWidth / 2;
+              const maxLeft = typeof window !== "undefined" ? window.innerWidth - cardWidth - 16 : left;
+              return Math.max(8, Math.min(maxLeft, left));
+            })()
+          }}
+        >
+          <div className="pointer-events-auto w-64 rounded-xl border border-gray-200 bg-gray-900 text-xs text-gray-100 shadow-xl dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+            {hoveredMention.profile.bannerUrl && (
+              <div className="h-16 w-full overflow-hidden">
+                <img
+                  src={hoveredMention.profile.bannerUrl}
+                  alt=""
+                  className="h-full w-full object-cover object-center"
+                />
+              </div>
+            )}
+            <div className="px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-sky-500 text-[11px] font-semibold text-white flex items-center justify-center">
+                  {hoveredMention.profile.avatarUrl ? (
+                    <img
+                      src={hoveredMention.profile.avatarUrl}
+                      alt={hoveredMention.profile.displayName || ""}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    (hoveredMention.profile.displayName || "")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase() || "MU"
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-semibold">
+                    {hoveredMention.profile.displayName || "Meeps User"}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

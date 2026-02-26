@@ -237,6 +237,24 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const blockMentionNav = (e) => {
+      const t = e.target;
+      if (!t || typeof t.closest !== "function") return;
+      if (t.closest("[data-mention]") || t.closest("a[href^='mention:']")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("mousedown", blockMentionNav, true);
+    document.addEventListener("click", blockMentionNav, true);
+    return () => {
+      document.removeEventListener("mousedown", blockMentionNav, true);
+      document.removeEventListener("click", blockMentionNav, true);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(min-width: 768px)");
     const handle = () => setIsDesktop(mq.matches);
@@ -2279,7 +2297,7 @@ function App() {
     );
   } else {
     content = (
-    <div
+      <div
         className="app-open-animation flex h-screen w-screen flex-col overflow-hidden bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100"
         style={{
           paddingTop: "env(safe-area-inset-top)",
@@ -2287,6 +2305,27 @@ function App() {
           paddingRight: "env(safe-area-inset-right)",
           height: "100dvh",
           maxHeight: "100vh"
+        }}
+        onClickCapture={(e) => {
+          const target = e.target;
+          if (!target || typeof target.closest !== "function") return;
+          if (target.closest("[data-mention]")) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          const anchor = target.closest("a[href]");
+          if (!anchor) return;
+          const href = (anchor.getAttribute("href") || "").trim();
+          if (!href) return;
+          const isHttp = href.startsWith("http://") || href.startsWith("https://");
+          const isHash = href.startsWith("#");
+          const isMailto = href.startsWith("mailto:");
+          const isTel = href.startsWith("tel:");
+          if (!isHttp && !isHash && !isMailto && !isTel) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
         }}
       >
       <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0" data-tauri-drag-region>
