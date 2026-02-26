@@ -24,16 +24,33 @@ function mapUserRowToProfile(row) {
     bannerUrl: row.banner_url || null,
     theme: row.theme || null,
     userType: row.user_type || "user",
+    activityLoggingEnabled: row.activity_logging_enabled !== false,
     createdAt: row.created_at
   };
 }
+
+exports.listUsers = async (req, res, next) => {
+  try {
+    const result = await db.query(
+      "SELECT id, display_name FROM users WHERE user_type = $1 ORDER BY display_name ASC",
+      ["user"]
+    );
+    const users = result.rows.map((row) => ({
+      id: row.id,
+      displayName: row.display_name || "Unknown",
+    }));
+    return res.json({ users });
+  } catch (err) {
+    return next(err);
+  }
+};
 
 exports.getProfile = async (req, res, next) => {
   const userId = req.userId;
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, theme, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, theme, activity_logging_enabled, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -56,7 +73,7 @@ exports.getProfileById = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, theme, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, theme, activity_logging_enabled, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -77,11 +94,11 @@ exports.updateProfileById = async (req, res, next) => {
     return res.status(400).json({ message: "invalid user id" });
   }
 
-  const { displayName, bio, achievements, avatarUrl, bannerUrl, theme } = req.body;
+  const { displayName, bio, achievements, avatarUrl, bannerUrl, theme, activityLoggingEnabled } = req.body;
 
   try {
     const existingResult = await db.query(
-      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, theme FROM users WHERE id = $1",
+      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, theme, activity_logging_enabled FROM users WHERE id = $1",
       [userId]
     );
 
@@ -106,10 +123,12 @@ exports.updateProfileById = async (req, res, next) => {
     const newBannerUrl =
       bannerUrl !== undefined ? bannerUrl || null : existing.banner_url;
     const newTheme = theme !== undefined ? theme || null : existing.theme;
+    const newActivityLoggingEnabled =
+      activityLoggingEnabled !== undefined ? !!activityLoggingEnabled : (existing.activity_logging_enabled !== false);
 
     const result = await db.query(
-      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, theme = $7 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, theme, created_at",
-      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newTheme]
+      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, theme = $7, activity_logging_enabled = $8 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, theme, activity_logging_enabled, created_at",
+      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newTheme, newActivityLoggingEnabled]
     );
 
     const profile = mapUserRowToProfile(result.rows[0]);

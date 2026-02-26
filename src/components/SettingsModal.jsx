@@ -16,7 +16,7 @@ function formatKeyLabel(code) {
   return code;
 }
 
-function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange, isTauri }) {
+function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange, isTauri, activityLoggingEnabled, onActivityLoggingChange }) {
   const [view, setView] = useState("list"); // 'list' | 'keybinds'
   const [capturing, setCapturing] = useState(null); // 'mute' | 'muteDeafen' | null
   const [localKeybinds, setLocalKeybinds] = useState(keybinds);
@@ -147,7 +147,34 @@ function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybi
                     >
                       <span
                         className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-                          launchAtStartup ? "translate-x-5" : "translate-x-1"
+                          launchAtStartup ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </li>
+              )}
+              {activityLoggingEnabled !== undefined && (
+                <li>
+                  <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200">
+                    <div className="flex items-center gap-3">
+                      <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      <span>Activity logging</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={activityLoggingEnabled}
+                      onClick={() => onActivityLoggingChange?.(!activityLoggingEnabled)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${
+                        activityLoggingEnabled ? "bg-indigo-600" : "bg-gray-200 dark:bg-gray-600"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                          activityLoggingEnabled ? "translate-x-5" : "translate-x-0"
                         }`}
                       />
                     </button>
