@@ -2720,7 +2720,6 @@ function App() {
                 onLoadOlder={loadOlderMessages}
                 hasMoreOlder={hasMoreOlderMessages}
                 loadingOlder={loadingOlderMessages}
-                apiBase={apiBase}
                 onSenderClick={(user) => {
                   setProfileModalAnchor("center");
                   setSelectedUserForProfile({ id: user.id, displayName: user.displayName || user.name });
@@ -2740,7 +2739,6 @@ function App() {
                   presenceUsers={presenceUsers}
                   currentUser={currentUser}
                   profiles={profiles}
-                  apiBase={apiBase}
                 />
               </div>
             </div>

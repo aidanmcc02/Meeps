@@ -20,12 +20,33 @@ function extractLeagueUsername(body) {
     if (t) return t;
   }
   const fields = Array.isArray(body.fields) ? body.fields : [];
-  const summonerFieldNames = ["summoner", "player", "username"];
+  const summonerFieldNames = ["summoner", "player", "username", "riot", "account"];
   for (const f of fields) {
     const name = (f.name || "").toLowerCase().trim();
     const value = (f.value || "").trim();
     if (name.includes("champion")) continue;
     if (value && summonerFieldNames.some((n) => name.includes(n))) return value;
+  }
+  // DeepLol URL: .../summoner/euw/FM%20Stew-MEEPS → FM Stew#MEEPS
+  const url = (body.url || "").trim();
+  const urlMatch = url.match(/\/summoner\/[^/]+\/([^?#]+)/i);
+  if (urlMatch) {
+    try {
+      let id = decodeURIComponent(urlMatch[1].trim());
+      const lastHyphen = id.lastIndexOf("-");
+      if (lastHyphen > 0) {
+        const after = id.slice(lastHyphen + 1);
+        if (/^[A-Za-z0-9]{2,6}$/.test(after)) id = id.slice(0, lastHyphen) + "#" + after;
+      }
+      if (id) return id;
+    } catch (_) {}
+  }
+  // Description: "FM Stew has completed a match!"
+  const desc = (body.description || "").trim();
+  const descMatch = desc.match(/^(.+?)\s+has completed a match!$/i);
+  if (descMatch) {
+    const name = descMatch[1].trim();
+    if (name && name.length >= 2) return name;
   }
   return null;
 }

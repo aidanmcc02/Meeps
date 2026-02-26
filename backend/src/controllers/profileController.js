@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const { broadcastProfileUpdate } = require("../websocket/websocketServer");
+const { backfillBannersForUser } = require("../services/dianaEmbedService");
 
 function mapUserRowToProfile(row) {
   let achievements = [];
@@ -139,7 +140,39 @@ exports.updateProfileById = async (req, res, next) => {
     // Notify all connected clients about the profile change
     broadcastProfileUpdate(profile);
 
+    // Backfill Diana match embeds with user's banner for backwards compatibility
+    if (newLeagueUsername) {
+      backfillBannersForUser(newLeagueUsername, newBannerUrl).catch((err) =>
+        console.warn("[profile] Banner backfill failed:", err?.message)
+      );
+    }
+
     return res.json(profile);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.backfillDianaBanners = async (req, res, next) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  try {
+    const result = await db.query(
+      "SELECT league_username, banner_url FROM users WHERE id = $1",
+      [userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
+    const { league_username, banner_url } = result.rows[0];
+    if (!league_username || !league_username.trim()) {
+      return res.status(400).json({ message: "League username not set. Add it in Gamer Tags (Edit profile)." });
+    }
+    const backfillResult = await backfillBannersForUser(league_username.trim(), banner_url);
+    return res.json({
+      ok: true,
+      message: "Banner backfill completed",
+      ...backfillResult
+    });
   } catch (err) {
     return next(err);
   }
