@@ -48,6 +48,24 @@ export function messageMentionsMe(content, displayName) {
 }
 
 /**
+ * Returns true if the message content mentions the current user by direct @displayName only (not @everyone).
+ * Use this when the current user is the sender so that @everyone does not "ping" the sender.
+ */
+export function messageMentionsMeDirectly(content, displayName) {
+  if (!content || typeof content !== "string") return false;
+  const trimmed = (displayName || "").trim();
+  if (!trimmed) return false;
+  const currentSlug = trimmed.replace(/\s+/g, "_").toLowerCase();
+  const re = /@(\S+)/g;
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    const slug = (match[1] || "").toLowerCase();
+    if (slug === currentSlug) return true;
+  }
+  return false;
+}
+
+/**
  * Get service worker registration if available
  * @returns {Promise<ServiceWorkerRegistration|null>}
  */
@@ -208,13 +226,16 @@ export async function showMentionNotificationIfBackground(
     // Try to use service worker registration for iOS PWA compatibility
     const registration = await getServiceWorkerRegistration();
     if (registration && registration.showNotification) {
+      const channelId = channel || "general";
+      const url = `/?channel=${encodeURIComponent(channelId)}`;
       await registration.showNotification(title, {
         body,
         icon: "/apple-touch-icon.png",
         badge: "/icon-192.png",
-        tag: `message-${channel || "general"}`,
+        tag: `message-${channelId}`,
         data: {
-          url: "/"
+          url,
+          channel: channelId
         }
       });
     } else {
