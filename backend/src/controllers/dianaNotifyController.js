@@ -1,5 +1,6 @@
 const db = require("../config/db");
-const { postMessageToChannel } = require("../websocket/websocketServer");
+const { postMessageToChannel, broadcastMessageUpdate } = require("../websocket/websocketServer");
+const { getAnalysisForDianaMatch, isConfigured: isMatchAnalysisConfigured } = require("../services/matchAnalysisService");
 
 const MATCHES_CHANNEL = "matches";
 const SENDER_NAME = "Diana";
@@ -134,6 +135,47 @@ exports.notify = async (req, res, next) => {
     if (!payload) {
       return res.status(500).json({ error: "Failed to post message" });
     }
+
+    // Optional: run AI match analysis in background and update the message embed
+    if (isMatchAnalysisConfigured() && payload.id) {
+      const messageId = payload.id;
+      const bodyCopy = { ...body };
+      getAnalysisForDianaMatch(bodyCopy)
+        .then(async (analysis) => {
+          if (!analysis || typeof analysis !== "string") return;
+          try {
+            const row = await db.query(
+              "SELECT id, channel, sender_name, sender_id, content, embed, created_at FROM messages WHERE id = $1",
+              [messageId]
+            );
+            if (row.rows.length === 0) return;
+            const r = row.rows[0];
+            let updatedEmbed = r.embed && typeof r.embed === "object" ? { ...r.embed } : {};
+            if (typeof r.embed === "string") {
+              try {
+                updatedEmbed = { ...JSON.parse(r.embed) };
+              } catch (_) {}
+            }
+            updatedEmbed.aiAnalysis = analysis;
+            await db.query("UPDATE messages SET embed = $2::jsonb WHERE id = $1", [messageId, JSON.stringify(updatedEmbed)]);
+            broadcastMessageUpdate({
+              id: r.id,
+              channel: r.channel,
+              sender: r.sender_name,
+              senderId: r.sender_id ?? undefined,
+              content: r.content,
+              embed: updatedEmbed,
+              createdAt: r.created_at
+            });
+          } catch (err) {
+            console.warn("[diana-notify] AI analysis update failed:", err.message);
+          }
+        })
+        .catch((err) => {
+          console.warn("[diana-notify] AI analysis failed:", err.message);
+        });
+    }
+
     return res.status(201).json({ ok: true, channel: MATCHES_CHANNEL, id: payload.id });
   } catch (err) {
     console.error("[diana-notify] Error:", err.message);

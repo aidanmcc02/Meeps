@@ -181,7 +181,8 @@ function DianaEmbed({ embed }) {
     footer,
     text,
     timestamp,
-    bannerUrl
+    bannerUrl,
+    aiAnalysis
   } = embed;
 
   const borderColor = (() => {
@@ -303,6 +304,17 @@ function DianaEmbed({ embed }) {
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {aiAnalysis && typeof aiAnalysis === "string" && aiAnalysis.trim() && (
+            <div className="mt-3 pt-3 border-t border-indigo-100 dark:border-indigo-900/50">
+              <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 block mb-1">
+                AI match insight
+              </span>
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                {aiAnalysis.trim()}
+              </p>
             </div>
           )}
         </div>
