@@ -36,6 +36,7 @@ import {
 } from "./utils/mentionNotifications";
 
 const THEME_KEY = "meeps-theme";
+const USER_STATUS_KEY = "meeps-user-status";
 const KEYBINDS_KEY = "meeps-keybinds";
 const SIDEBAR_WIDTH_KEY = "meeps-sidebar-width-px";
 const USERS_PANEL_WIDTH_KEY = "meeps-users-panel-width-px";
@@ -91,6 +92,41 @@ function buildActivityFromWindowTitle(title) {
   };
 }
 
+/** Extract app name only from window title (e.g. "Page - Google Chrome" → "Google Chrome"). */
+function appNameFromWindowTitle(title) {
+  if (!title || typeof title !== "string") return title?.trim() || "";
+  const t = title.trim();
+  const idx = t.lastIndexOf(" - ");
+  return idx >= 0 ? t.slice(idx + 3).trim() : t;
+}
+
+/**
+ * Build presence activity from window title based on detail level.
+ * @param {string} title - Window title
+ * @param {"in_depth"|"just_application"|"none"} detailLevel
+ * @returns {object|null} Activity to send, or { type: "hidden", name: "Hiding activity" } for none
+ */
+function buildActivityForDetailLevel(title, detailLevel) {
+  if (!title || typeof title !== "string") return null;
+  const t = title.trim();
+  if (!t || t === "Meeps") return null;
+  if (detailLevel === "none") {
+    return { type: "hidden", name: "Hiding activity" };
+  }
+  if (detailLevel === "just_application") {
+    const appName = appNameFromWindowTitle(t);
+    if (!appName) return null;
+    const lower = appName.toLowerCase();
+    const isGame = ACTIVITY_KNOWN_GAMES.some((g) => lower.includes(g.toLowerCase()));
+    return {
+      type: isGame ? "game" : "app",
+      name: appName.length > 60 ? appName.slice(0, 57) + "…" : appName
+      // no details
+    };
+  }
+  return buildActivityFromWindowTitle(t);
+}
+
 const DEFAULT_HTTP =
   import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 const DEFAULT_WS =
@@ -143,6 +179,12 @@ function App() {
   const [dianaApiBase, setDianaApiBase] = useState(DEFAULT_DIANA_API);
   const [profiles, setProfiles] = useState({});
   const [presenceUsers, setPresenceUsers] = useState([]);
+  const [userStatus, setUserStatus] = useState(() => {
+    if (typeof window === "undefined") return "online";
+    const s = (window.localStorage.getItem(USER_STATUS_KEY) || "online").toLowerCase();
+    return ["online", "idle", "do_not_disturb"].includes(s) ? s : "online";
+  });
+  const userStatusRef = useRef(userStatus);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const socketRef = useRef(null);
@@ -216,6 +258,10 @@ function App() {
   const previousSpeakingRef = useRef(new Set());
   const voiceTryPlayAllRemoteAudioRef = useRef(null); // set in effect: () => try play all audio[srcObject]
   const [isTauri, setIsTauri] = useState(false);
+
+  useEffect(() => {
+    userStatusRef.current = userStatus;
+  }, [userStatus]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return;
@@ -751,7 +797,12 @@ function App() {
         console.log("WebSocket connected successfully");
         setSocketStatus("connected");
         socket.send(
-          JSON.stringify({ type: "presence:hello", userId: uid, displayName: dname })
+          JSON.stringify({
+            type: "presence:hello",
+            userId: uid,
+            displayName: dname,
+            status: userStatusRef.current || "online"
+          })
         );
         socket.send(
           JSON.stringify({
@@ -1141,13 +1192,26 @@ function App() {
     let lastTitleRef = "";
     const poll = async () => {
       try {
+        const profile = profiles[currentUser?.id ?? CURRENT_USER_ID] || null;
+        const activityLoggingEnabled = profile?.activityLoggingEnabled !== false;
+        const detailLevel = profile?.activityDetailLevel || "in_depth";
+
         const title = await invoke("get_foreground_window_title");
         const t = title != null ? String(title).trim() : "";
         if (t === lastTitleRef) return;
         lastTitleRef = t;
+
         const socket = socketRef.current;
         if (!socket || socket.readyState !== WebSocket.OPEN) return;
-        const activity = t === "" || t === "Meeps" ? null : buildActivityFromWindowTitle(t);
+
+        let activity = null;
+        if (activityLoggingEnabled) {
+          if (detailLevel === "none") {
+            activity = { type: "hidden", name: "Hiding activity" };
+          } else if (t !== "" && t !== "Meeps") {
+            activity = buildActivityForDetailLevel(t, detailLevel);
+          }
+        }
         socket.send(JSON.stringify({
           type: "presence:activity",
           userId: currentUser.id || CURRENT_USER_ID,
@@ -1160,7 +1224,7 @@ function App() {
     poll();
     const interval = setInterval(poll, ACTIVITY_POLL_MS);
     return () => clearInterval(interval);
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, profiles]);
 
   const MESSAGES_PAGE_SIZE = 100; // per text channel
 
@@ -1382,6 +1446,18 @@ function App() {
     window.localStorage.setItem(THEME_KEY, nextTheme);
     applyTheme(nextTheme);
     saveThemePreference(nextTheme);
+  };
+
+  const handleUserStatusChange = (nextStatus) => {
+    if (!["online", "idle", "do_not_disturb"].includes(nextStatus)) return;
+    setUserStatus(nextStatus);
+    try {
+      window.localStorage.setItem(USER_STATUS_KEY, nextStatus);
+    } catch (_) {}
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "presence:status", userId: currentUser?.id ?? CURRENT_USER_ID, status: nextStatus }));
+    }
   };
 
   const handleSend = (contentOrTrimmed, attachmentIds = []) => {
@@ -2827,6 +2903,8 @@ function App() {
                 profile={currentUserProfile}
                 onSave={handleSaveProfile}
                 activity={presenceUsers?.find((u) => String(u.id) === String(currentUser?.id ?? CURRENT_USER_ID))?.activity}
+                userStatus={userStatus}
+                onUserStatusChange={handleUserStatusChange}
               />
             </div>
           )}
@@ -3130,6 +3208,11 @@ function App() {
         onActivityLoggingChange={async (enabled) => {
           const userId = currentUser?.id ?? CURRENT_USER_ID;
           await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
+        }}
+        activityDetailLevel={currentUserProfile?.activityDetailLevel ?? "in_depth"}
+        onActivityDetailLevelChange={async (level) => {
+          const userId = currentUser?.id ?? CURRENT_USER_ID;
+          await handleSaveProfileForUser(userId, { activityDetailLevel: level });
         }}
       />
       <VoiceSettingsModal

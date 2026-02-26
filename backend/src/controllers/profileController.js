@@ -15,6 +15,10 @@ function mapUserRowToProfile(row) {
     }
   }
 
+  const detailLevel = row.activity_detail_level;
+  const activityDetailLevel =
+    detailLevel === "just_application" || detailLevel === "none" ? detailLevel : "in_depth";
+
   return {
     id: row.id,
     email: row.email,
@@ -27,6 +31,7 @@ function mapUserRowToProfile(row) {
     theme: row.theme || null,
     userType: row.user_type || "user",
     activityLoggingEnabled: row.activity_logging_enabled !== false,
+    activityDetailLevel,
     createdAt: row.created_at
   };
 }
@@ -52,7 +57,7 @@ exports.getProfile = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -75,7 +80,7 @@ exports.getProfileById = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -96,11 +101,11 @@ exports.updateProfileById = async (req, res, next) => {
     return res.status(400).json({ message: "invalid user id" });
   }
 
-    const { displayName, bio, achievements, avatarUrl, bannerUrl, leagueUsername, theme, activityLoggingEnabled } = req.body;
+    const { displayName, bio, achievements, avatarUrl, bannerUrl, leagueUsername, theme, activityLoggingEnabled, activityDetailLevel } = req.body;
 
   try {
     const existingResult = await db.query(
-      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled FROM users WHERE id = $1",
+      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level FROM users WHERE id = $1",
       [userId]
     );
 
@@ -129,10 +134,17 @@ exports.updateProfileById = async (req, res, next) => {
     const newTheme = theme !== undefined ? theme || null : existing.theme;
     const newActivityLoggingEnabled =
       activityLoggingEnabled !== undefined ? !!activityLoggingEnabled : (existing.activity_logging_enabled !== false);
+    const allowedDetailLevels = ["in_depth", "just_application", "none"];
+    const newActivityDetailLevel =
+      activityDetailLevel !== undefined && allowedDetailLevels.includes(activityDetailLevel)
+        ? activityDetailLevel
+        : (existing.activity_detail_level === "just_application" || existing.activity_detail_level === "none"
+          ? existing.activity_detail_level
+          : "in_depth");
 
     const result = await db.query(
-      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, league_username = $7, theme = $8, activity_logging_enabled = $9 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, created_at",
-      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newLeagueUsername, newTheme, newActivityLoggingEnabled]
+      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, league_username = $7, theme = $8, activity_logging_enabled = $9, activity_detail_level = $10 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, created_at",
+      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newLeagueUsername, newTheme, newActivityLoggingEnabled, newActivityDetailLevel]
     );
 
     const profile = mapUserRowToProfile(result.rows[0]);

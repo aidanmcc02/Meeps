@@ -5,8 +5,22 @@ import GamerTagsModal from "./GamerTagsModal";
 
 const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
-function UserProfile({ profile, onSave, activity, editable = true }) {
+const STATUS_OPTIONS = [
+  { value: "online", label: "Online" },
+  { value: "idle", label: "Idle" },
+  { value: "do_not_disturb", label: "Do not disturb" }
+];
+
+const STATUS_DOT_CLASS = {
+  online: "bg-emerald-500",
+  idle: "bg-amber-400",
+  do_not_disturb: "bg-red-500",
+  offline: "bg-gray-500"
+};
+
+function UserProfile({ profile, onSave, activity, editable = true, userStatus, onUserStatusChange }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [achievementsText, setAchievementsText] = useState("");
@@ -43,6 +57,10 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
 
   useEffect(() => {
     if (!isEditing) setGamerTagsOpen(false);
+  }, [isEditing]);
+
+  useEffect(() => {
+    if (isEditing) setStatusOpen(false);
   }, [isEditing]);
 
   const handleSubmit = (e) => {
@@ -129,19 +147,69 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
                     </div>
                   )}
                 </div>
-                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900 bg-emerald-500 shadow-sm z-10" aria-hidden />
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900 shadow-sm z-10 ${userStatus ? STATUS_DOT_CLASS[userStatus] || STATUS_DOT_CLASS.online : "bg-emerald-500"}`}
+                  aria-hidden
+                />
               </div>
-              <div className="flex flex-col leading-tight min-w-0">
+              <div className="flex flex-col leading-tight min-w-0 flex-1">
                 <span className="text-xs font-semibold text-gray-100 dark:text-white">
                   {profile.displayName || "Meeps User"}
                 </span>
+                {onUserStatusChange && userStatus != null && (
+                  <div className="relative mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setStatusOpen((o) => !o)}
+                      className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-200 dark:text-gray-500 dark:hover:text-gray-300"
+                      aria-haspopup="listbox"
+                      aria-expanded={statusOpen}
+                      aria-label="Change status"
+                    >
+                      <span className="capitalize">
+                        {userStatus === "do_not_disturb" ? "Do not disturb" : userStatus}
+                      </span>
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {statusOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          aria-hidden
+                          onClick={() => setStatusOpen(false)}
+                        />
+                        <ul
+                          role="listbox"
+                          className="absolute left-0 bottom-full mb-1 z-20 min-w-[10rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800"
+                        >
+                          {STATUS_OPTIONS.map((opt) => (
+                            <li key={opt.value} role="option" aria-selected={userStatus === opt.value}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onUserStatusChange(opt.value);
+                                  setStatusOpen(false);
+                                }}
+                                className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${userStatus === opt.value ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-700 dark:text-gray-200"}`}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${STATUS_DOT_CLASS[opt.value] || "bg-gray-400"}`} />
+                                {opt.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
                 {activity?.name && profile?.activityLoggingEnabled !== false && (
                   <span
-                    className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5"
-                    title={activity.details || activity.name}
+                    className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5 block"
+                    title={activity.type === "hidden" ? activity.name : (activity.details || activity.name)}
                   >
-                    {activity.type === "game" ? "Playing " : "In "}
-                    {activity.name}
+                    {activity.type === "hidden" ? activity.name : (activity.type === "game" ? "Playing " : "In ") + activity.name}
                   </span>
                 )}
               </div>
