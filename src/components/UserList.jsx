@@ -3,8 +3,14 @@ import React from "react";
 const statusColor = {
   online: "bg-emerald-500",
   idle: "bg-amber-400",
-  offline: "bg-gray-500"
+  offline: "bg-gray-500",
+  do_not_disturb: "bg-red-500"
 };
+
+function statusLabel(status) {
+  if (status === "do_not_disturb") return "Do not disturb";
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Offline";
+}
 
 function UserList({ users, onUserClick, profiles = {} }) {
   const safeUsers = users && users.length > 0 ? users : [];
@@ -16,6 +22,7 @@ function UserList({ users, onUserClick, profiles = {} }) {
         const name = user.displayName || user.name || "Meeps User";
         const profile = user.id != null ? profiles[user.id] : null;
         const showActivity = profile?.activityLoggingEnabled !== false && user.activity?.name;
+        const isHidingActivity = user.activity?.type === "hidden";
         const avatarUrl = profile?.avatarUrl || null;
         const bannerUrl = profile?.bannerUrl || null;
         const initials =
@@ -80,16 +87,15 @@ function UserList({ users, onUserClick, profiles = {} }) {
                 <span className="text-sm font-medium truncate w-full">
                   {name}
                 </span>
-                <span className="text-[11px] capitalize opacity-80">
-                  {status}
+                <span className="text-[11px] opacity-80">
+                  {statusLabel(status)}
                 </span>
                 {showActivity && (
                   <span
                     className="text-[10px] opacity-70 truncate w-full mt-0.5"
-                    title={user.activity.details || user.activity.name}
+                    title={isHidingActivity ? user.activity.name : (user.activity.details || user.activity.name)}
                   >
-                    {user.activity.type === "game" ? "Playing " : "In "}
-                    {user.activity.name}
+                    {isHidingActivity ? user.activity.name : (user.activity.type === "game" ? "Playing " : "In ") + user.activity.name}
                   </span>
                 )}
               </div>

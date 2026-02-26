@@ -16,7 +16,13 @@ function formatKeyLabel(code) {
   return code;
 }
 
-function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange, isTauri, activityLoggingEnabled, onActivityLoggingChange }) {
+const ACTIVITY_DETAIL_OPTIONS = [
+  { value: "in_depth", label: "In-depth (window/tab title)" },
+  { value: "just_application", label: "Just application" },
+  { value: "none", label: "None (show “Hiding activity”)" }
+];
+
+function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange, isTauri, activityLoggingEnabled, onActivityLoggingChange, activityDetailLevel, onActivityDetailLevelChange }) {
   const [view, setView] = useState("list"); // 'list' | 'keybinds'
   const [capturing, setCapturing] = useState(null); // 'mute' | 'muteDeafen' | null
   const [localKeybinds, setLocalKeybinds] = useState(keybinds);
@@ -178,6 +184,32 @@ function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybi
                         }`}
                       />
                     </button>
+                  </div>
+                </li>
+              )}
+              {(activityLoggingEnabled !== undefined || activityDetailLevel !== undefined) && (
+                <li>
+                  <div className="flex w-full flex-col gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200">
+                    <div className="flex items-center gap-3">
+                      <svg className="h-5 w-5 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      <span>Activity detail</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 -mt-0.5 ml-8">
+                      How much of your activity others see when activity logging is on.
+                    </p>
+                    <select
+                      value={activityDetailLevel ?? "in_depth"}
+                      onChange={(e) => onActivityDetailLevelChange?.(e.target.value)}
+                      className="ml-8 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                      aria-label="Activity detail level"
+                    >
+                      {ACTIVITY_DETAIL_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
                 </li>
               )}
