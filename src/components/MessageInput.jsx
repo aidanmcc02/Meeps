@@ -25,6 +25,8 @@ function MessageInput({
   value,
   onChange,
   onSend,
+  replyTo,
+  onClearReply,
   onGifClick,
   placeholder,
   presenceUsers,
@@ -173,8 +175,10 @@ function MessageInput({
     const trimmed = (value || "").trim();
     const ids = pendingAttachments.map((a) => a.id);
     if (!trimmed && ids.length === 0) return;
-    onSend(trimmed || (ids.length > 0 ? " " : ""), ids);
+    const replyToId = replyTo?.id ?? null;
+    onSend(trimmed || (ids.length > 0 ? " " : ""), ids, replyToId);
     setPendingAttachments([]);
+    if (onClearReply) onClearReply();
   };
 
   const insertMention = (slug) => {
@@ -273,6 +277,22 @@ function MessageInput({
       )}
       {uploadError && (
         <p className="text-xs text-red-500 dark:text-red-400 mb-1">{uploadError}</p>
+      )}
+      {replyTo && (
+        <div className="flex items-center gap-2 mb-2 pl-1 text-xs text-gray-600 dark:text-gray-400 border-l-2 border-indigo-500 dark:border-indigo-400">
+          <span className="font-medium text-indigo-600 dark:text-indigo-400">{replyTo.sender}</span>
+          <span className="truncate flex-1 min-w-0" title={replyTo.content}>
+            {replyTo.content}
+          </span>
+          <button
+            type="button"
+            onClick={onClearReply}
+            className="shrink-0 p-1 rounded text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+            aria-label="Cancel reply"
+          >
+            ×
+          </button>
+        </div>
       )}
       <div className="relative flex items-end gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900 min-w-0">
         <input

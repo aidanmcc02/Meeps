@@ -1,6 +1,10 @@
 const db = require("../config/db");
 const axios = require("axios");
 const githubProject = require("../services/githubProjectService");
+const { postMessageToChannel } = require("../websocket/websocketServer");
+
+const BOARD_ACTIVITY_CHANNEL = "board-activity";
+const STATUS_LABELS = { todo: "To Do", in_progress: "In Progress", done: "Done" };
 const { exec } = require("child_process");
 const path = require("path");
 const util = require("util");
@@ -190,7 +194,20 @@ exports.updateIssue = async (req, res, next) => {
     if (!Number.isInteger(id) || id < 1) {
       return res.status(400).json({ message: "invalid issue id" });
     }
-    const { title, description, status, priority, assigneeId, assigneeName } = req.body;
+    const { title, description, status, priority, assigneeId, assigneeName, movedBy, movedById } = req.body;
+
+    // When status or assignee is changing, fetch current row for board-activity messages
+    let previousRow = null;
+    const needPrevious =
+      status === "todo" || status === "in_progress" || status === "done" ||
+      assigneeId !== undefined || assigneeName !== undefined;
+    if (needPrevious) {
+      const prev = await db.query(
+        "SELECT id, title, status, assignee_id, assignee_name FROM board_issues WHERE id = $1",
+        [id]
+      );
+      if (prev.rows.length > 0) previousRow = prev.rows[0];
+    }
 
     const updates = [];
     const values = [];
@@ -249,6 +266,55 @@ exports.updateIssue = async (req, res, next) => {
         console.warn("Board: GitHub project status update failed", ghErr.message);
       }
     }
+
+    const actorName = (movedBy && String(movedBy).trim()) || "Someone";
+    const actorId = movedById != null ? Number(movedById) : null;
+    const safeTitle = (updatedRow.title || "Untitled").replace(/`/g, "'").replace(/\n/g, " ").trim();
+
+    // Post to board-activity channel when status changed (e.g. card moved)
+    if (previousRow && previousRow.status !== updatedRow.status) {
+      const fromLabel = STATUS_LABELS[previousRow.status] || previousRow.status;
+      const toLabel = STATUS_LABELS[updatedRow.status] || updatedRow.status;
+      const content = [
+        "📋 **" + actorName + "** moved a card",
+        "",
+        "> `" + safeTitle + "`",
+        "",
+        "*" + fromLabel + "* → *" + toLabel + "*",
+      ].join("\n");
+      try {
+        await postMessageToChannel(BOARD_ACTIVITY_CHANNEL, actorId, actorName, content, null);
+      } catch (postErr) {
+        console.warn("Board: failed to post move to board-activity channel", postErr.message);
+      }
+    }
+
+    // Post to board-activity channel when assignee changed (reassignment)
+    const prevAssigneeId = previousRow?.assignee_id ?? null;
+    const prevAssigneeName = (previousRow?.assignee_name && String(previousRow.assignee_name).trim()) || null;
+    const newAssigneeId = updatedRow.assignee_id ?? null;
+    const newAssigneeName = (updatedRow.assignee_name && String(updatedRow.assignee_name).trim()) || null;
+    const assigneeChanged =
+      previousRow &&
+      (Number(prevAssigneeId) !== Number(newAssigneeId) ||
+       (prevAssigneeName || "Unassigned") !== (newAssigneeName || "Unassigned"));
+    if (assigneeChanged) {
+      const fromName = prevAssigneeName || "Unassigned";
+      const toName = newAssigneeName || "Unassigned";
+      const content = [
+        "👤 **" + actorName + "** reassigned a ticket",
+        "",
+        "> `" + safeTitle + "`",
+        "",
+        "*" + fromName + "* → *" + toName + "*",
+      ].join("\n");
+      try {
+        await postMessageToChannel(BOARD_ACTIVITY_CHANNEL, actorId, actorName, content, null);
+      } catch (postErr) {
+        console.warn("Board: failed to post reassignment to board-activity channel", postErr.message);
+      }
+    }
+
     return res.json(rowToIssue(updatedRow));
   } catch (err) {
     return next(err);

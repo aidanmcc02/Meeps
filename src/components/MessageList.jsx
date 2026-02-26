@@ -226,6 +226,8 @@ function MessageLink({
   );
 }
 
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👀"];
+
 function MessageList({
   messages,
   channelId,
@@ -236,6 +238,9 @@ function MessageList({
   mentionSlugToName = {},
   onEditMessage,
   onDeleteMessage,
+  onReaction,
+  replyToMessage,
+  onReplyMessage,
   onLoadOlder,
   hasMoreOlder = false,
   loadingOlder = false,
@@ -250,9 +255,11 @@ function MessageList({
   const loadOlderRequestedRef = useRef(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editContent, setEditContent] = useState("");
   const menuRef = useRef(null);
+  const reactionPickerRef = useRef(null);
   const [lightbox, setLightbox] = useState(null);
   const [hoveredMention, setHoveredMention] = useState(null);
   const mentionHandlersRef = useRef({ setHoveredMention: () => {}, resolveMentionProfile: () => null });
@@ -267,6 +274,17 @@ function MessageList({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openMenuId]);
+
+  useEffect(() => {
+    if (!reactionPickerMessageId) return;
+    const handleClickOutside = (e) => {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(e.target)) {
+        setReactionPickerMessageId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [reactionPickerMessageId]);
 
   const checkAtBottom = (el) => {
     if (!el) return true;
@@ -570,7 +588,7 @@ function MessageList({
         return (
           <div
             key={msg.id ?? `${msg.sender}-${msg.createdAt}-${runIndex}-${msg.content}`}
-            className={`flex gap-2 rounded-lg transition-colors px-2 -mx-2 ${showHeader ? "py-1" : "pt-0 pb-0.5"} ${isMentioned ? "bg-amber-100 dark:bg-amber-900/30" : ""} ${canManage && !isMentioned ? "group hover:bg-gray-100 dark:hover:bg-gray-800/60" : canManage && isMentioned ? "group hover:bg-amber-200 dark:hover:bg-amber-900/50" : ""}`}
+            className={`flex gap-2 rounded-lg transition-colors px-2 -mx-2 group ${showHeader ? "py-1" : "pt-0 pb-0.5"} ${isMentioned ? "bg-amber-100 dark:bg-amber-900/30" : ""} ${canManage && !isMentioned ? "hover:bg-gray-100 dark:hover:bg-gray-800/60" : canManage && isMentioned ? "hover:bg-amber-200 dark:hover:bg-amber-900/50" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}
           >
             {showHeader ? (
               onSenderClick && (first.senderId != null || first.sender) ? (
@@ -609,7 +627,7 @@ function MessageList({
             ) : (
               <div className="w-8 flex-shrink-0 self-stretch min-h-[2px]" aria-hidden="true" />
             )}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 relative">
               {showHeader ? (
               <div className="flex items-baseline gap-2 flex-1 min-w-0">
                 <span className="text-xs font-semibold shrink-0 flex items-center gap-1 flex-wrap">
@@ -666,6 +684,21 @@ function MessageList({
                     </button>
                     {openMenuId === msg.id && (
                       <div className="absolute right-0 bottom-full mb-1 flex gap-0.5 py-1 px-1 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                        {onReplyMessage && (
+                          <button
+                            type="button"
+                            className="p-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            onClick={() => {
+                              onReplyMessage({ id: msg.id, sender: msg.sender, content: (msg.content || "").slice(0, 100) });
+                              setOpenMenuId(null);
+                            }}
+                            aria-label="Reply"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="p-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -720,6 +753,21 @@ function MessageList({
                   </button>
                   {openMenuId === msg.id && (
                     <div className="absolute right-0 bottom-full mb-1 flex gap-0.5 py-1 px-1 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                      {onReplyMessage && (
+                        <button
+                          type="button"
+                          className="p-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => {
+                            onReplyMessage({ id: msg.id, sender: msg.sender, content: (msg.content || "").slice(0, 100) });
+                            setOpenMenuId(null);
+                          }}
+                          aria-label="Reply"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                          </svg>
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="p-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -754,6 +802,12 @@ function MessageList({
                 </div>
               </div>
               ) : null}
+              {msg.replyTo && (
+                <div className="mt-0.5 mb-0.5 pl-2 border-l-2 border-indigo-400 dark:border-indigo-500 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">{msg.replyTo.sender}</span>
+                  <span className="ml-1 truncate block" title={msg.replyTo.content}>{msg.replyTo.content}</span>
+                </div>
+              )}
               {isEditing ? (
                 <div className="mt-1 space-y-2">
                   <textarea
@@ -916,8 +970,103 @@ function MessageList({
                               </span>
                             )}
                           </div>
+                            );
+                          })}
+                    </div>
+                  )}
+                  {(onReaction && ((msg.reactions && Object.keys(msg.reactions).length > 0) || reactionPickerMessageId === msg.id)) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1" ref={reactionPickerMessageId === msg.id ? reactionPickerRef : null}>
+                      {Object.entries(msg.reactions || {}).map(([emoji, userIds]) => {
+                        const count = Array.isArray(userIds) ? userIds.length : 0;
+                        const hasMe = currentUserId != null && Array.isArray(userIds) && userIds.some((id) => Number(id) === Number(currentUserId));
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => onReaction(msg.id, emoji, !hasMe)}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-sm border transition-colors ${
+                              hasMe
+                                ? "bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-700"
+                                : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700"
+                            }`}
+                          >
+                            <span>{emoji}</span>
+                            {count > 0 && <span className="text-xs">{count}</span>}
+                          </button>
                         );
                       })}
+                      {reactionPickerMessageId === msg.id ? (
+                        <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 shadow-lg">
+                          {QUICK_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-lg"
+                              onClick={() => {
+                                onReaction(msg.id, emoji, true);
+                                setReactionPickerMessageId(null);
+                              }}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          {onReplyMessage && (
+                            <button
+                              type="button"
+                              onClick={() => onReplyMessage({ id: msg.id, sender: msg.sender, content: (msg.content || "").slice(0, 100) })}
+                              className="inline-flex items-center rounded-full px-2 py-0.5 text-sm border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+                              aria-label="Reply"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                              </svg>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setReactionPickerMessageId((id) => (id === msg.id ? null : msg.id))}
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-sm border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+                            aria-label="Add reaction"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {(onReaction || onReplyMessage) && (!msg.reactions || Object.keys(msg.reactions).length === 0) && reactionPickerMessageId !== msg.id && (
+                    <div className="absolute bottom-0 left-0 right-0 z-10 translate-y-full pt-0.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                      <div className="flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm py-0.5 px-1">
+                        {onReplyMessage && (
+                          <button
+                            type="button"
+                            onClick={() => onReplyMessage({ id: msg.id, sender: msg.sender, content: (msg.content || "").slice(0, 100) })}
+                            className="inline-flex items-center rounded-full p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200"
+                            aria-label="Reply"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                          </button>
+                        )}
+                        {onReaction && (
+                          <button
+                            type="button"
+                            onClick={() => setReactionPickerMessageId((id) => (id === msg.id ? null : msg.id))}
+                            className="inline-flex items-center rounded-full p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200"
+                            aria-label="Add reaction"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </>

@@ -129,6 +129,8 @@ function startWebSocketServer(httpServer) {
         await handleMessageEdit(parsed, socket, wss);
       } else if (parsed.type === "message:delete") {
         await handleMessageDelete(parsed, socket, wss);
+      } else if (parsed.type === "message:reaction") {
+        await handleMessageReaction(parsed, socket, wss);
       } else if (parsed.type === "presence:hello") {
         handlePresenceHello(socket, parsed);
       } else if (parsed.type === "presence:status") {
@@ -192,6 +194,7 @@ async function handleIncomingChatMessage(parsed, wss) {
   const attachmentIds = Array.isArray(parsed.attachmentIds)
     ? parsed.attachmentIds.map((a) => Number(a)).filter((n) => !Number.isNaN(n))
     : [];
+  const replyToId = parsed.replyToId != null ? Number(parsed.replyToId) : null;
 
   if (!content && attachmentIds.length === 0) {
     console.log("Empty message (no content or attachments), ignoring");
@@ -205,16 +208,18 @@ async function handleIncomingChatMessage(parsed, wss) {
     senderId: senderId || undefined,
     content,
     createdAt: new Date().toISOString(),
-    attachments: []
+    attachments: [],
+    replyTo: undefined,
+    reactions: {}
   };
 
   const contentToSave = content || (attachmentIds.length > 0 ? " " : "");
   try {
-    console.log("Saving message to database:", { channel, sender, senderId, content: contentToSave, attachmentIds });
+    console.log("Saving message to database:", { channel, sender, senderId, content: contentToSave, attachmentIds, replyToId });
     try {
       const result = await db.query(
-        "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
-        [channel, sender, senderId || null, contentToSave]
+        "INSERT INTO messages (channel, sender_name, sender_id, content, created_at, reply_to_id) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING id, created_at, sender_id, reply_to_id",
+        [channel, sender, senderId || null, contentToSave, replyToId || null]
       );
       const row = result.rows[0];
       const messageId = row.id;
@@ -236,6 +241,18 @@ async function handleIncomingChatMessage(parsed, wss) {
       }
 
       savedMessage.attachments = await getAttachmentsForMessage(messageId);
+      let replyTo = undefined;
+      if (row.reply_to_id) {
+        const replyRow = await db.query(
+          "SELECT id, sender_name, content FROM messages WHERE id = $1",
+          [row.reply_to_id]
+        );
+        if (replyRow.rows[0]) {
+          const r = replyRow.rows[0];
+          const c = r.content || "";
+          replyTo = { id: r.id, sender: r.sender_name, content: c.length > 100 ? c.slice(0, 97) + "..." : c };
+        }
+      }
       savedMessage = {
         id: row.id,
         channel,
@@ -243,12 +260,30 @@ async function handleIncomingChatMessage(parsed, wss) {
         senderId: row.sender_id ?? undefined,
         content: contentToSave,
         createdAt: row.created_at,
-        attachments: savedMessage.attachments
+        attachments: savedMessage.attachments,
+        replyToId: row.reply_to_id ?? undefined,
+        replyTo,
+        reactions: {}
       };
       console.log("Message saved successfully:", savedMessage);
     } catch (insertErr) {
-      if (insertErr.code === "42P01") {
-        // relation "message_attachments" or "uploads" does not exist yet
+      if (insertErr.code === "42703" && insertErr.message?.includes("reply_to_id")) {
+        const result = await db.query(
+          "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
+          [channel, sender, senderId || null, contentToSave]
+        );
+        const row = result.rows[0];
+        savedMessage = {
+          id: row.id,
+          channel,
+          sender,
+          senderId: row.sender_id ?? undefined,
+          content: contentToSave,
+          createdAt: row.created_at,
+          attachments: await getAttachmentsForMessage(row.id).catch(() => []),
+          reactions: {}
+        };
+      } else if (insertErr.code === "42P01") {
         const result = await db.query(
           "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
           [channel, sender, senderId || null, content]
@@ -261,7 +296,8 @@ async function handleIncomingChatMessage(parsed, wss) {
           senderId: row.sender_id ?? undefined,
           content: contentToSave,
           createdAt: row.created_at,
-          attachments: []
+          attachments: [],
+          reactions: {}
         };
       } else if (insertErr.code === "42703" || insertErr.message?.includes("sender_id")) {
         const result = await db.query(
@@ -276,7 +312,8 @@ async function handleIncomingChatMessage(parsed, wss) {
           senderId: undefined,
           content: contentToSave,
           createdAt: row.created_at,
-          attachments: []
+          attachments: [],
+          reactions: {}
         };
         console.log("Message saved (legacy schema):", savedMessage);
       } else {
@@ -300,10 +337,10 @@ async function handleIncomingChatMessage(parsed, wss) {
     }
   }
 
-  // Push notifications for all users with push subscriptions who are not connected (e.g. app closed on iPhone)
+  // Push notifications for all users with push subscriptions who are not connected and not in DND (e.g. app closed on iPhone)
   if (pushService.isConfigured() && (content || attachmentIds.length > 0)) {
     try {
-      const allPushUserIds = await getUserIdsWithPushSubscriptions();
+      const allPushUserIds = await getUserIdsWithPushSubscriptionsNotDnd();
       const connectedIds = new Set(socketsByUserId.keys());
       const toNotify = allPushUserIds.filter(
         (id) => Number(id) !== Number(senderId) && !connectedIds.has(Number(id))
@@ -325,15 +362,22 @@ async function handleIncomingChatMessage(parsed, wss) {
 }
 
 /**
- * Get all user IDs that have push subscriptions (for notifying on any new message).
- * @returns {Promise<number[]>} User IDs with push subscriptions
+ * Get user IDs that have push subscriptions and are not in Do Not Disturb (for notifying on new messages).
+ * @returns {Promise<number[]>} User IDs with push subscriptions and DND off
  */
-async function getUserIdsWithPushSubscriptions() {
+async function getUserIdsWithPushSubscriptionsNotDnd() {
   try {
-    const result = await db.query("SELECT DISTINCT user_id FROM push_subscriptions");
+    const result = await db.query(
+      "SELECT DISTINCT ps.user_id FROM push_subscriptions ps JOIN users u ON u.id = ps.user_id WHERE (u.do_not_disturb IS NOT TRUE OR u.do_not_disturb IS NULL)"
+    );
     return result.rows.map((r) => Number(r.user_id));
   } catch (_) {
-    return [];
+    try {
+      const result = await db.query("SELECT DISTINCT user_id FROM push_subscriptions");
+      return result.rows.map((r) => Number(r.user_id));
+    } catch (_2) {
+      return [];
+    }
   }
 }
 
@@ -400,6 +444,60 @@ async function handleMessageEdit(parsed, socket, wss) {
     }
   } catch (err) {
     console.error("Message edit failed:", err.message);
+  }
+}
+
+/** Normalize emoji to a short string (allow common single emoji or short sequences). */
+function normalizeEmoji(emoji) {
+  if (emoji == null || typeof emoji !== "string") return null;
+  const s = emoji.trim();
+  if (s.length === 0 || s.length > 64) return null;
+  return s;
+}
+
+async function handleMessageReaction(parsed, socket, wss) {
+  const messageId = parsed.messageId != null ? Number(parsed.messageId) : null;
+  const emoji = normalizeEmoji(parsed.emoji);
+  const add = parsed.add !== false;
+  const userId = socket.userId != null ? Number(socket.userId) : null;
+
+  if (!messageId || !emoji || !userId) return;
+
+  try {
+    const msgCheck = await db.query("SELECT id FROM messages WHERE id = $1", [messageId]);
+    if (msgCheck.rows.length === 0) return;
+
+    if (add) {
+      await db.query(
+        "INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING",
+        [messageId, userId, emoji]
+      );
+    } else {
+      await db.query(
+        "DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
+        [messageId, userId, emoji]
+      );
+    }
+
+    const reactResult = await db.query(
+      "SELECT user_id, emoji FROM message_reactions WHERE message_id = $1",
+      [messageId]
+    );
+    const reactions = {};
+    for (const r of reactResult.rows) {
+      if (!reactions[r.emoji]) reactions[r.emoji] = [];
+      reactions[r.emoji].push(r.user_id);
+    }
+
+    const outbound = JSON.stringify({
+      type: "message:reactions",
+      payload: { messageId, reactions }
+    });
+    for (const client of wss.clients) {
+      if (client.readyState === client.OPEN) client.send(outbound);
+    }
+  } catch (err) {
+    if (err.code !== "42P01") console.error("Message reaction failed:", err.message);
   }
 }
 

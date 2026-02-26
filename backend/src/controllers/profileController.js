@@ -32,6 +32,7 @@ function mapUserRowToProfile(row) {
     userType: row.user_type || "user",
     activityLoggingEnabled: row.activity_logging_enabled !== false,
     activityDetailLevel,
+    doNotDisturb: row.do_not_disturb === true,
     createdAt: row.created_at
   };
 }
@@ -57,7 +58,7 @@ exports.getProfile = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -80,7 +81,7 @@ exports.getProfileById = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -101,11 +102,11 @@ exports.updateProfileById = async (req, res, next) => {
     return res.status(400).json({ message: "invalid user id" });
   }
 
-    const { displayName, bio, achievements, avatarUrl, bannerUrl, leagueUsername, theme, activityLoggingEnabled, activityDetailLevel } = req.body;
+    const { displayName, bio, achievements, avatarUrl, bannerUrl, leagueUsername, theme, activityLoggingEnabled, activityDetailLevel, doNotDisturb } = req.body;
 
   try {
     const existingResult = await db.query(
-      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level FROM users WHERE id = $1",
+      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb FROM users WHERE id = $1",
       [userId]
     );
 
@@ -141,10 +142,12 @@ exports.updateProfileById = async (req, res, next) => {
         : (existing.activity_detail_level === "just_application" || existing.activity_detail_level === "none"
           ? existing.activity_detail_level
           : "in_depth");
+    const newDoNotDisturb =
+      doNotDisturb !== undefined ? !!doNotDisturb : (existing.do_not_disturb === true);
 
     const result = await db.query(
-      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, league_username = $7, theme = $8, activity_logging_enabled = $9, activity_detail_level = $10 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, created_at",
-      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newLeagueUsername, newTheme, newActivityLoggingEnabled, newActivityDetailLevel]
+      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, league_username = $7, theme = $8, activity_logging_enabled = $9, activity_detail_level = $10, do_not_disturb = $11 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at",
+      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newLeagueUsername, newTheme, newActivityLoggingEnabled, newActivityDetailLevel, newDoNotDisturb]
     );
 
     const profile = mapUserRowToProfile(result.rows[0]);
