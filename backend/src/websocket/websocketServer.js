@@ -131,6 +131,8 @@ function startWebSocketServer(httpServer) {
         await handleMessageDelete(parsed, socket, wss);
       } else if (parsed.type === "presence:hello") {
         handlePresenceHello(socket, parsed);
+      } else if (parsed.type === "presence:status") {
+        handlePresenceStatus(socket, parsed);
       } else if (parsed.type === "presence:activity") {
         handlePresenceActivity(socket, parsed);
       } else if (parsed.type === "voice:join") {
@@ -445,11 +447,20 @@ async function handleMessageDelete(parsed, socket, wss) {
   }
 }
 
+const ALLOWED_PRESENCE_STATUSES = ["online", "idle", "do_not_disturb"];
+
+function normalizePresenceStatus(status) {
+  if (typeof status !== "string") return "online";
+  const s = status.trim().toLowerCase();
+  return ALLOWED_PRESENCE_STATUSES.includes(s) ? s : "online";
+}
+
 function handlePresenceHello(socket, payload) {
   const userId = Number(payload.userId);
   if (!userId) return;
 
   const displayName = payload.displayName || "Meeps User";
+  const status = normalizePresenceStatus(payload.status);
   const now = Date.now();
 
   socket.userId = userId;
@@ -464,7 +475,7 @@ function handlePresenceHello(socket, payload) {
   const entry = {
     id: userId,
     displayName,
-    status: "online",
+    status,
     lastActivity: now
   };
 
@@ -497,9 +508,15 @@ function handlePresenceHello(socket, payload) {
 function normalizeActivity(activity) {
   if (activity == null) return null;
   if (typeof activity !== "object") return null;
-  const type = activity.type === "game" ? "game" : "app";
   const name = typeof activity.name === "string" ? activity.name.trim() : "";
   if (!name) return null;
+  // Preserve "hidden" type for "Hiding activity"; otherwise game or app
+  const type =
+    activity.type === "hidden" && name.toLowerCase().includes("hiding")
+      ? "hidden"
+      : activity.type === "game"
+        ? "game"
+        : "app";
   const details = typeof activity.details === "string" ? activity.details.trim() : undefined;
   return { type, name, ...(details ? { details } : {}) };
 }
@@ -536,7 +553,9 @@ function handlePresenceActivity(socket, payload) {
     existing.activity = activity || undefined;
     if (activity === null) delete existing.activity;
   }
-  const wasOfflineOrIdle = existing.status !== "online";
+  // Bring back to online only when offline or idle (not when do_not_disturb)
+  const wasOfflineOrIdle =
+    existing.status === "offline" || existing.status === "idle";
   if (wasOfflineOrIdle) {
     existing.status = "online";
   }
@@ -551,6 +570,24 @@ function handlePresenceActivity(socket, payload) {
     else if (activityChanged) payload.activity = null;
     broadcastPresenceUpdate(payload);
   }
+}
+
+function handlePresenceStatus(socket, payload) {
+  const userId = Number(payload.userId || socket.userId);
+  if (!userId || userId !== socket.userId) return;
+
+  const status = normalizePresenceStatus(payload.status);
+  const entry = presenceByUserId.get(userId);
+  if (!entry) return;
+
+  entry.status = status;
+  presenceByUserId.set(userId, entry);
+  broadcastPresenceUpdate({
+    id: entry.id,
+    displayName: entry.displayName,
+    status: entry.status,
+    ...(entry.activity != null ? { activity: entry.activity } : {})
+  });
 }
 
 function handleVoiceJoin(socket, payload) {

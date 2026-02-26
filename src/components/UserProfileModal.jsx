@@ -107,10 +107,9 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
                 {activity?.name && profile?.activityLoggingEnabled !== false && (
                   <p
                     className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate"
-                    title={activity.details || activity.name}
+                    title={activity.type === "hidden" ? activity.name : (activity.details || activity.name)}
                   >
-                    {activity.type === "game" ? "Playing " : "In "}
-                    {activity.name}
+                    {activity.type === "hidden" ? activity.name : (activity.type === "game" ? "Playing " : "In ") + activity.name}
                   </p>
                 )}
 
