@@ -276,6 +276,9 @@ function MessageList({
 
   const handleScroll = () => {
     setShowJumpToBottom(!checkAtBottom(containerRef.current));
+    if (hoveredMention) {
+      setHoveredMention(null);
+    }
     const el = containerRef.current;
     if (
       onLoadOlder &&
