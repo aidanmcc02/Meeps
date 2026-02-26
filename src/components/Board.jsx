@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
+async function loadCommitCountFromTauri() {
+  if (typeof window === "undefined" || !window.__TAURI__) return null;
+  const { invoke } = await import("@tauri-apps/api/tauri");
+  try {
+    const count = await invoke("get_git_commit_count", { repoPath: null });
+    return typeof count === "number" ? count : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 const COLUMNS = [
   { id: "todo", label: "To Do", color: "bg-slate-100 dark:bg-slate-800/60" },
   { id: "in_progress", label: "In Progress", color: "bg-amber-50 dark:bg-amber-900/20" },
@@ -294,6 +305,331 @@ function IssueModal({ issue, isOpen, onClose, onCreate, onSave, currentUser, use
   );
 }
 
+function StatsChart({ issues, commitsOnMain, commitsLoading, commitsError, ticketsByAssignee, contributors, onRefreshCommits }) {
+  const [viewMode, setViewMode] = useState("bar"); // "bar" | "pie"
+  const ticketsLeaderboard = Array.isArray(ticketsByAssignee) ? ticketsByAssignee : [];
+  const commitsLeaderboard = Array.isArray(contributors) ? contributors : [];
+
+  const stats = useMemo(() => {
+    const byStatus = {
+      todo: 0,
+      in_progress: 0,
+      done: 0,
+    };
+    for (const issue of issues) {
+      const status = issue.status || "todo";
+      if (status === "in_progress") byStatus.in_progress += 1;
+      else if (status === "done") byStatus.done += 1;
+      else byStatus.todo += 1;
+    }
+    const ticketsTaken = byStatus.in_progress + byStatus.done;
+    const totalTickets = byStatus.todo + byStatus.in_progress + byStatus.done;
+    return { byStatus, ticketsTaken, totalTickets };
+  }, [issues]);
+
+  const barData = useMemo(() => {
+    const values = [
+      { key: "tickets", label: "Tickets taken", value: stats.ticketsTaken },
+      { key: "commits", label: "Commits (GitHub)", value: commitsOnMain ?? 0 },
+    ];
+    const maxValue = Math.max(1, ...values.map((v) => v.value || 0));
+    return { values, maxValue };
+  }, [stats.ticketsTaken, commitsOnMain]);
+
+  const pieData = useMemo(() => {
+    const ticketValue = stats.ticketsTaken;
+    const commitValue = commitsOnMain ?? 0;
+    const total = ticketValue + commitValue || 1;
+    return {
+      ticketPortion: ticketValue / total,
+      commitPortion: commitValue / total,
+      total,
+    };
+  }, [stats.ticketsTaken, commitsOnMain]);
+
+  return (
+    <div className="flex h-full flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Board statistics</h2>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            Compare tickets taken (in progress + done) with commits on the repo&apos;s default branch (from GitHub).
+          </p>
+        </div>
+        <div className="inline-flex items-center rounded-full bg-gray-100 p-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+          <button
+            type="button"
+            onClick={() => setViewMode("bar")}
+            className={`px-3 py-1.5 rounded-full transition-colors ${
+              viewMode === "bar"
+                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-50"
+                : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            }`}
+          >
+            Bar
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("pie")}
+            className={`px-3 py-1.5 rounded-full transition-colors ${
+              viewMode === "pie"
+                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-50"
+                : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            }`}
+          >
+            Pie
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Tickets taken
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-50">
+            {stats.ticketsTaken}
+          </p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Out of {stats.totalTickets} total tickets on the board.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Commits (GitHub)
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-50">
+            {commitsLoading ? "…" : commitsOnMain ?? "—"}
+          </p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {commitsError
+              ? "Could not load from GitHub."
+              : "Total commits on the default branch (from GitHub)."}
+          </p>
+          {commitsError && typeof onRefreshCommits === "function" && (
+            <button
+              type="button"
+              onClick={onRefreshCommits}
+              className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Tickets by status
+          </p>
+          <dl className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-300">
+            <div className="flex items-center justify-between">
+              <dt>To Do</dt>
+              <dd className="font-medium">{stats.byStatus.todo}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt>In Progress</dt>
+              <dd className="font-medium">{stats.byStatus.in_progress}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt>Done</dt>
+              <dd className="font-medium">{stats.byStatus.done}</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
+            Tickets taken leaderboard
+          </h3>
+          {ticketsLeaderboard.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400">No tickets taken yet.</p>
+          ) : (
+            <ol className="space-y-2">
+              {ticketsLeaderboard.map((entry, index) => {
+                const rank = index + 1;
+                const rankStyle =
+                  rank === 1
+                    ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                    : rank === 2
+                      ? "bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
+                      : rank === 3
+                        ? "bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300"
+                        : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+                return (
+                  <li
+                    key={entry.assigneeId ?? "unassigned" + index}
+                    className="flex items-center gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-700/80"
+                  >
+                    <span
+                      className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${rankStyle}`}
+                    >
+                      {rank}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {entry.assigneeName}
+                    </span>
+                    <span className="flex-shrink-0 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                      {entry.ticketsTaken}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
+            GitHub contributors (commits)
+          </h3>
+          {commitsLeaderboard.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {commitsLoading ? "Loading…" : "No contributor data."}
+            </p>
+          ) : (
+            <ol className="space-y-2">
+              {commitsLeaderboard.map((entry, index) => {
+                const rank = index + 1;
+                const rankStyle =
+                  rank === 1
+                    ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                    : rank === 2
+                      ? "bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
+                      : rank === 3
+                        ? "bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-300"
+                        : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+                return (
+                  <li
+                    key={entry.login ?? index}
+                    className="flex items-center gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-700/80"
+                  >
+                    <span
+                      className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${rankStyle}`}
+                    >
+                      {rank}
+                    </span>
+                    <a
+                      href={`https://github.com/${entry.login}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 flex-1 truncate text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    >
+                      {entry.login}
+                    </a>
+                    <span className="flex-shrink-0 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                      {entry.contributions}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-2 flex-1 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        {viewMode === "bar" ? (
+          <div className="flex h-full flex-col">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">
+              Bar chart: tickets taken vs commits (GitHub default branch).
+            </p>
+            <div className="flex-1 flex items-end justify-around gap-6 pb-2">
+              {barData.values.map((item) => {
+                const height = barData.maxValue ? (item.value / barData.maxValue) * 100 : 0;
+                const isTickets = item.key === "tickets";
+                return (
+                  <div key={item.key} className="flex flex-col items-center gap-1">
+                    <div className="relative flex h-40 w-10 items-end rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                      <div
+                        className={`w-full transition-all duration-500 ${
+                          isTickets ? "bg-indigo-500" : "bg-emerald-500"
+                        }`}
+                        style={{ height: `${height}%` }}
+                        aria-label={`${item.label}: ${item.value}`}
+                      />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-200">
+                      {item.value}
+                    </span>
+                    <span className="text-[11px] text-center text-gray-500 dark:text-gray-400">
+                      {item.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-4 sm:flex-row sm:items-stretch sm:justify-between">
+            <div className="flex items-center justify-center">
+              <svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Pie chart of tickets vs commits">
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="60"
+                  fill="none"
+                  stroke="rgba(148, 163, 184, 0.3)"
+                  strokeWidth="20"
+                />
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="60"
+                  fill="none"
+                  stroke="#6366F1"
+                  strokeWidth="20"
+                  strokeDasharray={`${pieData.ticketPortion * 377} 377`}
+                  strokeDashoffset="0"
+                  strokeLinecap="round"
+                  transform="rotate(-90 90 90)"
+                />
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="60"
+                  fill="none"
+                  stroke="#10B981"
+                  strokeWidth="20"
+                  strokeDasharray={`${pieData.commitPortion * 377} 377`}
+                  strokeDashoffset={-pieData.ticketPortion * 377}
+                  strokeLinecap="round"
+                  transform="rotate(-90 90 90)"
+                />
+              </svg>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Pie chart breakdown
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  Tickets taken: <span className="font-medium">{stats.ticketsTaken}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  Commits (GitHub):{" "}
+                  <span className="font-medium">{commitsLoading ? "…" : commitsOnMain ?? "—"}</span>
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Total combined: <span className="font-medium">{pieData.total}</span>
+              </p>
+              {commitsError ? (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {commitsError}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Board({ currentUser, apiBase }) {
   const [issues, setIssues] = useState([]);
   const [users, setUsers] = useState([]);
@@ -307,6 +643,13 @@ export default function Board({ currentUser, apiBase }) {
   const [filterPriority, setFilterPriority] = useState("");
   const [filterAssigneeId, setFilterAssigneeId] = useState(null);
   const [sortOrder, setSortOrder] = useState("desc");
+  const [activeTab, setActiveTab] = useState("board"); // "board" | "stats"
+  const [commitsOnMain, setCommitsOnMain] = useState(null);
+  const [commitsLoading, setCommitsLoading] = useState(false);
+  const [commitsError, setCommitsError] = useState(null);
+  const [hasLoadedCommits, setHasLoadedCommits] = useState(false);
+  const [ticketsByAssignee, setTicketsByAssignee] = useState([]);
+  const [contributors, setContributors] = useState([]);
   const filterDropdownRef = useRef(null);
   const potentialDragRef = useRef(null);
   const justDraggedRef = useRef(false);
@@ -321,6 +664,41 @@ export default function Board({ currentUser, apiBase }) {
       .then((data) => setUsers(Array.isArray(data.users) ? data.users : []))
       .catch(() => setUsers([]));
   }, [base]);
+
+  useEffect(() => {
+    if (activeTab !== "stats" || hasLoadedCommits) return;
+    let cancelled = false;
+    setCommitsLoading(true);
+    setCommitsError(null);
+
+    (async () => {
+      const [tauriCount, backendData] = await Promise.all([
+        loadCommitCountFromTauri(),
+        fetch(`${base}/api/board/stats`)
+          .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.statusText))))
+          .catch((err) => ({ error: err.message })),
+      ]);
+      if (cancelled) return;
+      if (backendData && !backendData.error) {
+        setTicketsByAssignee(Array.isArray(backendData.ticketsByAssignee) ? backendData.ticketsByAssignee : []);
+        setContributors(Array.isArray(backendData.contributors) ? backendData.contributors : []);
+        if (tauriCount == null) {
+          setCommitsOnMain(typeof backendData.commitsOnMain === "number" ? backendData.commitsOnMain : null);
+          setCommitsError(backendData.commitsError || null);
+        }
+      }
+      if (tauriCount != null) {
+        setCommitsOnMain(tauriCount);
+        setCommitsError(null);
+      } else if (backendData?.error) {
+        setCommitsError(backendData.error);
+      }
+      setHasLoadedCommits(true);
+      setCommitsLoading(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [activeTab, base, hasLoadedCommits]);
 
   useEffect(() => {
     let cancelled = false;
@@ -550,6 +928,30 @@ export default function Board({ currentUser, apiBase }) {
       <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-3 sm:px-5 sm:py-4 dark:border-gray-800">
         <div>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Board</h1>
+          <div className="mt-1 inline-flex items-center rounded-full bg-gray-100 p-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            <button
+              type="button"
+              onClick={() => setActiveTab("board")}
+              className={`px-3 py-1.5 rounded-full transition-colors ${
+                activeTab === "board"
+                  ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-50"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+              }`}
+            >
+              Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("stats")}
+              className={`px-3 py-1.5 rounded-full transition-colors ${
+                activeTab === "stats"
+                  ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-50"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+              }`}
+            >
+              Stats
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative" ref={filterDropdownRef}>
@@ -645,46 +1047,56 @@ export default function Board({ currentUser, apiBase }) {
       <div className="flex-1 min-h-0 min-w-0 overflow-auto p-4">
         {loading ? (
           <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">Loading issues…</div>
+        ) : activeTab === "stats" ? (
+          <StatsChart
+            issues={issues}
+            commitsOnMain={commitsOnMain}
+            commitsLoading={commitsLoading}
+            commitsError={commitsError}
+            ticketsByAssignee={ticketsByAssignee}
+            contributors={contributors}
+            onRefreshCommits={() => setHasLoadedCommits(false)}
+          />
         ) : (
-        <div className="flex gap-3 sm:gap-4 h-full w-full min-w-0 pb-4">
-          {COLUMNS.map((col) => {
-            const columnIssues = filteredAndSortedIssues.filter((i) => i.status === col.id);
-            const isDropTarget = dropTargetColumnId === col.id;
-            return (
-              <div
-                key={col.id}
-                data-column-id={col.id}
-                className={`
+          <div className="flex gap-3 sm:gap-4 h-full w-full min-w-0 pb-4">
+            {COLUMNS.map((col) => {
+              const columnIssues = filteredAndSortedIssues.filter((i) => i.status === col.id);
+              const isDropTarget = dropTargetColumnId === col.id;
+              return (
+                <div
+                  key={col.id}
+                  data-column-id={col.id}
+                  className={`
                   flex-1 min-w-[11rem] max-w-[28rem] flex min-h-0 flex-col rounded-2xl border-2 border-dashed p-3 transition-colors
                   ${col.color}
                   ${isDropTarget ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-700"}
                 `}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">{col.label}</h2>
-                  <span className="rounded-full bg-gray-200/80 dark:bg-gray-700/80 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300">
-                    {columnIssues.length}
-                  </span>
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">{col.label}</h2>
+                    <span className="rounded-full bg-gray-200/80 dark:bg-gray-700/80 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+                      {columnIssues.length}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-h-0 space-y-2 overflow-y-auto overflow-x-hidden">
+                    {columnIssues.map((issue) => (
+                      <IssueCard
+                        key={issue.id}
+                        issue={issue}
+                        currentUser={currentUser}
+                        onEdit={handleEditClick}
+                        onDelete={deleteIssue}
+                        onDragStart={handleDragStart}
+                        onDragMove={handleDragMove}
+                        onDragEnd={handleDragEnd}
+                        isDragging={draggingIssueId === issue.id}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex-1 min-h-0 space-y-2 overflow-y-auto overflow-x-hidden">
-                  {columnIssues.map((issue) => (
-                    <IssueCard
-                      key={issue.id}
-                      issue={issue}
-                      currentUser={currentUser}
-                      onEdit={handleEditClick}
-                      onDelete={deleteIssue}
-                      onDragStart={handleDragStart}
-                      onDragMove={handleDragMove}
-                      onDragEnd={handleDragEnd}
-                      isDragging={draggingIssueId === issue.id}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

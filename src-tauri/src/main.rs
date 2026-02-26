@@ -3,11 +3,13 @@
     windows_subsystem = "windows"
 )]
 
+use named_lock::NamedLock;
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
 };
 
 const RUN_KEY_NAME: &str = "Meeps";
+const SINGLE_INSTANCE_LOCK_NAME: &str = "meeps_single_instance";
 
 #[tauri::command]
 #[cfg(target_os = "windows")]
@@ -96,7 +98,44 @@ fn get_foreground_window_title() -> Result<Option<String>, String> {
     Ok(None)
 }
 
+/// Returns the number of commits reachable from main/master/HEAD in the given repo (or current dir).
+/// Used by the Board Stats tab when running in Tauri so git runs where the app was started.
+#[tauri::command]
+fn get_git_commit_count(repo_path: Option<String>) -> Result<u32, String> {
+    let cwd = match repo_path {
+        Some(p) if !p.trim().is_empty() => std::path::PathBuf::from(p.trim()),
+        _ => std::env::current_dir().map_err(|e| e.to_string())?,
+    };
+    if !cwd.join(".git").exists() {
+        return Err("Not a git repository".to_string());
+    }
+    const BRANCHES: &[&str] = &["main", "master", "HEAD"];
+    for branch in BRANCHES {
+        let out = std::process::Command::new("git")
+            .args(["rev-list", "--count", branch])
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Ok(n) = s.parse::<u32>() {
+                return Ok(n);
+            }
+        }
+    }
+    Err("Could not get commit count for main, master, or HEAD".to_string())
+}
+
 fn main() {
+    let lock = NamedLock::create(SINGLE_INSTANCE_LOCK_NAME).expect("failed to create single-instance lock");
+    let _instance_guard = match lock.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            eprintln!("Another instance of Meeps is already running.");
+            std::process::exit(1);
+        }
+    };
+
     let show_item = CustomMenuItem::new("show".to_string(), "Show Meeps");
     let quit_item = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
@@ -136,6 +175,7 @@ fn main() {
         is_launch_at_startup_enabled,
         set_launch_at_startup,
         get_foreground_window_title,
+        get_git_commit_count,
     ])
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {

@@ -48,17 +48,25 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const urlToOpen = event.notification.data?.url || '/';
+  const channel = event.notification.data?.channel;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Check if there's already a window/tab open with the target URL
+      // Prefer focusing an existing window and telling it to switch channel
+      if (clientList.length > 0 && channel) {
+        const client = clientList[0];
+        if (client.focus) client.focus();
+        client.postMessage({ type: 'NOTIFICATION_CHANNEL', channel });
+        return;
+      }
+      // If no channel or no clients, check for existing window with exact URL
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
         if (client.url === urlToOpen && 'focus' in client) {
           return client.focus();
         }
       }
-      // If not, open a new window/tab
+      // Otherwise open a new window/tab (e.g. app was closed)
       if (self.clients.openWindow) {
         return self.clients.openWindow(urlToOpen);
       }

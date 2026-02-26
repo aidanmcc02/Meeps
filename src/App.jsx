@@ -29,6 +29,7 @@ import {
 } from "./utils/voiceSounds";
 import {
   messageMentionsMe,
+  messageMentionsMeDirectly,
   requestNotificationPermission,
   showMentionNotificationIfBackground,
   subscribePushSubscription
@@ -124,7 +125,14 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("chat"); // "chat" | "board" | "games"
-  const [selectedChannelId, setSelectedChannelId] = useState("general");
+  const [selectedChannelId, setSelectedChannelId] = useState(() => {
+    if (typeof window === "undefined") return "general";
+    const params = new URLSearchParams(window.location.search);
+    const channel = params.get("channel");
+    const validIds = TEXT_CHANNELS.map((c) => c.id);
+    if (channel && validIds.includes(channel)) return channel;
+    return "general";
+  });
   const [unreadChannelIds, setUnreadChannelIds] = useState(new Set());
   const [messages, setMessages] = useState([]);
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
@@ -164,6 +172,7 @@ function App() {
   const [remoteStreams, setRemoteStreams] = useState({});
   const [voicePingMs, setVoicePingMs] = useState(null);
   const [voiceHostUserId, setVoiceHostUserId] = useState(null);
+  const [voiceConnectionStatus, setVoiceConnectionStatus] = useState("idle"); // "idle" | "joining" | "getting_mic" | "connecting" | "connected" | "reconnecting"
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [localScreenStream, setLocalScreenStream] = useState(null);
   const screenStreamRef = useRef(null);
@@ -204,6 +213,7 @@ function App() {
   const voiceAnalysersRef = useRef({}); // userId -> { source, analyser }
   const voiceSpeakingIntervalRef = useRef(null);
   const previousSpeakingRef = useRef(new Set());
+  const voiceTryPlayAllRemoteAudioRef = useRef(null); // set in effect: () => try play all audio[srcObject]
   const [isTauri, setIsTauri] = useState(false);
 
   useEffect(() => {
@@ -213,6 +223,33 @@ function App() {
       /iPad|iPhone|iPod/.test(ua) ||
       (ua.includes("Macintosh") && "ontouchend" in window);
     setIsTauri(!!window.__TAURI__ && !isIOS);
+  }, []);
+
+  // When opened from a notification click (e.g. PWA mobile), URL may have ?channel=… — clear it after reading
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.history.replaceState) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("channel")) return;
+    params.delete("channel");
+    const search = params.toString();
+    const url = window.location.pathname + (search ? `?${search}` : "") + window.location.hash;
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  // When app is already open and user clicks a notification, SW posts NOTIFICATION_CHANNEL — switch to that channel
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+    const handler = (event) => {
+      const data = event.data;
+      if (data?.type === "NOTIFICATION_CHANNEL" && data.channel) {
+        const validIds = TEXT_CHANNELS.map((c) => c.id);
+        if (validIds.includes(data.channel)) setSelectedChannelId(data.channel);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
   }, []);
 
   // In Tauri, open external links (http/https) in the system's default browser
@@ -515,6 +552,14 @@ function App() {
   };
 
   useEffect(() => {
+    if (!joinedVoiceChannelId) return;
+    voiceTryPlayAllRemoteAudioRef.current = () => {
+      document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
+    };
+    return () => { voiceTryPlayAllRemoteAudioRef.current = null; };
+  }, [joinedVoiceChannelId]);
+
+  useEffect(() => {
     if (!joinedVoiceChannelId || Object.keys(remoteStreams).length === 0) return;
 
     voiceDebug.log("Remote streams changed, checking audio elements", {
@@ -534,16 +579,24 @@ function App() {
       });
       tryPlayRemoteAudio(el);
     });
-    // Delayed retries for late-ready or briefly stalled streams (reduces patchy audio)
+    // Delayed retries for late-ready or briefly stalled streams (reduces patchy audio at start of call)
     const t1 = setTimeout(() => {
       document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
     }, 400);
     const t2 = setTimeout(() => {
       document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
     }, 1200);
+    const t3 = setTimeout(() => {
+      document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
+    }, 2500);
+    const t4 = setTimeout(() => {
+      document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
+    }, 4000);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
     };
   }, [remoteStreams, joinedVoiceChannelId]);
 
@@ -787,6 +840,9 @@ function App() {
               const oldCount = voiceParticipantCountRef.current;
               const isOurOwnJoin = justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
               voiceDebug.log("Our room participants updated", { newCount, oldCount, isOurOwnJoin });
+              if (newCount <= 1) {
+                setVoiceConnectionStatus("connected");
+              }
               if (isOurOwnJoin) {
                 justJoinedVoiceRef.current = false;
               } else if (newCount !== oldCount) {
@@ -1336,9 +1392,9 @@ function App() {
 
     console.log("Sending message:", payload);
     socket.send(JSON.stringify(payload));
-    // Only play sound if message mentions yourself or @everyone
+    // Only play sound if message directly mentions you (not @everyone — that would ping yourself)
     const content = trimmed || (attachmentIds?.length > 0 ? " " : "");
-    if (content && typeof content === "string" && messageMentionsMe(content, currentUser?.displayName)) {
+    if (content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
       playMessageSentSound();
     }
     setInputValue("");
@@ -1375,8 +1431,8 @@ function App() {
     };
 
     socket.send(JSON.stringify(payload));
-    // Only play sound if message mentions yourself or @everyone
-    if (content && typeof content === "string" && messageMentionsMe(content, currentUser?.displayName)) {
+    // Only play sound if message directly mentions you (not @everyone — that would ping yourself)
+    if (content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
       playMessageSentSound();
     }
   };
@@ -1615,6 +1671,21 @@ function App() {
         }
       } catch (err) {
         voiceDebug.error("ontrack error:", err);
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      voiceDebug.log("Peer connection state changed", { peerUserId, state });
+      if (state === "connected") {
+        setVoiceConnectionStatus("connected");
+        voiceTryPlayAllRemoteAudioRef.current?.();
+      } else if (state === "failed" || state === "disconnected") {
+        const pcs = peerConnectionsRef.current;
+        const anyConnected = Object.values(pcs).some(
+          (p) => p && p !== pc && p.connectionState === "connected"
+        );
+        if (!anyConnected) setVoiceConnectionStatus("reconnecting");
       }
     };
 
@@ -1869,6 +1940,7 @@ function App() {
       voiceDebug.warn("Socket not ready", { hasSocket: !!socket, readyState: socket?.readyState });
       return;
     }
+    setVoiceConnectionStatus("joining");
     playConnectSound();
     
     let ctx = voiceAudioContextRef.current;
@@ -1902,6 +1974,7 @@ function App() {
     voiceParticipantCountRef.current = 0;
     justJoinedVoiceRef.current = true;
     
+    setVoiceConnectionStatus("getting_mic");
     voiceDebug.log("Requesting local stream");
     await ensureLocalStream();
     const localStream = localStreamRef.current;
@@ -1967,6 +2040,7 @@ function App() {
       voiceDebug.warn("No local stream obtained");
     }
     
+    setVoiceConnectionStatus("connecting");
     voiceDebug.log("Sending voice:join message");
     socket.send(JSON.stringify({ type: "voice:join", roomId, userId: currentUser?.id ?? CURRENT_USER_ID }));
     preloadNotificationSound();
@@ -1975,6 +2049,7 @@ function App() {
   joinVoiceChannelRef.current = joinVoiceChannel;
 
   const leaveVoiceChannel = () => {
+    setVoiceConnectionStatus("idle");
     // Play sound immediately while still in the user gesture
     playUserLeftSound();
     const socket = socketRef.current;
@@ -2591,6 +2666,44 @@ function App() {
                 onJoinChannel={joinVoiceChannel}
                 onLeaveChannel={leaveVoiceChannel}
               />
+              {joinedVoiceChannelId && (
+                <div
+                  className="mt-2 flex items-center justify-center rounded-lg border border-gray-200/80 bg-gray-100/90 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:border-gray-600/80 dark:bg-gray-800/90 dark:text-gray-300"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {voiceConnectionStatus === "joining" && (
+                    <>
+                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                      Joining…
+                    </>
+                  )}
+                  {voiceConnectionStatus === "getting_mic" && (
+                    <>
+                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                      Getting microphone…
+                    </>
+                  )}
+                  {voiceConnectionStatus === "connecting" && (
+                    <>
+                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" />
+                      Making connection…
+                    </>
+                  )}
+                  {voiceConnectionStatus === "connected" && (
+                    <>
+                      <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Connected
+                    </>
+                  )}
+                  {voiceConnectionStatus === "reconnecting" && (
+                    <>
+                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                      Reconnecting…
+                    </>
+                  )}
+                </div>
+              )}
               <div className="mt-2">
                 <h3 className="mb-1.5 px-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                   In call
