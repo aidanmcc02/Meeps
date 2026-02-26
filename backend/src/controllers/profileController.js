@@ -140,11 +140,11 @@ exports.updateProfileById = async (req, res, next) => {
     // Notify all connected clients about the profile change
     broadcastProfileUpdate(profile);
 
-    // Backfill Diana match embeds with user's banner for backwards compatibility
-    if (newLeagueUsername) {
-      backfillBannersForUser(newLeagueUsername, newBannerUrl).catch((err) =>
-        console.warn("[profile] Banner backfill failed:", err?.message)
-      );
+    // Backfill Diana match embeds: add banner for matching summoners, revert to solid when summoner doesn't match any user
+    try {
+      await backfillBannersForUser(newLeagueUsername || "", newBannerUrl);
+    } catch (err) {
+      console.warn("[profile] Banner backfill failed:", err?.message);
     }
 
     return res.json(profile);
