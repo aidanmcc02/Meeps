@@ -4,7 +4,7 @@ import GifPickerModal from "./GifPickerModal";
 
 const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
-function UserProfile({ profile, onSave, activity }) {
+function UserProfile({ profile, onSave, activity, editable = true }) {
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -77,7 +77,7 @@ function UserProfile({ profile, onSave, activity }) {
   const hasBanner = !!bannerUrl;
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-gray-900/80 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-900/80 overflow-hidden px-0 pt-0 pb-0 relative">
+    <div className="group rounded-xl border border-gray-200 bg-gray-900 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden px-0 pt-0 pb-0 relative">
       {hasBanner && (
         <div className="relative h-16 w-full overflow-hidden">
           <img
@@ -88,7 +88,7 @@ function UserProfile({ profile, onSave, activity }) {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
         </div>
       )}
-      <div className={`px-3 pt-2 pb-2 ${!hasBanner ? "bg-gray-50 dark:bg-gray-800/80" : ""}`}>
+      <div className={`px-3 pt-2 pb-2 ${!hasBanner ? "bg-gray-50 dark:bg-gray-800" : ""}`}>
         {!profile && (
           <div className="animate-pulse h-10 bg-gray-200 dark:bg-gray-700 rounded-md" />
         )}
@@ -126,7 +126,7 @@ function UserProfile({ profile, onSave, activity }) {
                 <span className="text-xs font-semibold text-gray-100 dark:text-white">
                   {profile.displayName || "Meeps User"}
                 </span>
-                {activity?.name && (
+                {activity?.name && profile?.activityLoggingEnabled !== false && (
                   <span
                     className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5"
                     title={activity.details || activity.name}
@@ -137,13 +137,18 @@ function UserProfile({ profile, onSave, activity }) {
                 )}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="rounded-full border border-gray-400/70 bg-black/20 px-2 py-0.5 text-[10px] font-medium text-gray-100 hover:bg-white/10 dark:border-gray-600 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              Edit profile
-            </button>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="rounded-full p-1.5 text-gray-400 hover:bg-white/10 hover:text-gray-200 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                aria-label="Edit profile"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            )}
           </div>
 
           <div className="mt-2 space-y-2">

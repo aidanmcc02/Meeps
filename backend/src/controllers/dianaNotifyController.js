@@ -12,7 +12,23 @@ function getSecret(req) {
   return null;
 }
 
-/** Format Diana MessagePayload (title, description, fields, text) as markdown for the channel. */
+/** Build embed payload from Diana MessagePayload. Fallback markdown for legacy display. */
+function buildEmbed(body) {
+  const embed = {
+    title: body.title,
+    description: body.description,
+    url: body.url,
+    colorHex: body.colorHex,
+    thumbnailUrl: body.thumbnailUrl,
+    fields: Array.isArray(body.fields) ? body.fields : [],
+    footer: body.footer,
+    text: body.text,
+    timestamp: body.timestamp
+  };
+  return embed;
+}
+
+/** Fallback markdown when embed cannot be used */
 function payloadToMarkdown(body) {
   const parts = [];
   if (body.title) parts.push(`**${body.title}**`);
@@ -26,7 +42,6 @@ function payloadToMarkdown(body) {
     });
   }
   if (body.url) parts.push(`[Link](${body.url})`);
-  if (body.footer) parts.push(`_${body.footer}_`);
   return parts.join("\n\n");
 }
 
@@ -42,6 +57,7 @@ exports.notify = async (req, res, next) => {
 
   const body = req.body || {};
   const content = payloadToMarkdown(body) || body.text || "(No content)";
+  const embed = buildEmbed(body);
 
   try {
     const userResult = await db.query(
@@ -54,7 +70,8 @@ exports.notify = async (req, res, next) => {
       MATCHES_CHANNEL,
       dianaBotId,
       SENDER_NAME,
-      content
+      content,
+      embed
     );
     if (!payload) {
       return res.status(500).json({ error: "Failed to post message" });

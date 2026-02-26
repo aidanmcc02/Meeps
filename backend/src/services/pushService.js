@@ -1,6 +1,7 @@
 /**
- * Web Push service for mention notifications when the app is closed (e.g. iOS PWA).
+ * Web Push service for message notifications when the app is closed (e.g. iOS PWA).
  * Requires VAPID keys in env (see README).
+ * Notifies on all messages (not just @mentions).
  */
 const webpush = require("web-push");
 const db = require("../config/db");
@@ -39,27 +40,45 @@ function isConfigured() {
   return initialized;
 }
 
+/** Strip basic markdown for plain text notification preview */
+function stripMarkdown(text) {
+  if (!text || typeof text !== "string") return "";
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/\n+/g, " ")
+    .trim();
+}
+
 /**
- * Send a mention notification to users who are not currently connected via WebSocket.
+ * Send a message notification to users who are not currently connected via WebSocket.
+ * Format: "Meeps" (title), "SenderName: message preview" (body) – no channel name.
  * @param {number[]} userIds - User IDs to notify (will skip if no subscription)
  * @param {object} payload - { channel, sender, body }
  */
-async function sendMentionPushToUsers(userIds, payload) {
+async function sendMessagePushToUsers(userIds, payload) {
   if (!isConfigured() || !userIds || userIds.length === 0) return;
 
   const { channel, sender, body } = payload;
-  const title = "Meeps – mentioned you";
-  const bodyText =
-    typeof body === "string" && body.trim()
-      ? body.trim().slice(0, 80) + (body.length > 80 ? "…" : "")
-      : "New message";
-  const notificationBody = `#${channel || "general"}: ${sender || "Someone"} – ${bodyText}`;
+  const title = "Meeps";
+  const rawBody = typeof body === "string" ? body : "";
+  const plainPreview = stripMarkdown(rawBody).slice(0, 80);
+  const bodyText = plainPreview + (plainPreview.length >= 80 ? "…" : "") || "New message";
+  const notificationBody = `${sender || "Someone"}: ${bodyText}`;
 
   const pushPayload = JSON.stringify({
     title,
     body: notificationBody,
     icon: "/apple-touch-icon.png",
-    tag: `mention-${channel || "general"}`,
+    tag: `message-${channel || "general"}`,
     data: { url: "/" }
   });
 
@@ -97,5 +116,5 @@ async function sendMentionPushToUsers(userIds, payload) {
 module.exports = {
   getPublicKey,
   isConfigured,
-  sendMentionPushToUsers
+  sendMessagePushToUsers
 };

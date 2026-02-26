@@ -1,7 +1,26 @@
 /**
- * Mention detection and notifications for PWA (iPhone) and Tauri (Windows).
+ * Message notifications for PWA (iPhone) and Tauri (Windows).
  * Only notifies when the app/tab is in the background (document.visibilityState === "hidden").
+ * Notifications are shown for all messages (not just @mentions).
  */
+
+/** Strip basic markdown for plain text notification preview */
+function stripMarkdown(text) {
+  if (!text || typeof text !== "string") return "";
+  return text
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/\n+/g, " ")
+    .trim();
+}
 
 /**
  * Returns true if the message content mentions the current user (by @displayName slug or @everyone).
@@ -141,12 +160,13 @@ export async function subscribePushSubscription(apiBase, token) {
 }
 
 /**
- * Show a mention notification only when the app is in the background.
- * Call this when a message that mentions the user is received.
+ * Show a message notification only when the app is in the background.
+ * Call this when any message is received (not just @mentions).
+ * Format: "Meeps" (title), "SenderName: message preview" (body) – no channel.
  * Uses service worker for iOS PWA compatibility.
  * @param {string} senderName - Display name of the sender
- * @param {string} bodyPreview - Short preview of the message (plain text)
- * @param {string} channel - Channel name (e.g. "general")
+ * @param {string} bodyPreview - Short preview of the message (plain text; markdown stripped)
+ * @param {string} channel - Channel name (e.g. "general") – used for tag only, not shown in notification
  */
 export async function showMentionNotificationIfBackground(
   senderName,
@@ -157,13 +177,13 @@ export async function showMentionNotificationIfBackground(
     return;
   }
 
-  const title = "Meeps – mentioned you";
+  const title = "Meeps";
   const sender = senderName || "Someone";
-  const preview =
-    typeof bodyPreview === "string" && bodyPreview.trim()
-      ? bodyPreview.trim().slice(0, 80) + (bodyPreview.length > 80 ? "…" : "")
-      : "New message";
-  const body = `#${channel || "general"}: ${sender} – ${preview}`;
+  const plainPreview = stripMarkdown(
+    typeof bodyPreview === "string" ? bodyPreview : ""
+  ).slice(0, 80);
+  const previewText = plainPreview + (plainPreview.length >= 80 ? "…" : "") || "New message";
+  const body = `${sender}: ${previewText}`;
 
   if (window.__TAURI__) {
     try {
@@ -188,18 +208,16 @@ export async function showMentionNotificationIfBackground(
     // Try to use service worker registration for iOS PWA compatibility
     const registration = await getServiceWorkerRegistration();
     if (registration && registration.showNotification) {
-      // Use service worker for iOS PWA and better background support
       await registration.showNotification(title, {
         body,
         icon: "/apple-touch-icon.png",
         badge: "/icon-192.png",
-        tag: `mention-${channel || "general"}`,
+        tag: `message-${channel || "general"}`,
         data: {
-          url: `/${channel || "general"}`
+          url: "/"
         }
       });
     } else {
-      // Fallback to Web Notifications API
       new Notification(title, {
         body,
         icon: "/apple-touch-icon.png"

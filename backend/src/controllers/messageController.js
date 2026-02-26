@@ -16,7 +16,7 @@ exports.listMessages = async (req, res, next) => {
     try {
       if (isOlderPage) {
         result = await db.query(
-          `SELECT id, channel, sender_name, sender_id, content, created_at
+          `SELECT id, channel, sender_name, sender_id, content, embed, created_at
            FROM messages
            WHERE channel = $1 AND id < $2
            ORDER BY id DESC
@@ -26,9 +26,9 @@ exports.listMessages = async (req, res, next) => {
         result.rows.reverse();
       } else {
         result = await db.query(
-          `SELECT id, channel, sender_name, sender_id, content, created_at
+          `SELECT id, channel, sender_name, sender_id, content, embed, created_at
            FROM (
-             SELECT id, channel, sender_name, sender_id, content, created_at
+             SELECT id, channel, sender_name, sender_id, content, embed, created_at
              FROM messages
              WHERE channel = $1
              ORDER BY created_at DESC
@@ -39,10 +39,13 @@ exports.listMessages = async (req, res, next) => {
         );
       }
     } catch (selectErr) {
-      if (selectErr.code === "42703" || selectErr.message?.includes("sender_id")) {
+      const needsLegacy = selectErr.code === "42703" && (
+        selectErr.message?.includes("sender_id") || selectErr.message?.includes("embed")
+      );
+      if (needsLegacy) {
         if (isOlderPage) {
           result = await db.query(
-            `SELECT id, channel, sender_name, content, created_at
+            `SELECT id, channel, sender_name, sender_id, content, created_at
              FROM messages
              WHERE channel = $1 AND id < $2
              ORDER BY id DESC
@@ -52,9 +55,9 @@ exports.listMessages = async (req, res, next) => {
           result.rows.reverse();
         } else {
           result = await db.query(
-            `SELECT id, channel, sender_name, content, created_at
+            `SELECT id, channel, sender_name, sender_id, content, created_at
              FROM (
-               SELECT id, channel, sender_name, content, created_at
+               SELECT id, channel, sender_name, sender_id, content, created_at
                FROM messages
                WHERE channel = $1
                ORDER BY created_at DESC
@@ -75,6 +78,7 @@ exports.listMessages = async (req, res, next) => {
       sender: row.sender_name,
       senderId: row.sender_id ?? undefined,
       content: row.content,
+      embed: row.embed ?? undefined,
       createdAt: row.created_at,
       attachments: []
     }));

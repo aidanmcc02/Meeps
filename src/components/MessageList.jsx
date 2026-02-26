@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import DianaEmbed, { parseLegacyDianaMarkdown } from "./DianaEmbed";
 
 const SCROLL_THRESHOLD = 100;
 const SCROLL_TOP_LOAD_OLDER = 150;
@@ -133,7 +135,7 @@ function messageMentionsCurrentUser(content, currentUserName, mentionSlugToName)
   return false;
 }
 
-function MentionLink({ href, children, mentionSlugToName }) {
+function MessageLink({ href, children, mentionSlugToName }) {
   if (href?.startsWith("mention:")) {
     const slug = href.slice(8);
     const displayName = mentionSlugToName[slug] ?? slug;
@@ -143,7 +145,18 @@ function MentionLink({ href, children, mentionSlugToName }) {
       </span>
     );
   }
-  return <a href={href}>{children}</a>;
+  // External links: open in default browser, styled and accessible
+  const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
+  return (
+    <a
+      href={href}
+      target={isExternal ? "_blank" : undefined}
+      rel={isExternal ? "noopener noreferrer" : undefined}
+      className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium break-all"
+    >
+      {children}
+    </a>
+  );
 }
 
 function MessageList({
@@ -159,7 +172,8 @@ function MessageList({
   onLoadOlder,
   hasMoreOlder = false,
   loadingOlder = false,
-  apiBase = ""
+  apiBase = "",
+  onSenderClick
 }) {
   const containerRef = useRef(null);
   const prevCountRef = useRef(0);
@@ -350,32 +364,68 @@ function MessageList({
             className={`flex gap-2 rounded-lg transition-colors px-2 -mx-2 ${showHeader ? "py-1" : "pt-0 pb-0.5"} ${isMentioned ? "bg-amber-100 dark:bg-amber-900/30" : ""} ${canManage && !isMentioned ? "group hover:bg-gray-100 dark:hover:bg-gray-800/60" : canManage && isMentioned ? "group hover:bg-amber-200 dark:hover:bg-amber-900/50" : ""}`}
           >
             {showHeader ? (
-              <div className="mt-1 h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white flex items-center justify-center">
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  initials
-                )}
-              </div>
+              onSenderClick && (first.senderId != null || first.sender) ? (
+                <button
+                  type="button"
+                  onClick={() => onSenderClick({
+                    id: first.senderId ?? first.sender,
+                    displayName: first.sender || profile?.displayName,
+                    name: first.sender
+                  })}
+                  className="mt-1 h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    initials
+                  )}
+                </button>
+              ) : (
+                <div className="mt-1 h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white flex items-center justify-center">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    initials
+                  )}
+                </div>
+              )
             ) : (
               <div className="w-8 flex-shrink-0 self-stretch min-h-[2px]" aria-hidden="true" />
             )}
             <div className="flex-1 min-w-0">
               {showHeader ? (
               <div className="flex items-baseline gap-2 flex-1 min-w-0">
-                <span className="text-xs font-semibold shrink-0">
-                  {msg.sender || "Unknown"}
+                <span className="text-xs font-semibold shrink-0 flex items-center gap-1 flex-wrap">
+                  {onSenderClick && (first.senderId != null || first.sender) ? (
+                    <button
+                      type="button"
+                      onClick={() => onSenderClick({
+                        id: first.senderId ?? first.sender,
+                        displayName: first.sender || profile?.displayName,
+                        name: first.sender
+                      })}
+                      className="text-left hover:underline focus:outline-none focus:underline cursor-pointer text-gray-900 dark:text-white"
+                    >
+                      {msg.sender || "Unknown"}
+                    </button>
+                  ) : (
+                    <span>{msg.sender || "Unknown"}</span>
+                  )}
                   {profile?.userType === "bot" && (
-                    <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300">
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300">
                       Bot
                     </span>
                   )}
                   {isSelf && (
-                    <span className="ml-1 text-[10px] uppercase tracking-wide text-indigo-400">
+                    <span className="text-[10px] uppercase tracking-wide text-indigo-400">
                       you
                     </span>
                   )}
@@ -406,29 +456,35 @@ function MessageList({
                       </svg>
                     </button>
                     {openMenuId === msg.id && (
-                      <div className="absolute right-0 top-full mt-1 py-1 w-36 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                      <div className="absolute right-0 bottom-full mb-1 flex gap-0.5 py-1 px-1 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          className="p-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                           onClick={() => {
                             setEditingId(msg.id);
                             setEditContent(msg.content || "");
                             setOpenMenuId(null);
                           }}
+                          aria-label="Edit"
                         >
-                          Edit
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
                         </button>
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          className="p-2 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                           onClick={() => {
                             if (window.confirm("Delete this message?")) {
                               onDeleteMessage(msg.id);
                             }
                             setOpenMenuId(null);
                           }}
+                          aria-label="Delete"
                         >
-                          Delete
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </button>
                       </div>
                     )}
@@ -454,29 +510,35 @@ function MessageList({
                     </svg>
                   </button>
                   {openMenuId === msg.id && (
-                    <div className="absolute right-0 top-full mt-1 py-1 w-36 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                    <div className="absolute right-0 bottom-full mb-1 flex gap-0.5 py-1 px-1 rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 z-10">
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="p-2 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                         onClick={() => {
                           setEditingId(msg.id);
                           setEditContent(msg.content || "");
                           setOpenMenuId(null);
                         }}
+                        aria-label="Edit"
                       >
-                        Edit
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
                       </button>
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="p-2 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                         onClick={() => {
                           if (window.confirm("Delete this message?")) {
                             onDeleteMessage(msg.id);
                           }
                           setOpenMenuId(null);
                         }}
+                        aria-label="Delete"
                       >
-                        Delete
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       </button>
                     </div>
                   )}
@@ -515,21 +577,46 @@ function MessageList({
                 </div>
               ) : (
                 <>
-                  {(msg.content?.trim() || "") !== "" && (
-                    <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg [&_.mention]:font-medium">
+                  {msg.embed ? (
+                    <DianaEmbed embed={msg.embed} />
+                  ) : msg.sender === "Diana" && msg.content ? (
+                    (() => {
+                      const legacyEmbed = parseLegacyDianaMarkdown(msg.content, msg.createdAt);
+                      return legacyEmbed ? (
+                        <DianaEmbed embed={legacyEmbed} />
+                      ) : (
+                        <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg [&_.mention]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-bold [&_strong]:text-inherit [&_em]:italic [&_del]:line-through [&_a]:text-indigo-600 [&_a]:dark:text-indigo-400 [&_a]:hover:underline">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ href, children }) => (
+                                <MessageLink href={href} mentionSlugToName={mentionSlugToName}>
+                                  {children}
+                                </MessageLink>
+                              )
+                            }}
+                          >
+                            {contentWithMentionLinks(msg.content)}
+                          </ReactMarkdown>
+                        </div>
+                      );
+                    })()
+                  ) : (msg.content?.trim() || "") !== "" ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_img]:my-1 [&_img]:max-h-48 [&_img]:rounded-lg [&_.mention]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-bold [&_strong]:text-inherit [&_em]:italic [&_del]:line-through [&_a]:text-indigo-600 [&_a]:dark:text-indigo-400 [&_a]:hover:underline">
                       <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
                         components={{
                           a: ({ href, children }) => (
-                            <MentionLink href={href} mentionSlugToName={mentionSlugToName}>
+                            <MessageLink href={href} mentionSlugToName={mentionSlugToName}>
                               {children}
-                            </MentionLink>
+                            </MessageLink>
                           )
                         }}
                       >
                         {contentWithMentionLinks(msg.content)}
                       </ReactMarkdown>
                     </div>
-                  )}
+                  ) : null}
                   {msg.attachments?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.attachments.map((att) => {

@@ -13,7 +13,6 @@ import ProfileSetupPage from "./components/ProfileSetupPage";
 import VoiceSettingsModal from "./components/VoiceSettingsModal";
 import SettingsModal from "./components/SettingsModal";
 import VoiceChannelModal from "./components/VoiceChannelModal";
-import UserProfileModal from "./components/UserProfileModal";
 import Board from "./components/Board";
 import Games from "./components/Games";
 import SplashScreen from "./components/SplashScreen";
@@ -686,11 +685,7 @@ function App() {
             setMessages((prev) => [...prev, payload]);
             const myId = currentUserRef.current?.id ?? CURRENT_USER_ID;
             const isFromMe = Number(payload.senderId) === Number(myId);
-            const hasMention = payload.content &&
-              typeof payload.content === "string" &&
-              payload.content.includes("@") &&
-              messageMentionsMe(payload.content, currentUserRef.current?.displayName);
-            if (!isFromMe && hasMention) {
+            if (!isFromMe) {
               playMessageReceivedSound();
             }
             const msgChannel = payload.channel;
@@ -698,13 +693,10 @@ function App() {
             if (msgChannel && msgChannel !== currentChannel && !isFromMe) {
               setUnreadChannelIds((prev) => new Set(prev).add(msgChannel));
             }
-            if (
-              !isFromMe &&
-              messageMentionsMe(payload.content, currentUserRef.current?.displayName)
-            ) {
+            if (!isFromMe) {
               showMentionNotificationIfBackground(
                 payload.sender || "Someone",
-                payload.content,
+                payload.content || (payload.attachments?.length ? "sent an attachment" : "New message"),
                 payload.channel
               );
             }
@@ -1767,8 +1759,13 @@ function App() {
 
   const handleSaveProfile = async (payload) => {
     if (!isAuthenticated) return;
+    const userId = currentUser?.id ?? CURRENT_USER_ID;
+    await handleSaveProfileForUser(userId, payload);
+  };
+
+  const handleSaveProfileForUser = async (userId, payload) => {
+    if (!isAuthenticated) return;
     try {
-      const userId = currentUser?.id ?? CURRENT_USER_ID;
       const res = await fetch(`${apiBase}/api/profile/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1778,19 +1775,48 @@ function App() {
           achievements: payload.achievements,
           avatarUrl: payload.avatarUrl,
           bannerUrl: payload.bannerUrl,
-          theme
+          theme,
+          ...(payload.activityLoggingEnabled !== undefined && { activityLoggingEnabled: payload.activityLoggingEnabled })
         })
       });
       if (!res.ok) return;
       const updated = await res.json();
       setProfiles((prev) => ({ ...prev, [updated.id]: updated }));
-      if (payload.displayName !== currentUser?.displayName) {
+      if (userId === (currentUser?.id ?? CURRENT_USER_ID) && payload.displayName !== currentUser?.displayName) {
         setCurrentUser((prev) => ({ ...prev, displayName: payload.displayName }));
       }
     } catch {
       // ignore
     }
   };
+
+  useEffect(() => {
+    if (!selectedUserForProfile) return;
+    const handler = (e) => {
+      if (e.key === "Escape") {
+        setSelectedUserForProfile(null);
+        setProfileModalAnchor("center");
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedUserForProfile]);
+
+  // Fetch profile when opening for a user we don't have (e.g. Diana from chat)
+  useEffect(() => {
+    const id = selectedUserForProfile?.id;
+    if (id == null) return;
+    const numId = Number(id);
+    if (Number.isNaN(numId) || profiles[numId] != null) return;
+    let cancelled = false;
+    fetch(`${apiBase}/api/profile/${numId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setProfiles((prev) => ({ ...prev, [data.id]: data }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedUserForProfile?.id, apiBase]);
 
   const joinVoiceChannel = async (roomId) => {
     voiceDebug.log("===== joinVoiceChannel START =====", { roomId, isAuthenticated, hasSocket: !!socketRef.current });
@@ -2673,6 +2699,10 @@ function App() {
                 hasMoreOlder={hasMoreOlderMessages}
                 loadingOlder={loadingOlderMessages}
                 apiBase={apiBase}
+                onSenderClick={(user) => {
+                  setProfileModalAnchor("center");
+                  setSelectedUserForProfile({ id: user.id, displayName: user.displayName || user.name });
+                }}
               />
 
               <div
@@ -2912,6 +2942,11 @@ function App() {
         keybinds={keybinds}
         onKeybindsChange={handleKeybindsChange}
         isTauri={isTauri}
+        activityLoggingEnabled={currentUserProfile ? (currentUserProfile.activityLoggingEnabled !== false) : undefined}
+        onActivityLoggingChange={async (enabled) => {
+          const userId = currentUser?.id ?? CURRENT_USER_ID;
+          await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
+        }}
       />
       <VoiceSettingsModal
         isOpen={isVoiceSettingsOpen}
@@ -2945,21 +2980,55 @@ function App() {
         }}
         onLeave={leaveVoiceChannel}
       />
-      <UserProfileModal
-        isOpen={selectedUserForProfile != null}
-        onClose={() => {
+      {selectedUserForProfile != null && (() => {
+        const profileUserId = selectedUserForProfile?.id;
+        const numId = Number(profileUserId);
+        const isSelf = profileUserId != null && String(profileUserId) === String(currentUser?.id ?? CURRENT_USER_ID);
+        const profileForSelected = Number.isNaN(numId) ? null : profiles[numId];
+        const isBot = profileForSelected?.userType === "bot";
+        const editable = isSelf || isBot;
+        const closeProfile = () => {
           setSelectedUserForProfile(null);
           setProfileModalAnchor("center");
-        }}
-        user={selectedUserForProfile}
-        initialProfile={
-          selectedUserForProfile?.id != null
-            ? profiles[selectedUserForProfile.id]
-            : null
-        }
-        anchorPosition={profileModalAnchor}
-        activity={presenceUsers?.find((u) => String(u.id) === String(selectedUserForProfile?.id))?.activity}
-      />
+        };
+        const profile = isSelf ? (profiles[currentUser?.id ?? CURRENT_USER_ID] || null) : profileForSelected;
+
+        const isBottomLeft = profileModalAnchor === "bottom-left";
+        const wrapperClass = isBottomLeft
+          ? "fixed inset-0 z-50 flex items-end justify-start bg-black/50 p-4 pb-24 pl-6"
+          : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4";
+        return (
+          <div className={wrapperClass} onClick={closeProfile}>
+            <div
+              className="w-full max-w-sm rounded-xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-end pr-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeProfile}
+                  className="rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
+                  aria-label="Close"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <UserProfile
+                profile={profile}
+                onSave={editable ? async (payload) => {
+                  const targetId = isSelf ? (currentUser?.id ?? CURRENT_USER_ID) : numId;
+                  await handleSaveProfileForUser(targetId, payload);
+                  closeProfile();
+                } : undefined}
+                activity={presenceUsers?.find((u) => String(u.id) === String(profileUserId))?.activity}
+                editable={editable}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
   }
