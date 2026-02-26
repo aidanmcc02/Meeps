@@ -729,6 +729,16 @@ function broadcastMessagePayload(payload) {
   }
 }
 
+function broadcastMessageUpdate(payload) {
+  if (!wssInstance) return;
+  const outbound = JSON.stringify({ type: "message:updated", payload });
+  for (const client of wssInstance.clients) {
+    if (client.readyState === client.OPEN) {
+      client.send(outbound);
+    }
+  }
+}
+
 
 /**
  * Insert a message into a channel and broadcast to all clients (e.g. Valorant match updates).
@@ -809,5 +819,6 @@ module.exports = {
   startWebSocketServer,
   broadcastProfileUpdate,
   broadcastMessagePayload,
+  broadcastMessageUpdate,
   postMessageToChannel
 };

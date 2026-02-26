@@ -180,7 +180,8 @@ function DianaEmbed({ embed }) {
     fields = [],
     footer,
     text,
-    timestamp
+    timestamp,
+    bannerUrl
   } = embed;
 
   const borderColor = (() => {
@@ -206,12 +207,26 @@ function DianaEmbed({ embed }) {
   const inlineFields = fields.filter((f) => f.inline);
   const blockFields = fields.filter((f) => !f.inline);
 
+  const bgStyle = bannerUrl
+    ? {
+        backgroundImage: `url(${bannerUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }
+    : {};
+
   return (
     <div
-      className="diana-embed mt-1.5 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-800/95 shadow-xl shadow-gray-200/60 dark:shadow-black/30 hover:shadow-2xl transition-shadow duration-200"
-      style={{ borderLeftWidth: "5px", borderLeftColor: borderColor }}
+      className={`diana-embed mt-1.5 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-xl shadow-gray-200/60 dark:shadow-black/30 hover:shadow-2xl transition-shadow duration-200 ${!bannerUrl ? "bg-white/90 dark:bg-gray-800/95" : ""}`}
+      style={{
+        borderLeftWidth: "5px",
+        borderLeftColor: borderColor,
+        ...bgStyle
+      }}
     >
-      <div className="relative p-4">
+      <div
+        className={`relative p-4 ${bannerUrl ? "bg-black/50 text-white [&_.text-gray-500]:!text-gray-300 [&_.text-gray-400]:!text-gray-300 [&_.text-gray-600]:!text-gray-200 [&_.text-gray-900]:!text-white [&_.dark\\:text-white]:!text-white [&_.text-gray-800]:!text-gray-100 [&_.text-gray-700]:!text-gray-200 [&_a]:!text-indigo-200 [&_a:hover]:!text-indigo-100" : ""}`}
+      >
         {thumbnailUrl && (
           <div className="absolute top-3 right-3">
             <EmbedThumbnail src={thumbnailUrl} />

@@ -215,6 +215,27 @@ function App() {
     setIsTauri(!!window.__TAURI__ && !isIOS);
   }, []);
 
+  // In Tauri, open external links (http/https) in the system's default browser
+  useEffect(() => {
+    const handleClick = async (e) => {
+      if (!window.__TAURI__) return;
+      const anchor = e.target?.closest?.("a[href]");
+      if (!anchor || !anchor.href) return;
+      const href = anchor.getAttribute("href") || anchor.href;
+      if (!/^https?:\/\//i.test(href)) return;
+      e.preventDefault();
+      try {
+        const { open } = await import("@tauri-apps/api/shell");
+        await open(href);
+      } catch (err) {
+        console.warn("Failed to open link in browser:", err);
+        window.open(href, "_blank", "noopener,noreferrer");
+      }
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(min-width: 768px)");
@@ -1775,6 +1796,7 @@ function App() {
           achievements: payload.achievements,
           avatarUrl: payload.avatarUrl,
           bannerUrl: payload.bannerUrl,
+          leagueUsername: payload.leagueUsername,
           theme,
           ...(payload.activityLoggingEnabled !== undefined && { activityLoggingEnabled: payload.activityLoggingEnabled })
         })
@@ -2698,7 +2720,6 @@ function App() {
                 onLoadOlder={loadOlderMessages}
                 hasMoreOlder={hasMoreOlderMessages}
                 loadingOlder={loadingOlderMessages}
-                apiBase={apiBase}
                 onSenderClick={(user) => {
                   setProfileModalAnchor("center");
                   setSelectedUserForProfile({ id: user.id, displayName: user.displayName || user.name });
@@ -2718,7 +2739,6 @@ function App() {
                   presenceUsers={presenceUsers}
                   currentUser={currentUser}
                   profiles={profiles}
-                  apiBase={apiBase}
                 />
               </div>
             </div>
