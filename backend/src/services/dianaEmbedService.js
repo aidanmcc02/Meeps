@@ -173,18 +173,29 @@ function leagueUsernameMatches(embedOrParsed, userLeagueUsername) {
   );
 }
 
+/** Check if summoner matches any of the given league usernames. */
+function summonerMatchesAny(summoner, leagueUsernames) {
+  if (!summoner || !String(summoner).trim()) return false;
+  for (const u of leagueUsernames) {
+    if (u && leagueUsernameMatches(summoner, u)) return true;
+  }
+  return false;
+}
+
 /**
  * Update all Diana match embeds in #matches that match the user's league_username.
- * Handles both: (1) messages with stored embed, (2) legacy messages with markdown content only.
+ * Also removes bannerUrl from embeds whose summoner doesn't match any user (revert to solid).
  * Returns { updated, checked, summonerNamesFound } for diagnostics.
  */
 async function backfillBannersForUser(leagueUsername, bannerUrl) {
   const result = { updated: 0, checked: 0, summonerNamesFound: [] };
-  if (!leagueUsername) return result;
-  const trimmed = leagueUsername.trim();
-  if (!trimmed) return result;
+  const trimmed = leagueUsername ? leagueUsername.trim() : "";
 
   const seenSummoners = new Set();
+  const usersResult = await db.query(
+    `SELECT league_username FROM users WHERE user_type = 'user' AND TRIM(COALESCE(league_username, '')) != ''`
+  );
+  const allLeagueUsernames = usersResult.rows.map((r) => (r.league_username || "").trim()).filter(Boolean);
 
   try {
     const dbResult = await db.query(
@@ -197,7 +208,7 @@ async function backfillBannersForUser(leagueUsername, bannerUrl) {
     for (const row of dbResult.rows) {
       result.checked++;
       let embed = null;
-      let matches = false;
+      let matchesCurrentUser = false;
 
       if (row.embed) {
         try {
@@ -211,39 +222,54 @@ async function backfillBannersForUser(leagueUsername, bannerUrl) {
             seenSummoners.add(found);
             result.summonerNamesFound.push(found);
           }
-          matches = embedMatchesUser(embed, trimmed);
+          if (trimmed) matchesCurrentUser = embedMatchesUser(embed, trimmed);
         }
       }
 
-      if (!matches && row.content) {
-      const parsed = parseLegacyDianaContent(row.content, row.created_at);
-      if (parsed?.summonerName) {
-        if (!seenSummoners.has(parsed.summonerName)) {
-          seenSummoners.add(parsed.summonerName);
-          result.summonerNamesFound.push(parsed.summonerName);
-        }
-        if (leagueUsernameMatches(parsed.summonerName, trimmed)) {
-          embed = parsed.embed;
-          matches = true;
+      if (!matchesCurrentUser && row.content) {
+        const parsed = parseLegacyDianaContent(row.content, row.created_at);
+        if (parsed?.summonerName) {
+          if (!seenSummoners.has(parsed.summonerName)) {
+            seenSummoners.add(parsed.summonerName);
+            result.summonerNamesFound.push(parsed.summonerName);
+          }
+          if (trimmed && leagueUsernameMatches(parsed.summonerName, trimmed)) {
+            embed = parsed.embed;
+            matchesCurrentUser = true;
+          }
         }
       }
-    }
 
-      if (!matches || !embed) continue;
+      if (!embed) continue;
 
-      const updatedEmbed = { ...embed };
-      if (bannerUrl) {
-        updatedEmbed.bannerUrl = bannerUrl;
-      } else {
+      const summoner = extractLeagueUsernameFromEmbed(embed) || parseLegacyDianaContent(row.content, row.created_at)?.summonerName;
+      const matchesAnyUser = summoner ? summonerMatchesAny(summoner, allLeagueUsernames) : false;
+
+      let updatedEmbed = { ...embed };
+      let changed = false;
+
+      if (matchesCurrentUser && trimmed) {
+        if (bannerUrl) {
+          updatedEmbed.bannerUrl = bannerUrl;
+          changed = true;
+        } else {
+          if (updatedEmbed.bannerUrl) {
+            delete updatedEmbed.bannerUrl;
+            changed = true;
+          }
+        }
+      } else if (updatedEmbed.bannerUrl && !matchesAnyUser) {
         delete updatedEmbed.bannerUrl;
+        changed = true;
       }
-      const embedJson = JSON.stringify(updatedEmbed);
 
+      if (!changed) continue;
+
+      const embedJson = JSON.stringify(updatedEmbed);
       await db.query(
         "UPDATE messages SET embed = $2::jsonb WHERE id = $1",
         [row.id, embedJson]
       );
-
       result.updated++;
 
       broadcastMessageUpdate({
