@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import GifPickerModal from "./GifPickerModal";
+import GamerTagsModal from "./GamerTagsModal";
 
 const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
@@ -11,8 +12,10 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
   const [achievementsText, setAchievementsText] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
+  const [leagueUsername, setLeagueUsername] = useState("");
   const [bannerHovered, setBannerHovered] = useState(false);
   const [gifTarget, setGifTarget] = useState(null); // "banner" | "avatar" | null
+  const [gamerTagsOpen, setGamerTagsOpen] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -20,6 +23,7 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
     setBio(profile.bio || "");
     setAvatarUrl(profile.avatarUrl || "");
     setBannerUrl(profile.bannerUrl || "");
+    setLeagueUsername(profile.leagueUsername || "");
     setAchievementsText(
       Array.isArray(profile.achievements)
         ? profile.achievements.join("\n")
@@ -37,6 +41,10 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
     };
   }, [isEditing]);
 
+  useEffect(() => {
+    if (!isEditing) setGamerTagsOpen(false);
+  }, [isEditing]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!onSave || !profile) return;
@@ -52,7 +60,8 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
       bio,
       achievements,
       avatarUrl: avatarUrl || null,
-      bannerUrl: bannerUrl || null
+      bannerUrl: bannerUrl || null,
+      leagueUsername: leagueUsername.trim() || ""
     });
     setIsEditing(false);
   };
@@ -367,6 +376,29 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
                   </div>
 
                   <div className="mt-4 flex flex-col gap-3 border-t border-gray-800 pt-4 sm:mt-3 sm:flex-row sm:items-center sm:justify-between sm:pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setGamerTagsOpen(true)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-800/80 transition-colors sm:w-auto"
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                        </svg>
+                        Gamer Tags
+                        {leagueUsername && (
+                          <span className="text-[10px] text-gray-500 truncate max-w-[120px]" title={leagueUsername}>
+                            {leagueUsername}
+                          </span>
+                        )}
+                      </span>
+                      <svg className="h-4 w-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-3 border-t border-gray-800 pt-4 sm:flex-row sm:items-center sm:justify-between sm:pt-3">
                     <p className="text-xs text-gray-500 sm:text-[10px]">
                       GIFs work for both banner and avatar.
                     </p>
@@ -397,6 +429,17 @@ function UserProfile({ profile, onSave, activity, editable = true }) {
             onClose={() => setGifTarget(null)}
             onSelectGif={handlePickGif}
             apiBase={API_BASE.replace(/\/$/, "")}
+          />
+
+          <GamerTagsModal
+            isOpen={gamerTagsOpen}
+            onClose={() => setGamerTagsOpen(false)}
+            leagueUsername={leagueUsername}
+            onSave={(payload) => {
+              if (payload.leagueUsername !== undefined) setLeagueUsername(payload.leagueUsername);
+              onSave?.({ id: profile?.id, ...payload });
+              setGamerTagsOpen(false);
+            }}
           />
         </>
       )}

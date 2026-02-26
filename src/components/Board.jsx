@@ -172,9 +172,11 @@ function IssueModal({ issue, isOpen, onClose, onCreate, onSave, currentUser, use
     e.preventDefault();
     const t = title.trim();
     if (!t) return;
-    if (isEdit) {
+    const hasExistingId = issue != null && issue.id != null;
+    if (hasExistingId) {
       onSave({
         ...issue,
+        id: issue.id,
         title: t,
         description: description.trim() || null,
         priority: priority || "medium",
@@ -301,6 +303,11 @@ export default function Board({ currentUser, apiBase }) {
   const [editingIssue, setEditingIssue] = useState(null);
   const [draggingIssueId, setDraggingIssueId] = useState(null);
   const [dropTargetColumnId, setDropTargetColumnId] = useState(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterPriority, setFilterPriority] = useState("");
+  const [filterAssigneeId, setFilterAssigneeId] = useState(null);
+  const [sortOrder, setSortOrder] = useState("desc");
+  const filterDropdownRef = useRef(null);
   const potentialDragRef = useRef(null);
   const justDraggedRef = useRef(false);
   const dropTargetColumnIdRef = useRef(null);
@@ -475,9 +482,62 @@ export default function Board({ currentUser, apiBase }) {
 
   const handleEditClick = useCallback((issue) => {
     if (justDraggedRef.current) return;
+    setCreateModalOpen(false);
     setEditingIssue(issue);
   }, []);
 
+  const filteredAndSortedIssues = useMemo(() => {
+    let list = [...issues];
+    if (filterPriority) {
+      list = list.filter((i) => (i.priority || "medium") === filterPriority);
+    }
+    if (filterAssigneeId != null) {
+      if (filterAssigneeId === "unassigned") {
+        list = list.filter((i) => i.assigneeId == null);
+      } else {
+        list = list.filter((i) => Number(i.assigneeId) === Number(filterAssigneeId));
+      }
+    }
+    const order = sortOrder === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      const ta = a.createdAt ?? 0;
+      const tb = b.createdAt ?? 0;
+      return order * (ta - tb);
+    });
+    return list;
+  }, [issues, filterPriority, filterAssigneeId, sortOrder]);
+
+  const assigneesFromIssues = useMemo(() => {
+    const byId = new Map();
+    for (const u of users) {
+      byId.set(Number(u.id), { id: Number(u.id), displayName: u.displayName || `User #${u.id}` });
+    }
+    for (const i of issues) {
+      const id = i.assigneeId;
+      if (id != null && !byId.has(Number(id))) {
+        const name = i.assigneeName || (id === currentUser?.id ? (currentUser?.displayName || "You") : `User #${id}`);
+        byId.set(Number(id), { id: Number(id), displayName: name });
+      }
+    }
+    const list = Array.from(byId.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    if (issues.some((i) => i.assigneeId == null)) {
+      list.unshift({ id: "unassigned", displayName: "Unassigned" });
+    }
+    return list;
+  }, [issues, users, currentUser]);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handleClick = (e) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(e.target)) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [filterOpen]);
+
+  const hasActiveFilters = filterPriority || filterAssigneeId != null || sortOrder !== "desc";
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-gray-50/60 dark:bg-gray-950/70">
@@ -491,15 +551,95 @@ export default function Board({ currentUser, apiBase }) {
         <div>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Board</h1>
         </div>
-        <button
-          type="button"
-          onClick={() => { setEditingIssue(null); setCreateModalOpen(true); }}
-          className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-600 transition-colors"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative" ref={filterDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setFilterOpen((o) => !o)}
+              className={`inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                hasActiveFilters
+                  ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+              }`}
+              title="Filter issues"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              {hasActiveFilters && (
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-indigo-500" />
+              )}
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                <div className="px-3 py-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Severity</p>
+                  <select
+                    value={filterPriority}
+                    onChange={(e) => setFilterPriority(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                  >
+                    <option value="">All severities</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div className="px-3 py-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Assignee</p>
+                  <select
+                    value={filterAssigneeId ?? ""}
+                    onChange={(e) => setFilterAssigneeId(e.target.value === "" ? null : e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                  >
+                    <option value="">All users</option>
+                    {assigneesFromIssues.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="border-t border-gray-200 px-3 py-1.5 dark:border-gray-700">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Order</p>
+                  <div className="mt-1.5 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSortOrder("desc")}
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+                        sortOrder === "desc"
+                          ? "bg-indigo-500 text-white dark:bg-indigo-600"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      Newest first
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSortOrder("asc")}
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+                        sortOrder === "asc"
+                          ? "bg-indigo-500 text-white dark:bg-indigo-600"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      Oldest first
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => { setCreateModalOpen(true); setEditingIssue(null); }}
+            className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-600 transition-colors"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 min-w-0 overflow-auto p-4">
@@ -508,7 +648,7 @@ export default function Board({ currentUser, apiBase }) {
         ) : (
         <div className="flex gap-3 sm:gap-4 h-full w-full min-w-0 pb-4">
           {COLUMNS.map((col) => {
-            const columnIssues = issues.filter((i) => i.status === col.id);
+            const columnIssues = filteredAndSortedIssues.filter((i) => i.status === col.id);
             const isDropTarget = dropTargetColumnId === col.id;
             return (
               <div
