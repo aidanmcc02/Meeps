@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const axios = require("axios");
+const githubProject = require("../services/githubProjectService");
 const { exec } = require("child_process");
 const path = require("path");
 const util = require("util");
@@ -143,6 +144,7 @@ exports.createIssue = async (req, res, next) => {
     if (!title || typeof title !== "string" || !title.trim()) {
       return res.status(400).json({ message: "title is required" });
     }
+    const statusVal = status === "todo" || status === "in_progress" || status === "done" ? status : "todo";
     const result = await db.query(
       `INSERT INTO board_issues (title, description, status, priority, assignee_id, assignee_name)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -150,13 +152,32 @@ exports.createIssue = async (req, res, next) => {
       [
         title.trim(),
         description && typeof description === "string" ? description.trim() : null,
-        status === "todo" || status === "in_progress" || status === "done" ? status : "todo",
+        statusVal,
         priority === "low" || priority === "medium" || priority === "high" ? priority : "medium",
         assigneeId != null ? Number(assigneeId) : null,
         assigneeName && typeof assigneeName === "string" ? assigneeName.trim() : null,
       ]
     );
     const row = result.rows[0];
+    const config = githubProject.getConfig();
+    if (config) {
+      try {
+        const projectId = await githubProject.getProjectId(config);
+        if (projectId) {
+          const projectItemId = await githubProject.createDraftIssue(
+            projectId,
+            row.title,
+            row.description || ""
+          );
+          await db.query(
+            "UPDATE board_issues SET github_project_item_id = $1 WHERE id = $2",
+            [projectItemId, row.id]
+          );
+        }
+      } catch (ghErr) {
+        console.warn("Board: GitHub project create failed", ghErr.message);
+      }
+    }
     return res.status(201).json(rowToIssue(row));
   } catch (err) {
     return next(err);
@@ -206,13 +227,29 @@ exports.updateIssue = async (req, res, next) => {
     }
 
     const result = await db.query(
-      `UPDATE board_issues SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at`,
+      `UPDATE board_issues SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at, github_project_item_id`,
       values
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "issue not found" });
     }
-    return res.json(rowToIssue(result.rows[0]));
+    const updatedRow = result.rows[0];
+    const config = githubProject.getConfig();
+    if (config && updatedRow.github_project_item_id && typeof status === "string") {
+      try {
+        const projectId = await githubProject.getProjectId(config);
+        if (projectId) {
+          await githubProject.updateItemStatus(
+            projectId,
+            updatedRow.github_project_item_id,
+            updatedRow.status
+          );
+        }
+      } catch (ghErr) {
+        console.warn("Board: GitHub project status update failed", ghErr.message);
+      }
+    }
+    return res.json(rowToIssue(updatedRow));
   } catch (err) {
     return next(err);
   }
@@ -322,6 +359,53 @@ exports.getStats = async (req, res, next) => {
       commitsError,
       contributors,
     });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
+ * Sync from GitHub project board: create local issues for any project items we don't have yet.
+ * Never removes or deletes local issues (persist all).
+ */
+exports.syncFromGitHub = async (req, res, next) => {
+  try {
+    const config = githubProject.getConfig();
+    if (!config) {
+      return res.status(503).json({
+        message: "GitHub project not configured. Set GITHUB_TOKEN and either GITHUB_PROJECT_ID or GITHUB_PROJECT_OWNER + GITHUB_PROJECT_NUMBER.",
+      });
+    }
+    const projectId = await githubProject.getProjectId(config);
+    if (!projectId) {
+      return res.status(503).json({
+        message: "Could not resolve GitHub project. Check GITHUB_PROJECT_OWNER and GITHUB_PROJECT_NUMBER (from the project URL).",
+      });
+    }
+    const items = await githubProject.listProjectItems(projectId);
+    const existing = await db.query(
+      "SELECT github_project_item_id FROM board_issues WHERE github_project_item_id IS NOT NULL"
+    );
+    const existingIds = new Set(
+      (existing.rows || []).map((r) => r.github_project_item_id).filter(Boolean)
+    );
+    const created = [];
+    for (const item of items) {
+      if (existingIds.has(item.id)) continue;
+      const status = githubProject.githubStatusToApp(item.statusName);
+      const result = await db.query(
+        `INSERT INTO board_issues (title, description, status, priority, assignee_id, assignee_name, github_project_item_id)
+         VALUES ($1, $2, $3, 'medium', NULL, NULL, $4)
+         RETURNING id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at`,
+        [item.title, item.description, status, item.id]
+      );
+      const row = result.rows[0];
+      if (row) {
+        existingIds.add(item.id);
+        created.push(rowToIssue(row));
+      }
+    }
+    return res.json({ created: created.length, issues: created });
   } catch (err) {
     return next(err);
   }
