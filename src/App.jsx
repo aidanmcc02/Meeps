@@ -158,6 +158,11 @@ function App() {
     return USERS_PANEL_DEFAULT_PX;
   });
   const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
+  const [isStandalone, setIsStandalone] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (window.matchMedia("(display-mode: standalone)").matches || !!navigator.standalone)
+  );
   const resizeStateRef = useRef({ active: null, startX: 0, startWidth: 0, lastSidebarPx: SIDEBAR_DEFAULT_PX, lastUsersPx: USERS_PANEL_DEFAULT_PX });
   const resizeRafRef = useRef(null);
 
@@ -353,6 +358,14 @@ function App() {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(min-width: 768px)");
     const handle = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", handle);
+    return () => mq.removeEventListener("change", handle);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(display-mode: standalone)");
+    const handle = () => setIsStandalone(mq.matches || !!navigator.standalone);
     mq.addEventListener("change", handle);
     return () => mq.removeEventListener("change", handle);
   }, []);
@@ -3254,7 +3267,10 @@ function App() {
         <nav
           className="fixed inset-x-0 bottom-0 z-40 md:hidden border-t border-gray-200 bg-white dark:bg-gray-900 px-2 pt-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.22)] dark:border-gray-800"
           style={{
-            paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+            /* In PWA standalone, no browser UI—use minimal padding. In browser, extra padding leaves room for Safari's bottom bar. */
+            paddingBottom: isStandalone
+              ? "env(safe-area-inset-bottom, 0px)"
+              : "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)"
           }}
           aria-label="Primary"
         >
