@@ -12,6 +12,27 @@ function getSecret(req) {
   return null;
 }
 
+/** Extract match result from Diana payload. Returns "win" | "lose" | null. */
+function extractMatchResult(body) {
+  const direct = body.result || body.win;
+  if (direct === true || String(direct || "").toLowerCase() === "win") return "win";
+  if (direct === false || String(direct || "").toLowerCase() === "lose") return "lose";
+  const fields = Array.isArray(body.fields) ? body.fields : [];
+  for (const f of fields) {
+    const name = (f.name || "").toLowerCase();
+    const value = String(f.value || "").toLowerCase();
+    if (name.includes("result") && value) {
+      if (value.includes("win")) return "win";
+      if (value.includes("lose") || value.includes("loss")) return "lose";
+      if (value.includes("remake")) return "lose";
+    }
+  }
+  const title = (body.title || "").toLowerCase();
+  if (title.includes("promotion") || title.includes("win")) return "win";
+  if (title.includes("demotion") || title.includes("lose") || title.includes("loss")) return "lose";
+  return null;
+}
+
 /** Extract League of Legends username from Diana payload (for matching users to use their banner). */
 function extractLeagueUsername(body) {
   const direct = body.summonerName || body.gameName || body.summoner_name || body.game_name;
@@ -101,19 +122,28 @@ exports.notify = async (req, res, next) => {
   try {
     let bannerUrl = null;
     const leagueUsername = extractLeagueUsername(body);
+    const matchResult = extractMatchResult(body);
     if (leagueUsername) {
       const leagueNorm = leagueUsername.trim().toLowerCase();
       const gameNameOnly = leagueNorm.split("#")[0];
-      const bannerResult = await db.query(
-        `SELECT banner_url FROM users
+      const userResult = await db.query(
+        `SELECT banner_url, win_gif_url, lose_gif_url FROM users
          WHERE user_type = 'user'
            AND TRIM(COALESCE(league_username, '')) != ''
            AND (LOWER(TRIM(league_username)) = $1 OR LOWER(TRIM(SPLIT_PART(COALESCE(league_username, ''), '#', 1))) = $2)
          LIMIT 1`,
         [leagueNorm, gameNameOnly]
       );
-      if (bannerResult.rows[0]?.banner_url) {
-        bannerUrl = bannerResult.rows[0].banner_url;
+      const row = userResult.rows[0];
+      if (row) {
+        if (matchResult === "win" && row.win_gif_url) {
+          bannerUrl = row.win_gif_url;
+        } else if (matchResult === "lose" && row.lose_gif_url) {
+          bannerUrl = row.lose_gif_url;
+        }
+        if (!bannerUrl && row.banner_url) {
+          bannerUrl = row.banner_url;
+        }
       }
     }
 

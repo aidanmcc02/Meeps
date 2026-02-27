@@ -182,12 +182,37 @@ function summonerMatchesAny(summoner, leagueUsernames) {
   return false;
 }
 
+/** Infer Win/Lose/Remake from embed fields (Result) or title. Returns "win" | "lose" | null. */
+function inferMatchResult(embed) {
+  if (!embed || typeof embed !== "object") return null;
+  const fields = Array.isArray(embed.fields) ? embed.fields : [];
+  for (const f of fields) {
+    const name = (f.name || "").toLowerCase();
+    const value = String(f.value || "").toLowerCase();
+    if (name.includes("result") && value) {
+      if (value.includes("win")) return "win";
+      if (value.includes("lose") || value.includes("loss")) return "lose";
+      if (value.includes("remake")) return "lose";
+    }
+  }
+  const title = (embed.title || "").toLowerCase();
+  if (title.includes("promotion") || title.includes("win")) return "win";
+  if (title.includes("demotion") || title.includes("lose") || title.includes("loss")) return "lose";
+  return null;
+}
+
 /**
  * Update all Diana match embeds in #matches that match the user's league_username.
+ * Uses winGifUrl for wins, loseGifUrl for losses/remakes; falls back to bannerUrl if specific URL not set.
  * Also removes bannerUrl from embeds whose summoner doesn't match any user (revert to solid).
  * Returns { updated, checked, summonerNamesFound } for diagnostics.
+ * @param {string} leagueUsername
+ * @param {{ bannerUrl?: string | null, winGifUrl?: string | null, loseGifUrl?: string | null }} opts
  */
-async function backfillBannersForUser(leagueUsername, bannerUrl) {
+async function backfillBannersForUser(leagueUsername, opts = {}) {
+  const bannerUrl = opts?.bannerUrl ?? null;
+  const winGifUrl = opts?.winGifUrl ?? null;
+  const loseGifUrl = opts?.loseGifUrl ?? null;
   const result = { updated: 0, checked: 0, summonerNamesFound: [] };
   const trimmed = leagueUsername ? leagueUsername.trim() : "";
 
@@ -249,8 +274,15 @@ async function backfillBannersForUser(leagueUsername, bannerUrl) {
       let changed = false;
 
       if (matchesCurrentUser && trimmed) {
-        if (bannerUrl) {
-          updatedEmbed.bannerUrl = bannerUrl;
+        const matchResult = inferMatchResult(embed);
+        const urlToUse =
+          matchResult === "win"
+            ? (winGifUrl || bannerUrl)
+            : matchResult === "lose"
+              ? (loseGifUrl || bannerUrl)
+              : bannerUrl;
+        if (urlToUse) {
+          updatedEmbed.bannerUrl = urlToUse;
           changed = true;
         } else {
           if (updatedEmbed.bannerUrl) {
