@@ -22,7 +22,23 @@ const ACTIVITY_DETAIL_OPTIONS = [
   { value: "none", label: "None (show “Hiding activity”)" }
 ];
 
-function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybindsChange, isTauri, activityLoggingEnabled, onActivityLoggingChange, activityDetailLevel, onActivityDetailLevelChange, doNotDisturb, onDoNotDisturbChange }) {
+function SettingsModal({
+  isOpen,
+  onClose,
+  onOpenVoiceSettings,
+  keybinds,
+  onKeybindsChange,
+  isTauri,
+  activityLoggingEnabled,
+  onActivityLoggingChange,
+  activityDetailLevel,
+  onActivityDetailLevelChange,
+  doNotDisturb,
+  onDoNotDisturbChange,
+  theme,
+  onThemeChange,
+  inline = false
+}) {
   const [view, setView] = useState("list"); // 'list' | 'keybinds'
   const [capturing, setCapturing] = useState(null); // 'mute' | 'muteDeafen' | null
   const [localKeybinds, setLocalKeybinds] = useState(keybinds);
@@ -100,11 +116,16 @@ function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybi
     }));
   };
 
-  if (!isOpen) return null;
+  if (!isOpen && !inline) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800">
+  const panel = (
+      <div
+        className={
+          inline
+            ? "flex h-full w-full flex-col rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+            : "w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+        }
+      >
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h2 id="settings-title" className="text-lg font-semibold text-gray-900 dark:text-white">
             {view === "list" ? "Settings" : "Keybinds"}
@@ -187,6 +208,36 @@ function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybi
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 ml-8 -mt-1 mb-1">
                     No notifications or sounds when on.
+                  </p>
+                </li>
+              )}
+              {typeof onThemeChange === "function" && (theme === "light" || theme === "dark") && (
+                <li>
+                  <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200">
+                    <div className="flex items-center gap-3">
+                      <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      <span>Appearance</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={theme === "dark"}
+                      onClick={() => onThemeChange()}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${
+                        theme === "dark" ? "bg-indigo-600" : "bg-gray-200 dark:bg-gray-600"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                          theme === "dark" ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 ml-8 -mt-1 mb-1">
+                    Switch between light and dark mode.
                   </p>
                 </li>
               )}
@@ -355,6 +406,19 @@ function SettingsModal({ isOpen, onClose, onOpenVoiceSettings, keybinds, onKeybi
           )}
         </div>
       </div>
+  );
+
+  if (inline) {
+    return (
+      <div className="flex h-full w-full flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        {panel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      {panel}
     </div>
   );
 }
