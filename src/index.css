@@ -9,6 +9,11 @@ body,
   overflow: hidden;
 }
 
+/* Overlay page: transparent background for gaming overlay */
+body.overlay-page {
+  background: transparent !important;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",

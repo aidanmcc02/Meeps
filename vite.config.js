@@ -43,6 +43,12 @@ export default defineConfig({
   build: {
     target: ["es2021", "chrome100", "safari13"],
     minify: process.env.TAURI_DEBUG ? false : "esbuild",
-    sourcemap: !!process.env.TAURI_DEBUG
+    sourcemap: !!process.env.TAURI_DEBUG,
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        overlay: "overlay.html"
+      }
+    }
   }
 });
