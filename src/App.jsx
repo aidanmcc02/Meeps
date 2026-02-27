@@ -170,7 +170,7 @@ function App() {
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches ? "dashboard" : "chat"
-  ); // "dashboard" (desktop only) | "chat" | "board" | "games"
+  ); // "dashboard" (desktop only) | "chat" | "board" | "games" | "users" | "settings"
   const [selectedChannelId, setSelectedChannelId] = useState(() => {
     if (typeof window === "undefined") return "general";
     const params = new URLSearchParams(window.location.search);
@@ -2612,7 +2612,7 @@ function App() {
             <button
               type="button"
               onClick={() => setUsersPanelOpen((o) => !o)}
-              className={`inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border transition-colors ${
+              className={`hidden md:inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border transition-colors ${
                 usersPanelOpen
                   ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"
                   : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
@@ -2624,7 +2624,7 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </button>
-            <div className="relative" ref={topMenuRef}>
+            <div className="relative hidden md:block" ref={topMenuRef}>
             <button
               type="button"
               onClick={(e) => {
@@ -2639,31 +2639,11 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            {topMenuOpen && (
+              {topMenuOpen && (
               <div
                 className="absolute right-0 top-full z-50 mt-0.5 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
                 role="menu"
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    toggleTheme();
-                    setTopMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  {theme === "dark" ? (
-                    <svg className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                  ) : (
-                    <svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                  )}
-                  <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
-                </button>
                 <button
                   type="button"
                   role="menuitem"
@@ -2799,7 +2779,9 @@ function App() {
                     next.delete(id);
                     return next;
                   });
-                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard" || activeTab === "users" || activeTab === "settings") {
+                    setActiveTab("chat");
+                  }
                   setSidebarOpen(false);
                 }}
               />
@@ -2816,7 +2798,9 @@ function App() {
                 profiles={profiles}
                 speakingUserIds={speakingUserIds}
                 onOpenChannelView={(roomId) => {
-                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard") setActiveTab("chat");
+                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard" || activeTab === "users" || activeTab === "settings") {
+                    setActiveTab("chat");
+                  }
                   setVoiceChannelModalRoomId(roomId);
                   setSidebarOpen(false);
                 }}
@@ -2967,6 +2951,7 @@ function App() {
                 activity={presenceUsers?.find((u) => String(u.id) === String(currentUser?.id ?? CURRENT_USER_ID))?.activity}
                 userStatus={userStatus}
                 onUserStatusChange={handleUserStatusChange}
+                onLogout={handleLogout}
               />
             </div>
           )}
@@ -3004,6 +2989,53 @@ function App() {
               token={localStorage.getItem("meeps_token")}
               currentUser={currentUser}
             />
+          ) : !isDesktop && activeTab === "settings" ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2">
+              <SettingsModal
+                isOpen
+                inline
+                onClose={() => setActiveTab("chat")}
+                onOpenVoiceSettings={() => {
+                  setIsVoiceSettingsOpen(true);
+                }}
+                keybinds={keybinds}
+                onKeybindsChange={handleKeybindsChange}
+                isTauri={isTauri}
+                theme={theme}
+                onThemeChange={toggleTheme}
+                activityLoggingEnabled={currentUserProfile ? (currentUserProfile.activityLoggingEnabled !== false) : undefined}
+                onActivityLoggingChange={async (enabled) => {
+                  const userId = currentUser?.id ?? CURRENT_USER_ID;
+                  await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
+                }}
+                activityDetailLevel={currentUserProfile?.activityDetailLevel ?? "in_depth"}
+                onActivityDetailLevelChange={async (level) => {
+                  const userId = currentUser?.id ?? CURRENT_USER_ID;
+                  await handleSaveProfileForUser(userId, { activityDetailLevel: level });
+                }}
+                doNotDisturb={currentUserProfile?.doNotDisturb === true}
+                onDoNotDisturbChange={async (enabled) => {
+                  const userId = currentUser?.id ?? CURRENT_USER_ID;
+                  await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
+                }}
+              />
+            </div>
+          ) : !isDesktop && activeTab === "users" ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
+                <h1 className="text-base font-semibold truncate">Users</h1>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+                <UserList
+                  users={usersInDb}
+                  profiles={profiles}
+                  onUserClick={(user) => {
+                    setProfileModalAnchor("center");
+                    setSelectedUserForProfile(user);
+                  }}
+                />
+              </div>
+            </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className={`flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-0.5 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0 -mt-1 sm:mt-0 ${
@@ -3328,9 +3360,31 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={() => setUsersPanelOpen(true)}
+              onClick={() => {
+                setActiveTab("settings");
+                setSidebarOpen(false);
+              }}
               className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
-                usersPanelOpen
+                activeTab === "settings"
+                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
+            >
+              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>Settings</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("users");
+                setUsersPanelOpen(false);
+                setSidebarOpen(false);
+              }}
+              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === "users"
                   ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
                   : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
               }`}
@@ -3350,32 +3404,36 @@ function App() {
         onSelectGif={handleSelectGif}
         apiBase={apiBase}
       />
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onOpenVoiceSettings={() => {
-          setIsSettingsOpen(false);
-          setIsVoiceSettingsOpen(true);
-        }}
-        keybinds={keybinds}
-        onKeybindsChange={handleKeybindsChange}
-        isTauri={isTauri}
-        activityLoggingEnabled={currentUserProfile ? (currentUserProfile.activityLoggingEnabled !== false) : undefined}
-        onActivityLoggingChange={async (enabled) => {
-          const userId = currentUser?.id ?? CURRENT_USER_ID;
-          await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
-        }}
-        activityDetailLevel={currentUserProfile?.activityDetailLevel ?? "in_depth"}
-        onActivityDetailLevelChange={async (level) => {
-          const userId = currentUser?.id ?? CURRENT_USER_ID;
-          await handleSaveProfileForUser(userId, { activityDetailLevel: level });
-        }}
-        doNotDisturb={currentUserProfile?.doNotDisturb === true}
-        onDoNotDisturbChange={async (enabled) => {
-          const userId = currentUser?.id ?? CURRENT_USER_ID;
-          await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
-        }}
-      />
+      {isDesktop && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onOpenVoiceSettings={() => {
+            setIsSettingsOpen(false);
+            setIsVoiceSettingsOpen(true);
+          }}
+          keybinds={keybinds}
+          onKeybindsChange={handleKeybindsChange}
+          isTauri={isTauri}
+          theme={theme}
+          onThemeChange={toggleTheme}
+          activityLoggingEnabled={currentUserProfile ? (currentUserProfile.activityLoggingEnabled !== false) : undefined}
+          onActivityLoggingChange={async (enabled) => {
+            const userId = currentUser?.id ?? CURRENT_USER_ID;
+            await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
+          }}
+          activityDetailLevel={currentUserProfile?.activityDetailLevel ?? "in_depth"}
+          onActivityDetailLevelChange={async (level) => {
+            const userId = currentUser?.id ?? CURRENT_USER_ID;
+            await handleSaveProfileForUser(userId, { activityDetailLevel: level });
+          }}
+          doNotDisturb={currentUserProfile?.doNotDisturb === true}
+          onDoNotDisturbChange={async (enabled) => {
+            const userId = currentUser?.id ?? CURRENT_USER_ID;
+            await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
+          }}
+        />
+      )}
       <VoiceSettingsModal
         isOpen={isVoiceSettingsOpen}
         onClose={() => setIsVoiceSettingsOpen(false)}

@@ -18,7 +18,7 @@ const STATUS_DOT_CLASS = {
   offline: "bg-gray-500"
 };
 
-function UserProfile({ profile, onSave, activity, editable = true, userStatus, onUserStatusChange }) {
+function UserProfile({ profile, onSave, activity, editable = true, userStatus, onUserStatusChange, onLogout }) {
   const [isEditing, setIsEditing] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -256,6 +256,18 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                   </div>
                 )}
             </div>
+            {onLogout && (
+              <div className="mt-2 border-t border-gray-800 pt-2 flex items-center justify-between">
+                <span className="text-[11px] text-gray-400">Account</span>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="text-[11px] font-medium text-red-500 hover:text-red-400"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
