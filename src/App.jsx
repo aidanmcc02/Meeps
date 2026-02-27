@@ -2546,7 +2546,8 @@ function App() {
         <div className="flex-1 min-w-0 min-h-[24px] self-stretch" data-tauri-drag-region aria-hidden="true" />
 
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0" data-tauri-drag-region="false">
-          <nav className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
+          {/* Desktop top tabs; mobile uses bottom nav for primary sections */}
+          <nav className="hidden md:flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
             {isDesktop && (
               <button
                 type="button"
@@ -2715,7 +2716,7 @@ function App() {
       <div
         role="presentation"
         className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        style={{ top: "calc(48px + env(safe-area-inset-top))" }}
+        style={{ top: "calc(48px + env(safe-area-inset-top))", bottom: "3.75rem" }}
         onClick={() => setSidebarOpen(false)}
         aria-hidden="true"
       />
@@ -2723,7 +2724,7 @@ function App() {
       <div
         role="presentation"
         className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${usersPanelOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        style={{ top: "calc(48px + env(safe-area-inset-top))" }}
+        style={{ top: "calc(48px + env(safe-area-inset-top))", bottom: "3.75rem" }}
         onClick={() => setUsersPanelOpen(false)}
         aria-hidden="true"
       />
@@ -2735,10 +2736,10 @@ function App() {
           aria-hidden={!sidebarOpen && !isDesktop}
         >
           <aside
-            className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 p-3 dark:border-gray-800 dark:bg-gray-900/95 relative
-              fixed left-0 z-40 w-72 max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] h-[calc(100vh-3rem-env(safe-area-inset-top))] transform transition-transform duration-200 ease-out
+            className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 px-2 py-2 md:p-3 dark:border-gray-800 dark:bg-gray-900/95
+              fixed left-0 z-50 w-[85vw] max-w-[22rem] md:w-72 md:max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:bottom-auto transition-transform duration-200 ease-out
               md:relative md:top-0 md:h-full md:min-h-0 md:flex-shrink-0 md:transform-none
-              pt-2 md:pt-3
+              pt-1 md:pt-3
               ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
             style={{
               ...(isDesktop
@@ -2748,14 +2749,19 @@ function App() {
                     maxWidth: SIDEBAR_MAX_PX,
                     fontSize: `clamp(0.8125rem, 0.75rem + (${sidebarWidthPx - SIDEBAR_MIN_PX} / ${SIDEBAR_MAX_PX - SIDEBAR_MIN_PX}) * 0.125rem, 0.9375rem)`
                   }
-                : { paddingLeft: "max(0.75rem, env(safe-area-inset-left))" })
+                : {
+                    paddingLeft: "max(0.5rem, env(safe-area-inset-left))"
+                  })
             }}
           >
-          <div className="flex flex-shrink-0 justify-end md:hidden absolute right-3 top-2">
+          <div className="flex flex-shrink-0 justify-between items-center md:hidden mb-1">
+            <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Channels
+            </h2>
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className="rounded-lg p-1.5 -m-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
+              className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="Close menu"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3025,7 +3031,11 @@ function App() {
 
               <div
                 className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 min-w-0"
-                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                style={{
+                  paddingBottom: isDesktop
+                    ? "env(safe-area-inset-bottom)"
+                    : "calc(env(safe-area-inset-bottom) + 3.75rem)"
+                }}
               >
                 <MessageInput
                   value={inputValue}
@@ -3034,7 +3044,7 @@ function App() {
                   replyTo={replyToMessage}
                   onClearReply={() => setReplyToMessage(null)}
                   onGifClick={() => setIsGifModalOpen(true)}
-                  placeholder={`Message #${selectedChannelId} (Markdown supported, @ to mention)…`}
+                  placeholder={`Message #${selectedChannelId}`}
                   presenceUsers={presenceUsers}
                   currentUser={currentUser}
                   profiles={profiles}
@@ -3077,16 +3087,17 @@ function App() {
 
         {usersPanelOpen && (
           <aside
-            className="flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95 relative
-              fixed right-0 top-[calc(3rem+env(safe-area-inset-top))] bottom-0 z-40 w-64 max-w-[85vw] shadow-lg
-              md:relative md:top-0 md:bottom-auto md:z-auto md:shadow-none md:flex-shrink-0 md:w-40 md:min-w-[8rem] md:max-w-[10rem]"
+            className={`flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95
+              fixed right-0 top-[calc(3rem+env(safe-area-inset-top))] z-50 w-64 max-w-[85vw] shadow-lg
+              md:relative md:top-0 md:bottom-auto md:z-auto md:shadow-none md:flex-shrink-0 md:w-40 md:min-w-[8rem] md:max-w-[10rem]`}
             style={isDesktop ? {
               width: usersPanelWidthPx,
               minWidth: USERS_PANEL_MIN_PX,
               maxWidth: USERS_PANEL_MAX_PX,
               fontSize: `clamp(0.8125rem, 0.75rem + (${usersPanelWidthPx - USERS_PANEL_MIN_PX} / ${USERS_PANEL_MAX_PX - USERS_PANEL_MIN_PX}) * 0.125rem, 0.9375rem)`
             } : {
-              paddingRight: "max(0.5rem, env(safe-area-inset-right))"
+              paddingRight: "max(0.5rem, env(safe-area-inset-right))",
+              bottom: "calc(3.75rem + env(safe-area-inset-bottom))"
             }}
           >
             {isDesktop && (
@@ -3236,6 +3247,85 @@ function App() {
           </button>
           </div>
         </div>
+      )}
+
+      {/* Mobile bottom navigation for primary sections */}
+      {!isDesktop && (
+        <nav
+          className="fixed inset-x-0 bottom-0 z-40 md:hidden border-t border-gray-200 bg-white dark:bg-gray-900 px-2 pt-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.22)] dark:border-gray-800"
+          style={{
+            paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 0.5rem)`
+          }}
+          aria-label="Primary"
+        >
+          <div className="mx-auto flex max-w-xl items-stretch justify-around gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("chat");
+                setSidebarOpen(false);
+              }}
+              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === "chat"
+                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
+            >
+              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h6m-6 4h3M5 5a2 2 0 012-2h10a2 2 0 012 2v9.5a2.5 2.5 0 01-2.5 2.5H10l-3.293 3.293A1 1 0 015 19.586V5z" />
+              </svg>
+              <span>Chat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("board");
+                setSidebarOpen(false);
+              }}
+              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === "board"
+                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
+            >
+              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h3v7H4V6zm0 7h5v7H6a2 2 0 01-2-2v-5zm7-9h5a2 2 0 012 2v5h-7V4zm0 9h7v5a2 2 0 01-2 2h-5v-7z" />
+              </svg>
+              <span>Board</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("games");
+                setSidebarOpen(false);
+              }}
+              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === "games"
+                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
+            >
+              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8a3 3 0 013-3h8a3 3 0 013 3v5a4 4 0 01-4 4h-1.382a1 1 0 00-.723.276L11 20l-1.895-1.724A1 1 0 008.382 17H7a4 4 0 01-4-4V8z" />
+              </svg>
+              <span>Games</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUsersPanelOpen(true)}
+              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                usersPanelOpen
+                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
+            >
+              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7zM6.5 20a5.5 5.5 0 0111 0M4 9.5A2.5 2.5 0 119 9.5 2.5 2.5 0 014 9.5zM3 20a4 4 0 017.446-1.641M15 10.5A2.5 2.5 0 1119.999 10.5 2.5 2.5 0 0115 10.5zm1.554 7.859A4 4 0 0121 20" />
+              </svg>
+              <span>Users</span>
+            </button>
+          </div>
+        </nav>
       )}
 
       <GifPickerModal
