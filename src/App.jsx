@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { appWindow } from "@tauri-apps/api/window";
+import { appWindow, WebviewWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/tauri";
+import { emit } from "@tauri-apps/api/event";
 import TextChannels from "./components/TextChannels";
 import VoiceChannels from "./components/VoiceChannels";
 import UserList from "./components/UserList";
@@ -37,6 +38,7 @@ import {
 } from "./utils/mentionNotifications";
 
 const THEME_KEY = "meeps-theme";
+const GAMING_OVERLAY_KEY = "meeps-gaming-overlay-enabled";
 const USER_STATUS_KEY = "meeps-user-status";
 const KEYBINDS_KEY = "meeps-keybinds";
 const SIDEBAR_WIDTH_KEY = "meeps-sidebar-width-px";
@@ -271,6 +273,17 @@ function App() {
   const [isTauri, setIsTauri] = useState(false);
   const doNotDisturbRef = useRef(false);
   const [voiceVolumeContext, setVoiceVolumeContext] = useState(null); // { userId, name, x, y } | null
+  const voiceOverlayWindowRef = useRef(null);
+  const prevVoiceParticipantsForOverlayRef = useRef([]);
+  const effectiveInCallParticipantsRef = useRef([]);
+  const [gamingOverlayEnabled, setGamingOverlayEnabled] = useState(() => {
+    try {
+      const v = localStorage.getItem(GAMING_OVERLAY_KEY);
+      return v !== "false";
+    } catch (_) {
+      return true;
+    }
+  });
 
   useEffect(() => {
     userStatusRef.current = userStatus;
@@ -499,6 +512,158 @@ function App() {
     });
     return list;
   }, [joinedVoiceChannelId, voiceParticipants, remoteStreams, profiles, currentUser?.id, currentUser?.displayName]);
+
+  // Gaming overlay: create overlay when in voice call (Tauri only). Show only when Meeps loses focus; hide when it gains focus.
+  const overlayListenersRef = useRef({ blur: null, focus: null, visibility: null });
+  useEffect(() => {
+    if (!window.__TAURI__ || !joinedVoiceChannelId || !gamingOverlayEnabled) return;
+    let cancelled = false;
+    let hideCooldownUntil = 0;
+    let showScheduled = null;
+    const hideOverlay = () => {
+      hideCooldownUntil = Date.now() + 300;
+      if (showScheduled) {
+        clearTimeout(showScheduled);
+        showScheduled = null;
+      }
+      const w = WebviewWindow.getByLabel("voice-overlay");
+      if (w) w.hide().catch(() => {});
+    };
+    const createOverlay = async () => {
+      try {
+        let win = WebviewWindow.getByLabel("voice-overlay");
+        const overlayWidth = 300;
+        const overlayHeight = 220;
+        const overlayTop = 0;
+        let x = 16;
+        if (win) {
+          await win.hide().catch(() => {});
+        }
+        if (!win) {
+          // Create window immediately with default position so blur listener can show it right away.
+          win = new WebviewWindow("voice-overlay", {
+            url: "/overlay.html",
+            title: "Meeps Voice Overlay",
+            width: overlayWidth,
+            height: overlayHeight,
+            x,
+            y: overlayTop,
+            visible: false,
+            decorations: false,
+            alwaysOnTop: true,
+            transparent: true,
+            resizable: false,
+            skipTaskbar: true,
+            focus: false
+          });
+          win.once("tauri://error", (e) => console.warn("[overlay] Failed to create:", e));
+          // Center on monitor in background (don't block listener setup)
+          primaryMonitor().then((monitor) => {
+            if (!cancelled && monitor?.size) {
+              const scale = monitor.scaleFactor ?? 1;
+              const logicalW = monitor.size.width / scale;
+              const centeredX = Math.round(logicalW / 2 - overlayWidth / 2);
+              win?.setPosition?.({ x: centeredX, y: overlayTop }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+        if (cancelled) return;
+        await win.setIgnoreCursorEvents(true).catch(() => {});
+        voiceOverlayWindowRef.current = win;
+        const showOverlay = () => {
+          if (Date.now() < hideCooldownUntil) return;
+          if (showScheduled) return;
+          showScheduled = setTimeout(async () => {
+            showScheduled = null;
+            if (cancelled || Date.now() < hideCooldownUntil) return;
+            try {
+              const focused = await appWindow.isFocused();
+              if (focused) return;
+            } catch (_) {}
+            // Emit fresh participants right before show so overlay always has up-to-date list (fixes "0 people" when alone)
+            const participants = effectiveInCallParticipantsRef.current;
+            emit("voice-overlay-update", {
+              participants: participants.map((p) => ({ id: p.id, displayName: p.displayName || `User ${p.id}` }))
+            }).catch(() => {});
+            const w = WebviewWindow.getByLabel("voice-overlay");
+            if (w) w.show().catch(() => {});
+          }, 50);
+        };
+        const unlistenBlur = await appWindow.listen("tauri://blur", showOverlay);
+        const unlistenFocus = await appWindow.listen("tauri://focus", hideOverlay);
+        const onVisibility = () => {
+          if (document.visibilityState === "visible") hideOverlay();
+        };
+        document.addEventListener("visibilitychange", onVisibility);
+        overlayListenersRef.current = { blur: unlistenBlur, focus: unlistenFocus, visibility: () => document.removeEventListener("visibilitychange", onVisibility) };
+        // If we already lost focus (blur fired before listeners), show now
+        appWindow.isFocused().then((focused) => {
+          if (!cancelled && !focused) showOverlay();
+        }).catch(() => {});
+      } catch (err) {
+        console.warn("[overlay] Failed to create overlay:", err);
+      }
+    };
+    createOverlay();
+    return () => {
+      cancelled = true;
+      if (showScheduled) clearTimeout(showScheduled);
+      const { blur, focus, visibility } = overlayListenersRef.current;
+      blur?.();
+      focus?.();
+      visibility?.();
+      overlayListenersRef.current = { blur: null, focus: null, visibility: null };
+      WebviewWindow.getByLabel("voice-overlay")?.close().catch(() => {});
+    };
+  }, [joinedVoiceChannelId, gamingOverlayEnabled]);
+
+  // Close overlay when leaving voice
+  useEffect(() => {
+    if (!window.__TAURI__ || joinedVoiceChannelId) return;
+    prevVoiceParticipantsForOverlayRef.current = [];
+    const closeOverlay = async () => {
+      try {
+        const win = WebviewWindow.getByLabel("voice-overlay");
+        if (win) await win.close();
+        voiceOverlayWindowRef.current = null;
+      } catch (_) {}
+    };
+    closeOverlay();
+  }, [joinedVoiceChannelId]);
+
+  // Keep ref updated so overlay show logic can emit fresh participants
+  useEffect(() => {
+    effectiveInCallParticipantsRef.current = effectiveInCallParticipants;
+  }, [effectiveInCallParticipants]);
+
+  // Emit participant updates to overlay; show join/leave toasts
+  useEffect(() => {
+    if (!joinedVoiceChannelId || !window.__TAURI__) return;
+    const participants = effectiveInCallParticipants;
+    const prev = prevVoiceParticipantsForOverlayRef.current;
+    const justOwnJoin = justJoinedVoiceRef.current || (prev.length === 0 && participants.length >= 1);
+
+    // Emit full list to overlay
+    emit("voice-overlay-update", { participants: participants.map((p) => ({ id: p.id, displayName: p.displayName || `User ${p.id}` })) }).catch(() => {});
+
+    // Compute join/leave diff and emit toasts (skip on our own join)
+    if (!justOwnJoin && prev.length > 0) {
+      const prevIds = new Set(prev.map((p) => String(p.id)));
+      const currIds = new Set(participants.map((p) => String(p.id)));
+      const joined = participants.filter((p) => !prevIds.has(String(p.id)));
+      const left = prev.filter((p) => !currIds.has(String(p.id)));
+      joined.forEach((p) => {
+        const name = p.displayName || `User ${p.id}`;
+        emit("voice-overlay-toast", { message: `${name} has joined the call`, type: "join" }).catch(() => {});
+      });
+      left.forEach((p) => {
+        const name = p.displayName || `User ${p.id}`;
+        emit("voice-overlay-toast", { message: `${name} has left the call`, type: "leave" }).catch(() => {});
+      });
+    }
+
+    prevVoiceParticipantsForOverlayRef.current = participants;
+  }, [joinedVoiceChannelId, effectiveInCallParticipants]);
 
   useEffect(() => {
     if (!joinedVoiceChannelId) return;
@@ -3041,6 +3206,13 @@ function App() {
                   const userId = currentUser?.id ?? CURRENT_USER_ID;
                   await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
                 }}
+                gamingOverlayEnabled={isTauri ? gamingOverlayEnabled : undefined}
+                onGamingOverlayChange={(enabled) => {
+                  setGamingOverlayEnabled(enabled);
+                  try {
+                    localStorage.setItem(GAMING_OVERLAY_KEY, enabled ? "true" : "false");
+                  } catch (_) {}
+                }}
               />
             </div>
           ) : !isDesktop && activeTab === "users" ? (
@@ -3456,6 +3628,13 @@ function App() {
           onDoNotDisturbChange={async (enabled) => {
             const userId = currentUser?.id ?? CURRENT_USER_ID;
             await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
+          }}
+          gamingOverlayEnabled={isTauri ? gamingOverlayEnabled : undefined}
+          onGamingOverlayChange={(enabled) => {
+            setGamingOverlayEnabled(enabled);
+            try {
+              localStorage.setItem(GAMING_OVERLAY_KEY, enabled ? "true" : "false");
+            } catch (_) {}
           }}
         />
       )}

@@ -37,6 +37,8 @@ function SettingsModal({
   onDoNotDisturbChange,
   theme,
   onThemeChange,
+  gamingOverlayEnabled,
+  onGamingOverlayChange,
   inline = false
 }) {
   const [view, setView] = useState("list"); // 'list' | 'keybinds'
@@ -179,6 +181,36 @@ function SettingsModal({
                       />
                     </button>
                   </div>
+                </li>
+              )}
+              {isTauri && gamingOverlayEnabled !== undefined && (
+                <li>
+                  <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200">
+                    <div className="flex w-full items-center gap-3">
+                      <svg className="h-5 w-5 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <span>Gaming overlay</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={gamingOverlayEnabled}
+                      onClick={() => onGamingOverlayChange?.(!gamingOverlayEnabled)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${
+                        gamingOverlayEnabled ? "bg-indigo-600" : "bg-gray-200 dark:bg-gray-600"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                          gamingOverlayEnabled ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 ml-8 -mt-1 mb-1">
+                    Show voice call overlay when Meeps is in the background.
+                  </p>
                 </li>
               )}
               {doNotDisturb !== undefined && (
