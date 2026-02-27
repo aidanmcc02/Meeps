@@ -261,6 +261,7 @@ function App() {
   const pendingIceCandidatesRef = useRef({}); // peerUserId -> RTCIceCandidate[]
   const [speakingUserIds, setSpeakingUserIds] = useState([]);
   const [participantMuted, setParticipantMuted] = useState({}); // userId -> true if muted
+  const [voiceUserVolumes, setVoiceUserVolumes] = useState({}); // userId (string) -> volume multiplier relative to global voice volume
   const [isDeafened, setIsDeafened] = useState(false);
   const voiceAudioContextRef = useRef(null);
   const voiceAnalysersRef = useRef({}); // userId -> { source, analyser }
@@ -269,6 +270,7 @@ function App() {
   const voiceTryPlayAllRemoteAudioRef = useRef(null); // set in effect: () => try play all audio[srcObject]
   const [isTauri, setIsTauri] = useState(false);
   const doNotDisturbRef = useRef(false);
+  const [voiceVolumeContext, setVoiceVolumeContext] = useState(null); // { userId, name, x, y } | null
 
   useEffect(() => {
     userStatusRef.current = userStatus;
@@ -2019,6 +2021,8 @@ function App() {
           achievements: payload.achievements,
           avatarUrl: payload.avatarUrl,
           bannerUrl: payload.bannerUrl,
+          winGifUrl: payload.winGifUrl,
+          loseGifUrl: payload.loseGifUrl,
           leagueUsername: payload.leagueUsername,
           theme,
           ...(payload.activityLoggingEnabled !== undefined && { activityLoggingEnabled: payload.activityLoggingEnabled }),
@@ -2871,12 +2875,26 @@ function App() {
                         .join("")
                         .slice(0, 2)
                         .toUpperCase() || "?";
+                      const userIdStr = String(p.id);
+                      const perUserVolume = voiceUserVolumes[userIdStr] ?? 1;
+                      const showVolumeBadge = Math.abs(perUserVolume - 1) > 0.01;
                       const isSpeaking = showMuteSpeaking && speakingUserIds.includes(String(p.id));
                       const isMuted = showMuteSpeaking && participantMuted[String(p.id)] === true;
+                      const handleContextMenu = (e) => {
+                        if (!joinedVoiceChannelId || !isDesktop) return;
+                        e.preventDefault();
+                        setVoiceVolumeContext({
+                          userId: userIdStr,
+                          name,
+                          x: e.clientX,
+                          y: e.clientY
+                        });
+                      };
                       return (
                         <div
                           key={p.id}
                           className="group/call relative overflow-hidden rounded-lg"
+                          onContextMenu={handleContextMenu}
                         >
                           {bannerUrl && (
                             <div className="pointer-events-none absolute inset-0">
@@ -2917,6 +2935,11 @@ function App() {
                             >
                               {name}
                             </span>
+                            {showVolumeBadge && (
+                              <span className="ml-2 flex-shrink-0 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-medium text-white/80">
+                                {Math.round(perUserVolume * 100)}%
+                              </span>
+                            )}
                             {showMuteSpeaking && isMuted && (
                               <span className="flex-shrink-0 text-red-400 dark:text-red-300" title="Muted">
                                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3108,7 +3131,9 @@ function App() {
               playsInline
               ref={(el) => {
                 if (!el || !stream || typeof stream.getTracks !== "function") return;
-                const targetVolume = isDeafened ? 0 : voiceSettings.volume;
+                const baseVolume = isDeafened ? 0 : voiceSettings.volume;
+                const perUserMultiplier = voiceUserVolumes[String(userId)] ?? 1;
+                const targetVolume = Math.max(0, Math.min(1, baseVolume * perUserMultiplier));
                 if (el.srcObject !== stream) {
                   voiceDebug.log("Setting up audio element", {
                     userId,
@@ -3117,7 +3142,7 @@ function App() {
                     videoTracks: stream.getVideoTracks().length
                   });
                   el.srcObject = stream;
-                  voiceDebug.log("Audio element configured", { userId, volume: targetVolume, deafened: isDeafened });
+                  voiceDebug.log("Audio element configured", { userId, volume: targetVolume, deafened: isDeafened, perUserMultiplier });
                 }
                 if (el.volume !== targetVolume) el.volume = targetVolume;
                 if (el.paused) {
@@ -3466,6 +3491,73 @@ function App() {
         }}
         onLeave={leaveVoiceChannel}
       />
+      {voiceVolumeContext && (
+        <div
+          className="fixed inset-0 z-[70]"
+          onClick={() => setVoiceVolumeContext(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setVoiceVolumeContext(null);
+          }}
+        >
+          <div
+            className="absolute z-[71] w-64 rounded-lg border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            style={{ left: voiceVolumeContext.x, top: voiceVolumeContext.y }}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Adjust volume
+            </div>
+            <div className="px-3 pb-2 text-sm text-gray-900 dark:text-gray-100 truncate">
+              {voiceVolumeContext.name}
+            </div>
+            <div className="px-3 pb-3">
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={0.05}
+                value={voiceUserVolumes[voiceVolumeContext.userId] ?? 1}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  setVoiceUserVolumes((prev) => {
+                    const next = { ...prev, [voiceVolumeContext.userId]: value };
+                    if (Math.abs(value - 1) < 0.01) {
+                      delete next[voiceVolumeContext.userId];
+                    }
+                    return next;
+                  });
+                }}
+                className="w-full h-2 rounded-lg appearance-none bg-gray-200 dark:bg-gray-700 accent-indigo-500 dark:accent-indigo-400"
+              />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                <span>{Math.round((voiceUserVolumes[voiceVolumeContext.userId] ?? 1) * 100)}%</span>
+                <button
+                  type="button"
+                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  onClick={() => {
+                    setVoiceUserVolumes((prev) => {
+                      const next = { ...prev };
+                      delete next[voiceVolumeContext.userId];
+                      return next;
+                    });
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="mt-1 block w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              onClick={() => setVoiceVolumeContext(null)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       {selectedUserForProfile != null && (() => {
         const profileUserId = selectedUserForProfile?.id;
         const numId = Number(profileUserId);

@@ -165,49 +165,70 @@ exports.serveFile = async (req, res, next) => {
   try {
     let row = null;
 
-    // For public_id-based URLs, require a valid signature and expiry.
+    // For public_id-based URLs, we either:
+    // - Require a valid signed URL (for regular, short-lived attachments), or
+    // - Allow unsigned access only if the upload is explicitly pinned (e.g. profile avatars).
     const asInt = parseInt(idParam, 10);
     const looksNumeric = !Number.isNaN(asInt) && String(asInt) === idParam;
 
     if (!looksNumeric) {
       const { e, s } = req.query;
-      const expiresAt = e ? Number(e) : 0;
-      if (!e || !s || Number.isNaN(expiresAt)) {
-        console.warn("[uploads] Missing or invalid signature for file download", {
-          userId,
-          ip: req.ip,
-          id: idParam
-        });
-        return res.status(401).json({ message: "invalid file token" });
-      }
-      if (Date.now() > expiresAt) {
-        console.info("[uploads] Signed URL expired", {
-          userId,
-          ip: req.ip,
-          id: idParam
-        });
-        return res.status(410).json({ message: "File link expired" });
-      }
-      const payload = `${idParam}.${expiresAt}`;
-      const expected = crypto.createHmac("sha256", FILE_TOKEN_SECRET).update(payload).digest("base64url");
-      if (expected !== s) {
-        console.warn("[uploads] Signature mismatch for file download", {
-          userId,
-          ip: req.ip,
-          id: idParam
-        });
-        return res.status(401).json({ message: "invalid file token" });
-      }
 
-      const result = await db.query(
-        "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE public_id = $1",
-        [idParam]
-      );
-      row = result.rows[0];
+      if (e && s) {
+        const expiresAt = Number(e);
+        if (Number.isNaN(expiresAt)) {
+          console.warn("[uploads] Missing or invalid signature for file download", {
+            userId,
+            ip: req.ip,
+            id: idParam
+          });
+          return res.status(401).json({ message: "invalid file token" });
+        }
+        if (Date.now() > expiresAt) {
+          console.info("[uploads] Signed URL expired", {
+            userId,
+            ip: req.ip,
+            id: idParam
+          });
+          return res.status(410).json({ message: "File link expired" });
+        }
+        const payload = `${idParam}.${expiresAt}`;
+        const expected = crypto.createHmac("sha256", FILE_TOKEN_SECRET).update(payload).digest("base64url");
+        if (expected !== s) {
+          console.warn("[uploads] Signature mismatch for file download", {
+            userId,
+            ip: req.ip,
+            id: idParam
+          });
+          return res.status(401).json({ message: "invalid file token" });
+        }
+
+        const result = await db.query(
+          "SELECT id, filename, storage_path, mime_type, created_at, is_pinned FROM uploads WHERE public_id = $1",
+          [idParam]
+        );
+        row = result.rows[0];
+      } else {
+        // Unsigned access: only allowed for pinned uploads (e.g. profile avatars).
+        const result = await db.query(
+          "SELECT id, filename, storage_path, mime_type, created_at, is_pinned FROM uploads WHERE public_id = $1",
+          [idParam]
+        );
+        row = result.rows[0];
+
+        if (!row || row.is_pinned !== true) {
+          console.warn("[uploads] Attempted unsigned access to non-pinned file", {
+            userId,
+            ip: req.ip,
+            id: idParam
+          });
+          return res.status(404).json({ message: "File not found" });
+        }
+      }
     } else {
       // Legacy numeric IDs (no signature). Keep for backward compatibility.
       const legacyResult = await db.query(
-        "SELECT id, filename, storage_path, mime_type, created_at FROM uploads WHERE id = $1",
+        "SELECT id, filename, storage_path, mime_type, created_at, is_pinned FROM uploads WHERE id = $1",
         [asInt]
       );
       row = legacyResult.rows[0];
@@ -223,7 +244,8 @@ exports.serveFile = async (req, res, next) => {
     }
 
     const createdAt = new Date(row.created_at).getTime();
-    if (Date.now() - createdAt > UPLOAD_MAX_AGE_MS) {
+    const isPinned = row.is_pinned === true;
+    if (!isPinned && Date.now() - createdAt > UPLOAD_MAX_AGE_MS) {
       console.info("[uploads] File expired on download", {
         userId,
         ip: req.ip,
@@ -293,7 +315,7 @@ exports.cleanupExpiredUploads = async () => {
   try {
     const cutoff = new Date(Date.now() - UPLOAD_MAX_AGE_MS);
     const result = await db.query(
-      "SELECT id, storage_path FROM uploads WHERE created_at < $1",
+      "SELECT id, storage_path FROM uploads WHERE created_at < $1 AND (is_pinned IS NOT TRUE)",
       [cutoff]
     );
     for (const row of result.rows) {

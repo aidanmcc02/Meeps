@@ -28,6 +28,8 @@ function mapUserRowToProfile(row) {
     avatarUrl: row.avatar_url || null,
     bannerUrl: row.banner_url || null,
     leagueUsername: row.league_username || "",
+    winGifUrl: row.win_gif_url || null,
+    loseGifUrl: row.lose_gif_url || null,
     theme: row.theme || null,
     userType: row.user_type || "user",
     activityLoggingEnabled: row.activity_logging_enabled !== false,
@@ -58,7 +60,7 @@ exports.getProfile = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, win_gif_url, lose_gif_url, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -81,7 +83,7 @@ exports.getProfileById = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at FROM users WHERE id = $1",
+      "SELECT id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, win_gif_url, lose_gif_url, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at FROM users WHERE id = $1",
       [userId]
     );
 
@@ -102,11 +104,11 @@ exports.updateProfileById = async (req, res, next) => {
     return res.status(400).json({ message: "invalid user id" });
   }
 
-    const { displayName, bio, achievements, avatarUrl, bannerUrl, leagueUsername, theme, activityLoggingEnabled, activityDetailLevel, doNotDisturb } = req.body;
+    const { displayName, bio, achievements, avatarUrl, bannerUrl, winGifUrl, loseGifUrl, leagueUsername, theme, activityLoggingEnabled, activityDetailLevel, doNotDisturb } = req.body;
 
   try {
     const existingResult = await db.query(
-      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb FROM users WHERE id = $1",
+      "SELECT display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, win_gif_url, lose_gif_url, theme, activity_logging_enabled, activity_detail_level, do_not_disturb FROM users WHERE id = $1",
       [userId]
     );
 
@@ -130,6 +132,10 @@ exports.updateProfileById = async (req, res, next) => {
       avatarUrl !== undefined ? avatarUrl || null : existing.avatar_url;
     const newBannerUrl =
       bannerUrl !== undefined ? bannerUrl || null : existing.banner_url;
+    const newWinGifUrl =
+      winGifUrl !== undefined ? winGifUrl || null : existing.win_gif_url;
+    const newLoseGifUrl =
+      loseGifUrl !== undefined ? loseGifUrl || null : existing.lose_gif_url;
     const newLeagueUsername =
       leagueUsername !== undefined ? (leagueUsername || "").trim() : (existing.league_username || "");
     const newTheme = theme !== undefined ? theme || null : existing.theme;
@@ -145,10 +151,41 @@ exports.updateProfileById = async (req, res, next) => {
     const newDoNotDisturb =
       doNotDisturb !== undefined ? !!doNotDisturb : (existing.do_not_disturb === true);
 
+    // Detect avatar uploads served from our own /api/files/:publicId route so we can pin them.
+    const extractPublicId = (url) => {
+      if (!url || typeof url !== "string") return null;
+      try {
+        // Absolute URL with /api/files/:id
+        const absMatch = url.match(/\/api\/files\/([^/?#]+)/);
+        if (absMatch && absMatch[1]) return absMatch[1];
+      } catch (_err) {
+        // ignore
+      }
+      return null;
+    };
+
+    const previousAvatarPublicId = extractPublicId(existing.avatar_url);
+    const nextAvatarPublicId = extractPublicId(newAvatarUrl);
+
     const result = await db.query(
-      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, league_username = $7, theme = $8, activity_logging_enabled = $9, activity_detail_level = $10, do_not_disturb = $11 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at",
-      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newLeagueUsername, newTheme, newActivityLoggingEnabled, newActivityDetailLevel, newDoNotDisturb]
+      "UPDATE users SET display_name = $2, bio = $3, achievements = $4, avatar_url = $5, banner_url = $6, league_username = $7, win_gif_url = $8, lose_gif_url = $9, theme = $10, activity_logging_enabled = $11, activity_detail_level = $12, do_not_disturb = $13 WHERE id = $1 RETURNING id, email, display_name, user_type, bio, achievements, avatar_url, banner_url, league_username, win_gif_url, lose_gif_url, theme, activity_logging_enabled, activity_detail_level, do_not_disturb, created_at",
+      [userId, newDisplayName, newBio, achievementsJson, newAvatarUrl, newBannerUrl, newLeagueUsername, newWinGifUrl, newLoseGifUrl, newTheme, newActivityLoggingEnabled, newActivityDetailLevel, newDoNotDisturb]
     );
+
+    // Pin the new avatar upload (if any) and unpin the previous one, so that
+    // files actively used as profile pictures are not removed by cleanup.
+    try {
+      if (previousAvatarPublicId && previousAvatarPublicId !== nextAvatarPublicId) {
+        await db.query("UPDATE uploads SET is_pinned = FALSE WHERE public_id = $1", [previousAvatarPublicId]);
+      }
+      if (nextAvatarPublicId) {
+        await db.query("UPDATE uploads SET is_pinned = TRUE WHERE public_id = $1", [nextAvatarPublicId]);
+      }
+    } catch (pinErr) {
+      // Best-effort only; do not fail profile updates because of pinning issues.
+      // eslint-disable-next-line no-console
+      console.warn("[profile] Failed to update avatar pinning:", pinErr?.message);
+    }
 
     const profile = mapUserRowToProfile(result.rows[0]);
 
@@ -157,7 +194,11 @@ exports.updateProfileById = async (req, res, next) => {
 
     // Backfill Diana match embeds: add banner for matching summoners, revert to solid when summoner doesn't match any user
     try {
-      await backfillBannersForUser(newLeagueUsername || "", newBannerUrl);
+      await backfillBannersForUser(newLeagueUsername || "", {
+        bannerUrl: newBannerUrl,
+        winGifUrl: newWinGifUrl,
+        loseGifUrl: newLoseGifUrl
+      });
     } catch (err) {
       console.warn("[profile] Banner backfill failed:", err?.message);
     }
@@ -174,15 +215,19 @@ exports.backfillDianaBanners = async (req, res, next) => {
 
   try {
     const result = await db.query(
-      "SELECT league_username, banner_url FROM users WHERE id = $1",
+      "SELECT league_username, banner_url, win_gif_url, lose_gif_url FROM users WHERE id = $1",
       [userId]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
-    const { league_username, banner_url } = result.rows[0];
+    const { league_username, banner_url, win_gif_url, lose_gif_url } = result.rows[0];
     if (!league_username || !league_username.trim()) {
       return res.status(400).json({ message: "League username not set. Add it in Gamer Tags (Edit profile)." });
     }
-    const backfillResult = await backfillBannersForUser(league_username.trim(), banner_url);
+    const backfillResult = await backfillBannersForUser(league_username.trim(), {
+      bannerUrl: banner_url,
+      winGifUrl: win_gif_url,
+      loseGifUrl: lose_gif_url
+    });
     return res.json({
       ok: true,
       message: "Banner backfill completed",
