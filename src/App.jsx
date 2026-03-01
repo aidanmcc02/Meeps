@@ -2468,30 +2468,30 @@ function App() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     const run = async () => {
-      const sortedIds = voiceParticipants
-        .map((p) => Number(p.id))
-        .sort((a, b) => a - b);
-      const effectiveHost =
-        voiceHostUserId != null ? voiceHostUserId : (sortedIds[0] ?? myId);
-      const iAmHost = Number(myId) === Number(effectiveHost);
+      const myNumericId = Number(myId);
       voiceDebug.log("Sending offers to peers", {
         myId,
-        effectiveHost,
-        iAmHost,
+        myNumericId,
         participants: voiceParticipants.map((p) => p.id),
         participantCount: voiceParticipants.length,
       });
       for (const p of voiceParticipants) {
         const peerId = Number(p.id);
-        if (peerId === myId) {
+        if (peerId === myNumericId) {
           voiceDebug.log("Skipping self", { peerId, myId });
           continue;
         }
-        if (!iAmHost) {
-          voiceDebug.log("Skipping (not host; host is first to join)", {
+        if (!(Number.isFinite(myNumericId) && Number.isFinite(peerId))) {
+          voiceDebug.warn("Skipping peer with invalid id", {
             peerId,
             myId,
-            effectiveHost,
+          });
+          continue;
+        }
+        if (myNumericId > peerId) {
+          voiceDebug.log("Skipping (wait for offer from lower userId)", {
+            peerId,
+            myId,
           });
           continue;
         }
