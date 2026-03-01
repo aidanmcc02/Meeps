@@ -1,5 +1,4 @@
 const express = require("express");
-const cors = require("cors");
 const morgan = require("morgan");
 const authRoutes = require("./routes/authRoutes");
 const profileRoutes = require("./routes/profileRoutes");
@@ -17,7 +16,22 @@ const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
 
-app.use(cors());
+// CORS: allow all origins. Handle preflight explicitly so it works behind Railway/proxies.
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Conqueror-Secret, X-Diana-Secret, X-Build-Secret",
+  );
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json());
 app.use(morgan("dev"));
 
