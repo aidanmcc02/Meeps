@@ -47,6 +47,84 @@ const RANK_COLORS = {
   CHALLENGER: "#1e90ff",
 };
 
+const TFT_PLACEMENT_STYLES = {
+  1: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  2: "bg-gray-100 text-gray-700 dark:bg-gray-700/40 dark:text-gray-200",
+  3: "bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-300",
+  4: "bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-slate-200",
+};
+const TFT_PLACEMENT_ROW_STYLES = {
+  1: "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-900/20",
+  2: "border-gray-200 bg-gray-50/60 dark:border-gray-800/60 dark:bg-gray-900/20",
+  3: "border-amber-200 bg-amber-50/50 dark:border-amber-900/60 dark:bg-amber-900/15",
+  4: "border-slate-200 bg-slate-50/60 dark:border-slate-800/60 dark:bg-slate-900/20",
+};
+const TFT_BOTTOM_ROW =
+  "border-rose-200 bg-rose-50/60 dark:border-rose-900/60 dark:bg-rose-900/20";
+
+function ConquerorMatchCard({ match }) {
+  const timestamp = formatTimestamp(match?.gameEndTime || match?.gameCreation);
+  const placement = match?.placement ?? match?.place ?? 0;
+  const placementStyle =
+    TFT_PLACEMENT_STYLES[placement] ??
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200";
+  const rowStyle = TFT_PLACEMENT_ROW_STYLES[placement] ?? TFT_BOTTOM_ROW;
+  const gameName = match?.gameName ?? match?.summonerName ?? "Unknown";
+  const tagLine = match?.tagLine ? `#${match.tagLine}` : "";
+  const gameMode =
+    match?.gameMode === "ranked"
+      ? "Ranked"
+      : match?.gameMode === "double_up"
+        ? "Double Up"
+        : "Normal";
+
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${rowStyle}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">
+            {gameName}
+            {tagLine && (
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {" "}
+                {tagLine}
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {gameMode}
+            {timestamp ? ` · ${timestamp}` : ""}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold ${placementStyle}`}
+        >
+          #{placement}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/60">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Mode
+          </div>
+          <div className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">
+            {gameMode}
+          </div>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/60 sm:col-span-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Comp
+          </div>
+          <div className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">
+            {match?.comp ?? match?.composition ?? "—"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DianaMatchCard({ match, showDetails }) {
   const timestamp = formatTimestamp(match?.gameCreation || match?.gameEndTime);
   const durationLabel = formatDuration(match?.gameDuration);
@@ -178,7 +256,13 @@ function DianaMatchCard({ match, showDetails }) {
   );
 }
 
-export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
+export default function Games({
+  dianaApiBase,
+  conquerorApiBase,
+  apiBase,
+  token,
+  currentUser,
+}) {
   const LIMIT = 20;
   const [activeView, setActiveView] = useState("diana");
   const [page, setPage] = useState(0);
@@ -192,18 +276,25 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     players: [],
     matchTypes: [],
     results: ["Win", "Lose", "Remake"],
+    gameModes: [
+      { id: "all", name: "All modes" },
+      { id: "normal", name: "Normal" },
+      { id: "ranked", name: "Ranked" },
+      { id: "double_up", name: "Double Up" },
+    ],
   });
   const [filters, setFilters] = useState({
     player: "all",
     matchType: "all",
     result: "all",
+    gameMode: "all",
   });
   const filtersRef = useRef(null);
 
   const sortedMatches = useMemo(() => {
     return [...matches].sort((a, b) => {
-      const aTime = new Date(a.gameCreation || 0).getTime();
-      const bTime = new Date(b.gameCreation || 0).getTime();
+      const aTime = new Date(a.gameEndTime || a.gameCreation || 0).getTime();
+      const bTime = new Date(b.gameEndTime || b.gameCreation || 0).getTime();
       return bTime - aTime;
     });
   }, [matches]);
@@ -220,6 +311,10 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     return ["all", ...(filterOptions.results || [])];
   }, [filterOptions.results]);
 
+  const gameModeOptions = useMemo(() => {
+    return filterOptions.gameModes || [];
+  }, [filterOptions.gameModes]);
+
   useEffect(() => {
     const handler = (event) => {
       if (!filtersRef.current) return;
@@ -232,10 +327,42 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
   }, []);
 
   const loadPage = (nextPage, nextFilters = filters) => {
-    if (!dianaApiBase) return;
+    const base =
+      activeView === "diana"
+        ? dianaApiBase
+        : activeView === "conqueror"
+          ? conquerorApiBase
+          : null;
+    if (!base) return;
     setLoading(true);
     setError(null);
     const offset = nextPage * LIMIT;
+
+    if (activeView === "conqueror") {
+      const params = new URLSearchParams({
+        limit: String(LIMIT),
+        offset: String(offset),
+      });
+      if (nextFilters.gameMode !== "all")
+        params.set("gameMode", nextFilters.gameMode);
+      fetch(`${base.replace(/\/$/, "")}/match/recent?${params.toString()}`, {
+        headers: { "Cache-Control": "no-cache" },
+      })
+        .then((res) => {
+          if (!res.ok)
+            throw new Error(res.statusText || "Failed to load matches");
+          return res.json();
+        })
+        .then((data) => {
+          setMatches(Array.isArray(data.matches) ? data.matches : []);
+          setHasMore(Boolean(data.hasMore));
+          setPage(nextPage);
+        })
+        .catch((err) => setError(err.message || "Failed to load matches"))
+        .finally(() => setLoading(false));
+      return;
+    }
+
     const params = new URLSearchParams({
       limit: String(LIMIT),
       offset: String(offset),
@@ -244,12 +371,9 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     if (nextFilters.matchType !== "all")
       params.set("queueId", nextFilters.matchType);
     if (nextFilters.result !== "all") params.set("result", nextFilters.result);
-    fetch(
-      `${dianaApiBase.replace(/\/$/, "")}/match/recent?${params.toString()}`,
-      {
-        headers: { "Cache-Control": "no-cache" },
-      },
-    )
+    fetch(`${base.replace(/\/$/, "")}/match/recent?${params.toString()}`, {
+      headers: { "Cache-Control": "no-cache" },
+    })
       .then((res) => {
         if (!res.ok)
           throw new Error(res.statusText || "Failed to load matches");
@@ -272,39 +396,70 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
-        setFilterOptions({
+        setFilterOptions((prev) => ({
+          ...prev,
           players: Array.isArray(data.players) ? data.players : [],
           matchTypes: Array.isArray(data.matchTypes) ? data.matchTypes : [],
           results: Array.isArray(data.results)
             ? data.results
             : ["Win", "Lose", "Remake"],
-        });
+        }));
       })
       .catch(() => {});
   }, [dianaApiBase]);
 
   useEffect(() => {
-    if (activeView !== "diana") return;
-    loadPage(0, filters);
-  }, [dianaApiBase, filters, activeView]);
+    if (!conquerorApiBase) return;
+    fetch(`${conquerorApiBase.replace(/\/$/, "")}/match/filters`, {
+      headers: { "Cache-Control": "no-cache" },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setFilterOptions((prev) => ({
+          ...prev,
+          gameModes: Array.isArray(data.gameModes)
+            ? data.gameModes
+            : prev.gameModes,
+        }));
+      })
+      .catch(() => {});
+  }, [conquerorApiBase]);
 
   useEffect(() => {
-    if (!dianaApiBase) return;
+    if (activeView !== "diana" && activeView !== "conqueror") return;
+    const base = activeView === "diana" ? dianaApiBase : conquerorApiBase;
+    if (!base) return;
+    loadPage(0, filters);
+  }, [dianaApiBase, conquerorApiBase, filters, activeView]);
+
+  useEffect(() => {
+    const base =
+      activeView === "diana"
+        ? dianaApiBase
+        : activeView === "conqueror"
+          ? conquerorApiBase
+          : null;
+    if (!base) return;
     const poll = () => {
-      if (activeView !== "diana") return;
+      if (activeView !== "diana" && activeView !== "conqueror") return;
       if (page !== 0) return;
-      if (
-        filters.player !== "all" ||
-        filters.matchType !== "all" ||
-        filters.result !== "all"
-      )
-        return;
-      fetch(
-        `${dianaApiBase.replace(/\/$/, "")}/match/recent?limit=${LIMIT}&offset=0`,
-        {
-          headers: { "Cache-Control": "no-cache" },
-        },
-      )
+      const hasFilters =
+        activeView === "diana"
+          ? filters.player !== "all" ||
+            filters.matchType !== "all" ||
+            filters.result !== "all"
+          : filters.gameMode !== "all";
+      if (hasFilters) return;
+      const params = new URLSearchParams({
+        limit: String(LIMIT),
+        offset: "0",
+      });
+      if (activeView === "conqueror" && filters.gameMode !== "all")
+        params.set("gameMode", filters.gameMode);
+      fetch(`${base.replace(/\/$/, "")}/match/recent?${params.toString()}`, {
+        headers: { "Cache-Control": "no-cache" },
+      })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!data?.matches || !Array.isArray(data.matches)) return;
@@ -318,7 +473,14 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     };
     const interval = setInterval(poll, 20000);
     return () => clearInterval(interval);
-  }, [dianaApiBase, page, sortedMatches, filters, activeView]);
+  }, [
+    dianaApiBase,
+    conquerorApiBase,
+    page,
+    sortedMatches,
+    filters,
+    activeView,
+  ]);
 
   const showNewMatches = () => {
     if (!newMatches.length) return;
@@ -347,10 +509,11 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
             className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
           >
             <option value="diana">Diana</option>
+            <option value="conqueror">Conqueror</option>
             <option value="neon">Neon</option>
           </select>
         </div>
-        {activeView === "diana" ? (
+        {activeView === "diana" || activeView === "conqueror" ? (
           <div className="flex items-center gap-2" ref={filtersRef}>
             <button
               type="button"
@@ -403,89 +566,115 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
               {filtersOpen && (
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
                   <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Player
-                      </label>
-                      <select
-                        value={filters.player}
-                        onChange={(e) =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            player: e.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      >
-                        {playerOptions.map((opt) =>
-                          opt === "all" ? (
-                            <option key="all" value="all">
-                              All players
-                            </option>
-                          ) : (
-                            <option key={opt.puuid} value={opt.puuid}>
-                              {opt.gameName}
-                              {opt.tagLine ? `#${opt.tagLine}` : ""}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Match type
-                      </label>
-                      <select
-                        value={filters.matchType}
-                        onChange={(e) =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            matchType: e.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      >
-                        {matchTypeOptions.map((opt) =>
-                          opt === "all" ? (
-                            <option key="all" value="all">
-                              All types
-                            </option>
-                          ) : (
-                            <option
-                              key={opt.queueId}
-                              value={String(opt.queueId)}
-                            >
+                    {activeView === "conqueror" ? (
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Game mode
+                        </label>
+                        <select
+                          value={filters.gameMode}
+                          onChange={(e) =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              gameMode: e.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        >
+                          {gameModeOptions.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
                               {opt.name}
                             </option>
-                          ),
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Result
-                      </label>
-                      <select
-                        value={filters.result}
-                        onChange={(e) =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            result: e.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      >
-                        {resultOptions.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt === "all"
-                              ? "All results"
-                              : opt === "Lose"
-                                ? "Loss"
-                                : opt}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Player
+                          </label>
+                          <select
+                            value={filters.player}
+                            onChange={(e) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                player: e.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            {playerOptions.map((opt) =>
+                              opt === "all" ? (
+                                <option key="all" value="all">
+                                  All players
+                                </option>
+                              ) : (
+                                <option key={opt.puuid} value={opt.puuid}>
+                                  {opt.gameName}
+                                  {opt.tagLine ? `#${opt.tagLine}` : ""}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Match type
+                          </label>
+                          <select
+                            value={filters.matchType}
+                            onChange={(e) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                matchType: e.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            {matchTypeOptions.map((opt) =>
+                              opt === "all" ? (
+                                <option key="all" value="all">
+                                  All types
+                                </option>
+                              ) : (
+                                <option
+                                  key={opt.queueId}
+                                  value={String(opt.queueId)}
+                                >
+                                  {opt.name}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Result
+                          </label>
+                          <select
+                            value={filters.result}
+                            onChange={(e) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                result: e.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          >
+                            {resultOptions.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt === "all"
+                                  ? "All results"
+                                  : opt === "Lose"
+                                    ? "Loss"
+                                    : opt}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -496,12 +685,16 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
         )}
       </div>
 
-      {activeView === "diana" &&
+      {(activeView === "diana" || activeView === "conqueror") &&
         newMatches.length > 0 &&
         page === 0 &&
         filters.player === "all" &&
         filters.matchType === "all" &&
-        filters.result === "all" && (
+        (activeView === "conqueror"
+          ? filters.gameMode === "all"
+          : filters.player === "all" &&
+            filters.matchType === "all" &&
+            filters.result === "all") && (
           <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
             <span>
               {newMatches.length} new match{newMatches.length === 1 ? "" : "es"}{" "}
@@ -517,7 +710,7 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
           </div>
         )}
 
-      {activeView === "diana" && error && (
+      {(activeView === "diana" || activeView === "conqueror") && error && (
         <div className="flex-shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
           {error}
         </div>
@@ -534,19 +727,31 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
               <div className="flex items-center justify-center py-12">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
               </div>
+            ) : activeView === "conqueror" && !conquerorApiBase ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
+                Conqueror API not configured. Set VITE_CONQUEROR_API_URL in
+                config.
+              </div>
             ) : sortedMatches.length === 0 ? (
               <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
                 No matches found yet.
               </div>
             ) : (
               <div className="space-y-4">
-                {sortedMatches.map((match) => (
-                  <DianaMatchCard
-                    key={match.id || match.matchId}
-                    match={match}
-                    showDetails={false}
-                  />
-                ))}
+                {sortedMatches.map((match) =>
+                  activeView === "conqueror" ? (
+                    <ConquerorMatchCard
+                      key={match.id || match.matchId}
+                      match={match}
+                    />
+                  ) : (
+                    <DianaMatchCard
+                      key={match.id || match.matchId}
+                      match={match}
+                      showDetails={false}
+                    />
+                  ),
+                )}
               </div>
             )}
           </div>

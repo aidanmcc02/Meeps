@@ -171,6 +171,7 @@ const DEFAULT_WS =
 const DEFAULT_DIANA_API =
   import.meta.env.VITE_DIANA_API_URL ||
   "https://diana-bot-production.up.railway.app";
+const DEFAULT_CONQUEROR_API = import.meta.env.VITE_CONQUEROR_API_URL || "";
 
 function App() {
   const [apiBase, setApiBase] = useState(DEFAULT_HTTP);
@@ -242,6 +243,9 @@ function App() {
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [socketStatus, setSocketStatus] = useState("disconnected");
   const [dianaApiBase, setDianaApiBase] = useState(DEFAULT_DIANA_API);
+  const [conquerorApiBase, setConquerorApiBase] = useState(
+    DEFAULT_CONQUEROR_API,
+  );
   const [profiles, setProfiles] = useState({});
   const [presenceUsers, setPresenceUsers] = useState([]);
   const [userStatus, setUserStatus] = useState(() => {
@@ -527,6 +531,9 @@ function App() {
         }
         if (data?.VITE_DIANA_API_URL) {
           setDianaApiBase(data.VITE_DIANA_API_URL.replace(/\/$/, ""));
+        }
+        if (data?.VITE_CONQUEROR_API_URL) {
+          setConquerorApiBase(data.VITE_CONQUEROR_API_URL.replace(/\/$/, ""));
         }
       })
       .catch(() => {});
@@ -3631,6 +3638,7 @@ function App() {
             ) : activeTab === "games" ? (
               <Games
                 dianaApiBase={dianaApiBase}
+                conquerorApiBase={conquerorApiBase}
                 apiBase={apiBase}
                 token={localStorage.getItem("meeps_token")}
                 currentUser={currentUser}
