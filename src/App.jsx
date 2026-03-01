@@ -2936,7 +2936,7 @@ function App() {
   // Single return so hook count is identical every render
   let content;
   if (!isAuthenticated) {
-    content = <AuthModal onAuth={handleAuth} />;
+    content = <AuthModal apiBase={apiBase} onAuth={handleAuth} />;
   } else if (showProfileSetup) {
     content = (
       <ProfileSetupPage

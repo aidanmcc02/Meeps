@@ -16,22 +16,21 @@ const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
 
-// CORS: allow all origins. Handle preflight explicitly so it works behind Railway/proxies.
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Conqueror-Secret, X-Diana-Secret, X-Build-Secret",
-  );
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-  next();
-});
+// CORS: origin: true reflects request origin (fixes Railway edge proxy). credentials: true for cookies if needed.
+app.use(
+  cors({
+    origin: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Conqueror-Secret",
+      "X-Diana-Secret",
+      "X-Build-Secret",
+    ],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(morgan("dev"));
 
