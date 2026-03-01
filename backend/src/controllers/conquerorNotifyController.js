@@ -35,14 +35,13 @@ function verifySecret(req, res) {
 function buildMatchEmbed(body, bannerUrl = null) {
   const placement = body.placement ?? body.place ?? body.rank;
   const comp = body.comp ?? body.composition ?? body.traits ?? "";
-  const gameMode =
-    body.gameMode ?? body.game_mode ?? body.queue ?? "normal";
+  const gameMode = body.gameMode ?? body.game_mode ?? body.queue ?? "normal";
   const gameName = body.gameName ?? body.game_name ?? "";
   const tagLine = body.tagLine ?? body.tag_line ?? "";
   const riotId =
     gameName && tagLine
       ? `${gameName}#${tagLine}`
-      : body.league_username ?? body.riotId ?? "";
+      : (body.league_username ?? body.riotId ?? "");
 
   const modeLabel =
     gameMode === "ranked"
@@ -52,9 +51,7 @@ function buildMatchEmbed(body, bannerUrl = null) {
         : "Normal";
 
   const placementStr =
-    typeof placement === "number"
-      ? `#${placement}`
-      : String(placement ?? "?");
+    typeof placement === "number" ? `#${placement}` : String(placement ?? "?");
 
   const fields = [
     { name: "Placement", value: placementStr, inline: true },
@@ -63,17 +60,16 @@ function buildMatchEmbed(body, bannerUrl = null) {
   if (comp) {
     fields.push({
       name: "Comp",
-      value: typeof comp === "string" ? comp : (Array.isArray(comp) ? comp : []).join(", "),
+      value:
+        typeof comp === "string"
+          ? comp
+          : (Array.isArray(comp) ? comp : []).join(", "),
       inline: false,
     });
   }
 
   const resultColor =
-    placement === 1
-      ? 0x28a745
-      : placement <= 4
-        ? 0x17a2b8
-        : 0xe74c3c;
+    placement === 1 ? 0x28a745 : placement <= 4 ? 0x17a2b8 : 0xe74c3c;
 
   const embed = {
     title: riotId ? `${riotId} — TFT ${modeLabel}` : `TFT ${modeLabel} Match`,
@@ -104,9 +100,11 @@ function payloadToMarkdown(body) {
   const riotId =
     body.gameName && body.tagLine
       ? `${body.gameName}#${body.tagLine}`
-      : body.league_username ?? "";
+      : (body.league_username ?? "");
 
-  const parts = [`**TFT ${gameMode}** — ${riotId || "Player"} placed #${placement}`];
+  const parts = [
+    `**TFT ${gameMode}** — ${riotId || "Player"} placed #${placement}`,
+  ];
   if (comp) parts.push(`**Comp:** ${comp}`);
   if (body.url) parts.push(`[Match](${body.url})`);
   return parts.join("\n\n");
@@ -129,7 +127,7 @@ exports.notify = async (req, res, next) => {
     const leagueUsername =
       gameName && tagLine
         ? `${gameName}#${tagLine}`
-        : body.league_username ?? "";
+        : (body.league_username ?? "");
 
     if (leagueUsername) {
       const leagueNorm = leagueUsername.trim().toLowerCase();
