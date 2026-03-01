@@ -23,13 +23,12 @@ let cleanupInterval;
 async function start() {
   try {
     await pool.query("SELECT 1");
-    // eslint-disable-next-line no-console
+
     console.log("Connected to PostgreSQL");
 
     // Initialize database tables
     await initDatabase();
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("Failed to connect to PostgreSQL:", err.message);
   }
 
@@ -44,14 +43,12 @@ async function start() {
   );
 
   server.listen(PORT, "0.0.0.0", () => {
-    // eslint-disable-next-line no-console
     console.log(`Meeps backend listening on port ${PORT}`);
     startTracker();
   });
 }
 
 function shutdown(signal) {
-  // eslint-disable-next-line no-console
   console.log(`${signal} received, shutting down gracefully`);
   stopTracker();
   if (cleanupInterval) clearInterval(cleanupInterval);

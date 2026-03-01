@@ -372,8 +372,7 @@ function UserProfile({
                   <div className="flex flex-wrap gap-1">
                     {profile.achievements.map((ach, idx) => (
                       <span
-                        // eslint-disable-next-line react/no-array-index-key
-                        key={idx}
+                        key={`${ach}-${idx}`}
                         className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200"
                       >
                         {ach}

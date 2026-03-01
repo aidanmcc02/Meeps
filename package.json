@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:web": "node scripts/write-env-config.js && cross-env BASE_URL=/ vite build",
+    "build:check": "npm run build:web",
     "preview": "vite preview",
     "start": "serve -s dist",
     "tauri": "tauri",
@@ -16,11 +17,27 @@
     "generate-pwa-icons": "node scripts/generate-pwa-icons.js",
     "update-icons": "node scripts/update-icons.js",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint": "eslint --fix --ext .js,.jsx .",
+    "lint:check": "eslint --ext .js,.jsx .",
+    "lint-staged": "lint-staged",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "@tauri-apps/api": "^1.0.0",
+    "eslint": "^10.0.2",
+    "globals": "^17.4.0",
+    "husky": "^9.1.7",
     "prettier": "^3.8.1",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
@@ -32,6 +49,7 @@
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
     "cross-env": "^10.1.0",
+    "lint-staged": "^16.3.0",
     "postcss": "^8.4.0",
     "serve": "^14.2.5",
     "tailwindcss": "^3.4.0",

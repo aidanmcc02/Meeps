@@ -229,7 +229,7 @@ exports.updateProfileById = async (req, res, next) => {
       }
     } catch (pinErr) {
       // Best-effort only; do not fail profile updates because of pinning issues.
-      // eslint-disable-next-line no-console
+
       console.warn(
         "[profile] Failed to update avatar pinning:",
         pinErr?.message,
@@ -272,12 +272,10 @@ exports.backfillDianaBanners = async (req, res, next) => {
     const { league_username, banner_url, win_gif_url, lose_gif_url } =
       result.rows[0];
     if (!league_username || !league_username.trim()) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "League username not set. Add it in Gamer Tags (Edit profile).",
-        });
+      return res.status(400).json({
+        message:
+          "League username not set. Add it in Gamer Tags (Edit profile).",
+      });
     }
     const backfillResult = await backfillBannersForUser(
       league_username.trim(),
