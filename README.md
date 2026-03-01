@@ -78,6 +78,7 @@ Serve the `dist/` folder (e.g. `npm start`, which runs `serve -s dist`).
    - `VITE_BACKEND_HTTP_URL` — backend URL (e.g. `https://meeps-production.up.railway.app`)
    - `VITE_BACKEND_WS_URL` — backend WebSocket URL (e.g. `wss://meeps-production.up.railway.app/ws`)
    - `VITE_DIANA_API_URL` — Diana bot API URL (e.g. `https://diana-bot-production.up.railway.app`)
+   - `VITE_CONQUEROR_API_URL` — Conqueror (TFT) API URL (optional)
      The build writes these into `public/config.json`; the app loads that at runtime.
 3. Build and start are configured in `railway.json`:
    - **Build:** `npm run build:web`
