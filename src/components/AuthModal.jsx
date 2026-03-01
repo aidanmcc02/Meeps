@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 
-const API_BASE =
-  import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
-
-const AuthModal = ({ onAuth }) => {
+const AuthModal = ({ apiBase, onAuth }) => {
+  const base =
+    (apiBase || import.meta.env.VITE_BACKEND_HTTP_URL || "").replace(
+      /\/$/,
+      "",
+    ) || "http://localhost:4000";
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +24,7 @@ const AuthModal = ({ onAuth }) => {
         ? { email, password }
         : { email, password, displayName };
 
-      const response = await fetch(`${API_BASE}/api/${endpoint}`, {
+      const response = await fetch(`${base}/api/${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
