@@ -7,7 +7,7 @@ const db = require("../config/db");
 const { broadcastMessageUpdate } = require("../websocket/websocketServer");
 
 const MATCHES_CHANNEL = "matches";
-const DDRAGON_VERSION = "14.24.1";
+const DDRAGON_VERSION = "16.4.1";
 const CDRAGON_RANKED =
   "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem";
 const RANK_TIERS = [
