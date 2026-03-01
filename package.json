@@ -34,8 +34,13 @@
   },
   "overrides": {
     "minimatch": "10.2.4",
-    "ajv": "8.18.0",
-    "serialize-javascript": "7.0.3"
+    "serialize-javascript": "7.0.3",
+    "serve": {
+      "ajv": "8.18.0"
+    },
+    "eslint": {
+      "ajv": "6.12.6"
+    }
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

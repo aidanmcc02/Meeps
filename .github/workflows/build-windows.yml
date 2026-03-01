@@ -36,6 +36,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Audit production deps
+        run: npm audit --omit=dev
+
       - name: Check formatting
         run: npm run format:check
 
