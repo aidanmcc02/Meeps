@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
-const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
+const API_BASE =
+  import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
 const AuthModal = ({ onAuth }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,7 +18,7 @@ const AuthModal = ({ onAuth }) => {
 
     try {
       const endpoint = isLogin ? "login" : "register";
-      const body = isLogin 
+      const body = isLogin
         ? { email, password }
         : { email, password, displayName };
 
@@ -62,8 +63,8 @@ const AuthModal = ({ onAuth }) => {
             {isLogin ? "Welcome back" : "Create account"}
           </h2>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            {isLogin 
-              ? "Sign in to your Meeps account" 
+            {isLogin
+              ? "Sign in to your Meeps account"
               : "Sign up to start chatting"}
           </p>
         </div>
@@ -124,7 +125,7 @@ const AuthModal = ({ onAuth }) => {
             disabled={isLoading}
             className="w-full bg-indigo-500 text-white py-2 px-4 rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? "Loading..." : (isLogin ? "Sign In" : "Sign Up")}
+            {isLoading ? "Loading..." : isLogin ? "Sign In" : "Sign Up"}
           </button>
         </form>
 
@@ -137,8 +138,8 @@ const AuthModal = ({ onAuth }) => {
             }}
             className="text-indigo-500 hover:text-indigo-600 text-sm"
           >
-            {isLogin 
-              ? "Don't have an account? Sign up" 
+            {isLogin
+              ? "Don't have an account? Sign up"
               : "Already have an account? Sign in"}
           </button>
         </div>

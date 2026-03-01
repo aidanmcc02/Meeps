@@ -15,8 +15,10 @@ function getSecret(req) {
 /** Extract match result from Diana payload. Returns "win" | "lose" | null. */
 function extractMatchResult(body) {
   const direct = body.result || body.win;
-  if (direct === true || String(direct || "").toLowerCase() === "win") return "win";
-  if (direct === false || String(direct || "").toLowerCase() === "lose") return "lose";
+  if (direct === true || String(direct || "").toLowerCase() === "win")
+    return "win";
+  if (direct === false || String(direct || "").toLowerCase() === "lose")
+    return "lose";
   const fields = Array.isArray(body.fields) ? body.fields : [];
   for (const f of fields) {
     const name = (f.name || "").toLowerCase();
@@ -29,19 +31,31 @@ function extractMatchResult(body) {
   }
   const title = (body.title || "").toLowerCase();
   if (title.includes("promotion") || title.includes("win")) return "win";
-  if (title.includes("demotion") || title.includes("lose") || title.includes("loss")) return "lose";
+  if (
+    title.includes("demotion") ||
+    title.includes("lose") ||
+    title.includes("loss")
+  )
+    return "lose";
   return null;
 }
 
 /** Extract League of Legends username from Diana payload (for matching users to use their banner). */
 function extractLeagueUsername(body) {
-  const direct = body.summonerName || body.gameName || body.summoner_name || body.game_name;
+  const direct =
+    body.summonerName || body.gameName || body.summoner_name || body.game_name;
   if (direct && typeof direct === "string") {
     const t = direct.trim();
     if (t) return t;
   }
   const fields = Array.isArray(body.fields) ? body.fields : [];
-  const summonerFieldNames = ["summoner", "player", "username", "riot", "account"];
+  const summonerFieldNames = [
+    "summoner",
+    "player",
+    "username",
+    "riot",
+    "account",
+  ];
   for (const f of fields) {
     const name = (f.name || "").toLowerCase().trim();
     const value = (f.value || "").trim();
@@ -57,7 +71,8 @@ function extractLeagueUsername(body) {
       const lastHyphen = id.lastIndexOf("-");
       if (lastHyphen > 0) {
         const after = id.slice(lastHyphen + 1);
-        if (/^[A-Za-z0-9]{2,6}$/.test(after)) id = id.slice(0, lastHyphen) + "#" + after;
+        if (/^[A-Za-z0-9]{2,6}$/.test(after))
+          id = id.slice(0, lastHyphen) + "#" + after;
       }
       if (id) return id;
     } catch (_) {}
@@ -83,7 +98,7 @@ function buildEmbed(body, bannerUrl = null) {
     fields: Array.isArray(body.fields) ? body.fields : [],
     footer: body.footer,
     text: body.text,
-    timestamp: body.timestamp
+    timestamp: body.timestamp,
   };
   if (bannerUrl) embed.bannerUrl = bannerUrl;
   return embed;
@@ -110,7 +125,9 @@ exports.notify = async (req, res, next) => {
   const secret = process.env.DIANA_WEBHOOK_SECRET;
   const receivedSecret = getSecret(req);
   if (!secret) {
-    return res.status(503).json({ error: "Diana notifications not configured" });
+    return res
+      .status(503)
+      .json({ error: "Diana notifications not configured" });
   }
   if (receivedSecret !== secret) {
     return res.status(401).json({ error: "Invalid Diana webhook secret" });
@@ -132,7 +149,7 @@ exports.notify = async (req, res, next) => {
            AND TRIM(COALESCE(league_username, '')) != ''
            AND (LOWER(TRIM(league_username)) = $1 OR LOWER(TRIM(SPLIT_PART(COALESCE(league_username, ''), '#', 1))) = $2)
          LIMIT 1`,
-        [leagueNorm, gameNameOnly]
+        [leagueNorm, gameNameOnly],
       );
       const row = userResult.rows[0];
       if (row) {
@@ -150,7 +167,7 @@ exports.notify = async (req, res, next) => {
     const embed = buildEmbed(body, bannerUrl);
     const dianaResult = await db.query(
       "SELECT id FROM users WHERE user_type = $1 AND display_name = $2 LIMIT 1",
-      ["bot", SENDER_NAME]
+      ["bot", SENDER_NAME],
     );
     const dianaBotId = dianaResult.rows[0]?.id ?? null;
 
@@ -159,12 +176,14 @@ exports.notify = async (req, res, next) => {
       dianaBotId,
       SENDER_NAME,
       content,
-      embed
+      embed,
     );
     if (!payload) {
       return res.status(500).json({ error: "Failed to post message" });
     }
-    return res.status(201).json({ ok: true, channel: MATCHES_CHANNEL, id: payload.id });
+    return res
+      .status(201)
+      .json({ ok: true, channel: MATCHES_CHANNEL, id: payload.id });
   } catch (err) {
     console.error("[diana-notify] Error:", err.message);
     return next(err);

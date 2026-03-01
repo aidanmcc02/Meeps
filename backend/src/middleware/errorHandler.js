@@ -17,4 +17,3 @@ function errorHandler(err, _req, res, _next) {
 }
 
 module.exports = { notFound, errorHandler };
-

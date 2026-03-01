@@ -40,7 +40,10 @@ dib.writeUInt16LE(32, 14);
 
 const pixels = Buffer.alloc(pixelDataSize);
 // Fill with a simple purple/blue (Meeps brand-ish): BGRA
-const b = 0x6b, g = 0x5b, r = 0xfb, a = 255;
+const b = 0x6b,
+  g = 0x5b,
+  r = 0xfb,
+  a = 255;
 for (let i = 0; i < w * h; i++) {
   pixels[i * 4] = b;
   pixels[i * 4 + 1] = g;
@@ -65,16 +68,22 @@ fs.writeFileSync(path.join(iconsDir, "icon.ico"), ico);
 
 // Minimal 32x32 PNG for icon.png (PNG signature + IHDR + IDAT + IEND)
 // Use a tiny valid PNG (1x1 would work but 32x32 is better for scaling)
-const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const pngSignature = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 function makeChunk(type, data) {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data ? data.length : 0, 0);
-  const chunk = Buffer.concat([len, Buffer.from(type), data || Buffer.alloc(0)]);
+  const chunk = Buffer.concat([
+    len,
+    Buffer.from(type),
+    data || Buffer.alloc(0),
+  ]);
   let crc = 0xffffffff;
   const crcTable = [];
   for (let n = 0; n < 256; n++) {
     let c = n;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     crcTable[n] = c >>> 0;
   }
   for (let i = 0; i < chunk.length - 4; i++) {
@@ -89,7 +98,9 @@ ihdr.writeUInt32BE(w, 0);
 ihdr.writeUInt32BE(h, 4);
 ihdr[8] = 8; // bit depth
 ihdr[9] = 2; // color type RGB
-ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+ihdr[10] = 0;
+ihdr[11] = 0;
+ihdr[12] = 0;
 const rowLen = 1 + w * 3; // filter byte + RGB per row
 const raw = Buffer.alloc(rowLen * h);
 for (let y = 0; y < h; y++) {

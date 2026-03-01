@@ -3,22 +3,31 @@ import ReactMarkdown from "react-markdown";
 import GifPickerModal from "./GifPickerModal";
 import GamerTagsModal from "./GamerTagsModal";
 
-const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
+const API_BASE =
+  import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
 const STATUS_OPTIONS = [
   { value: "online", label: "Online" },
   { value: "idle", label: "Idle" },
-  { value: "do_not_disturb", label: "Do not disturb" }
+  { value: "do_not_disturb", label: "Do not disturb" },
 ];
 
 const STATUS_DOT_CLASS = {
   online: "bg-emerald-500",
   idle: "bg-amber-400",
   do_not_disturb: "bg-red-500",
-  offline: "bg-gray-500"
+  offline: "bg-gray-500",
 };
 
-function UserProfile({ profile, onSave, activity, editable = true, userStatus, onUserStatusChange, onLogout }) {
+function UserProfile({
+  profile,
+  onSave,
+  activity,
+  editable = true,
+  userStatus,
+  onUserStatusChange,
+  onLogout,
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -41,7 +50,10 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
 
   useEffect(() => {
     if (!avatarUploadError) return;
-    const timeoutId = setTimeout(() => setAvatarUploadError(null), errorTimeoutMs);
+    const timeoutId = setTimeout(
+      () => setAvatarUploadError(null),
+      errorTimeoutMs,
+    );
     return () => clearTimeout(timeoutId);
   }, [avatarUploadError, errorTimeoutMs]);
 
@@ -57,7 +69,7 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
     setAchievementsText(
       Array.isArray(profile.achievements)
         ? profile.achievements.join("\n")
-        : ""
+        : "",
     );
   }, [profile]);
 
@@ -101,7 +113,7 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
       bannerUrl: bannerUrl || null,
       winGifUrl: winGifUrl || null,
       loseGifUrl: loseGifUrl || null,
-      leagueUsername: leagueUsername.trim() || ""
+      leagueUsername: leagueUsername.trim() || "",
     });
     setIsEditing(false);
   };
@@ -127,13 +139,14 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
         body: formData,
         headers: token
           ? {
-              Authorization: `Bearer ${token}`
+              Authorization: `Bearer ${token}`,
             }
-          : undefined
+          : undefined,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const msg = data.message || res.statusText || `Upload failed: ${res.status}`;
+        const msg =
+          data.message || res.statusText || `Upload failed: ${res.status}`;
         setAvatarUploadError(msg);
         return;
       }
@@ -188,7 +201,9 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent" />
         </div>
       )}
-      <div className={`px-3 pt-2 pb-2 ${!hasBanner ? "bg-gray-50 dark:bg-gray-800" : ""}`}>
+      <div
+        className={`px-3 pt-2 pb-2 ${!hasBanner ? "bg-gray-50 dark:bg-gray-800" : ""}`}
+      >
         {!profile && (
           <div className="animate-pulse h-10 bg-gray-200 dark:bg-gray-700 rounded-md" />
         )}
@@ -201,107 +216,145 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                 onMouseEnter={() => setBannerHovered(true)}
                 onMouseLeave={() => setBannerHovered(false)}
               >
-                <div className={`h-full w-full transition-opacity duration-300 ${bannerHovered ? "opacity-100" : "opacity-80"}`} />
-              </div>
-            )}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="relative h-9 w-9 flex-shrink-0">
-                <div className="h-full w-full rounded-full overflow-hidden ring-2 ring-white/80 dark:ring-gray-900/80">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt={displayName}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full rounded-full bg-gradient-to-br from-indigo-500 to-sky-500 text-xs font-semibold text-white flex items-center justify-center">
-                      {initials}
-                    </div>
-                  )}
-                </div>
-                <span
-                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900 shadow-sm z-10 ${userStatus ? STATUS_DOT_CLASS[userStatus] || STATUS_DOT_CLASS.online : "bg-emerald-500"}`}
-                  aria-hidden
+                <div
+                  className={`h-full w-full transition-opacity duration-300 ${bannerHovered ? "opacity-100" : "opacity-80"}`}
                 />
               </div>
-              <div className="flex flex-col leading-tight min-w-0 flex-1">
-                <span className="text-xs font-semibold text-gray-100 dark:text-white">
-                  {profile.displayName || "Meeps User"}
-                </span>
-                {onUserStatusChange && userStatus != null && (
-                  <div className="relative mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setStatusOpen((o) => !o)}
-                      className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-200 dark:text-gray-500 dark:hover:text-gray-300"
-                      aria-haspopup="listbox"
-                      aria-expanded={statusOpen}
-                      aria-label="Change status"
-                    >
-                      <span className="capitalize">
-                        {userStatus === "do_not_disturb" ? "Do not disturb" : userStatus}
-                      </span>
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {statusOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          aria-hidden
-                          onClick={() => setStatusOpen(false)}
-                        />
-                        <ul
-                          role="listbox"
-                          className="absolute left-0 bottom-full mb-1 z-20 min-w-[10rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800"
-                        >
-                          {STATUS_OPTIONS.map((opt) => (
-                            <li key={opt.value} role="option" aria-selected={userStatus === opt.value}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onUserStatusChange(opt.value);
-                                  setStatusOpen(false);
-                                }}
-                                className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${userStatus === opt.value ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-700 dark:text-gray-200"}`}
-                              >
-                                <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${STATUS_DOT_CLASS[opt.value] || "bg-gray-400"}`} />
-                                {opt.label}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="relative h-9 w-9 flex-shrink-0">
+                  <div className="h-full w-full rounded-full overflow-hidden ring-2 ring-white/80 dark:ring-gray-900/80">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={displayName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full rounded-full bg-gradient-to-br from-indigo-500 to-sky-500 text-xs font-semibold text-white flex items-center justify-center">
+                        {initials}
+                      </div>
                     )}
                   </div>
-                )}
-                {activity?.name && profile?.activityLoggingEnabled !== false && (
                   <span
-                    className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5 block"
-                    title={activity.type === "hidden" ? activity.name : (activity.details || activity.name)}
-                  >
-                    {activity.type === "hidden" ? activity.name : (activity.type === "game" ? "Playing " : "In ") + activity.name}
+                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900 shadow-sm z-10 ${userStatus ? STATUS_DOT_CLASS[userStatus] || STATUS_DOT_CLASS.online : "bg-emerald-500"}`}
+                    aria-hidden
+                  />
+                </div>
+                <div className="flex flex-col leading-tight min-w-0 flex-1">
+                  <span className="text-xs font-semibold text-gray-100 dark:text-white">
+                    {profile.displayName || "Meeps User"}
                   </span>
-                )}
+                  {onUserStatusChange && userStatus != null && (
+                    <div className="relative mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setStatusOpen((o) => !o)}
+                        className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-200 dark:text-gray-500 dark:hover:text-gray-300"
+                        aria-haspopup="listbox"
+                        aria-expanded={statusOpen}
+                        aria-label="Change status"
+                      >
+                        <span className="capitalize">
+                          {userStatus === "do_not_disturb"
+                            ? "Do not disturb"
+                            : userStatus}
+                        </span>
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                      {statusOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            aria-hidden
+                            onClick={() => setStatusOpen(false)}
+                          />
+                          <ul
+                            role="listbox"
+                            className="absolute left-0 bottom-full mb-1 z-20 min-w-[10rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800"
+                          >
+                            {STATUS_OPTIONS.map((opt) => (
+                              <li
+                                key={opt.value}
+                                role="option"
+                                aria-selected={userStatus === opt.value}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onUserStatusChange(opt.value);
+                                    setStatusOpen(false);
+                                  }}
+                                  className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${userStatus === opt.value ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-700 dark:text-gray-200"}`}
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${STATUS_DOT_CLASS[opt.value] || "bg-gray-400"}`}
+                                  />
+                                  {opt.label}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {activity?.name &&
+                    profile?.activityLoggingEnabled !== false && (
+                      <span
+                        className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5 block"
+                        title={
+                          activity.type === "hidden"
+                            ? activity.name
+                            : activity.details || activity.name
+                        }
+                      >
+                        {activity.type === "hidden"
+                          ? activity.name
+                          : (activity.type === "game" ? "Playing " : "In ") +
+                            activity.name}
+                      </span>
+                    )}
+                </div>
               </div>
+              {editable && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="rounded-full p-1.5 text-gray-400 hover:bg-white/10 hover:text-gray-200 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                  aria-label="Edit profile"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
-            {editable && (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="rounded-full p-1.5 text-gray-400 hover:bg-white/10 hover:text-gray-200 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-                aria-label="Edit profile"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-              </button>
-            )}
-          </div>
 
-          <div className="mt-2 space-y-2">
+            <div className="mt-2 space-y-2">
               <div className="text-[11px] text-gray-200 dark:text-gray-200 max-h-20 overflow-y-auto">
                 {bio ? (
                   <div className="prose prose-xs prose-invert max-w-none">
@@ -357,7 +410,7 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
               paddingTop: "env(safe-area-inset-top)",
               paddingRight: "env(safe-area-inset-right)",
               paddingBottom: "env(safe-area-inset-bottom)",
-              paddingLeft: "env(safe-area-inset-left)"
+              paddingLeft: "env(safe-area-inset-left)",
             }}
           >
             <div
@@ -379,8 +432,18 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                   className="touch-manipulation flex h-11 w-11 min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-800 hover:text-gray-200"
                   aria-label="Close"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -410,8 +473,18 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
                             <div className="flex items-center gap-2 text-white/80 text-xs font-medium">
-                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              <svg
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                />
                               </svg>
                               <span>Click to add banner</span>
                             </div>
@@ -437,8 +510,18 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                             </div>
                           )}
                           <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/av:opacity-100 transition-opacity pointer-events-none rounded-full">
-                            <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <svg
+                              className="h-6 w-6 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                              />
                             </svg>
                           </div>
                         </button>
@@ -446,15 +529,22 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                           <p className="truncate text-sm font-semibold text-white drop-shadow-sm">
                             {displayName || "Meeps User"}
                           </p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">Click avatar or banner to change</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            Click avatar or banner to change
+                          </p>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-4 order-1 sm:order-2">
+                  <form
+                    onSubmit={handleSubmit}
+                    className="space-y-4 order-1 sm:order-2"
+                  >
                     <div className="space-y-4 rounded-xl border border-gray-800/80 bg-gray-900/50 p-4">
-                      <h3 className="text-xs font-semibold text-gray-300 border-b border-gray-800 pb-2">About you</h3>
+                      <h3 className="text-xs font-semibold text-gray-300 border-b border-gray-800 pb-2">
+                        About you
+                      </h3>
                       <div className="space-y-1.5">
                         <label className="text-[11px] font-medium text-gray-400">
                           Display name
@@ -470,7 +560,10 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
 
                       <div className="space-y-1.5">
                         <label className="text-[11px] font-medium text-gray-400">
-                          Bio <span className="text-[10px] text-gray-500">(Markdown supported)</span>
+                          Bio{" "}
+                          <span className="text-[10px] text-gray-500">
+                            (Markdown supported)
+                          </span>
                         </label>
                         <textarea
                           rows={3}
@@ -483,47 +576,83 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
 
                       <div className="space-y-1.5">
                         <label className="text-[11px] font-medium text-gray-400">
-                          Achievements <span className="text-[10px] text-gray-500">(one per line)</span>
+                          Achievements{" "}
+                          <span className="text-[10px] text-gray-500">
+                            (one per line)
+                          </span>
                         </label>
                         <textarea
                           rows={2}
                           value={achievementsText}
                           onChange={(e) => setAchievementsText(e.target.value)}
                           className="w-full min-h-[56px] rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-sm text-gray-100 outline-none placeholder-gray-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 sm:min-h-0 resize-none"
-                          placeholder={"League of Legends – Diamond IV\nValorant – Immortal I"}
+                          placeholder={
+                            "League of Legends – Diamond IV\nValorant – Immortal I"
+                          }
                         />
                       </div>
                     </div>
 
                     <div className="space-y-3 rounded-xl border border-gray-800/80 bg-gray-900/50 p-4">
-                      <h3 className="text-xs font-semibold text-gray-300 border-b border-gray-800 pb-2">Gaming</h3>
+                      <h3 className="text-xs font-semibold text-gray-300 border-b border-gray-800 pb-2">
+                        Gaming
+                      </h3>
                       <button
                         type="button"
                         onClick={() => setGamerTagsOpen(true)}
                         className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-gray-300 hover:bg-gray-800/80 transition-colors"
                       >
                         <span className="flex items-center gap-2">
-                          <svg className="h-5 w-5 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                          <svg
+                            className="h-5 w-5 text-gray-500 shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"
+                            />
                           </svg>
                           Gamer Tags
                           {leagueUsername ? (
-                            <span className="text-indigo-400 truncate max-w-[140px]" title={leagueUsername}>
+                            <span
+                              className="text-indigo-400 truncate max-w-[140px]"
+                              title={leagueUsername}
+                            >
                               {leagueUsername}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-gray-500">Add your usernames</span>
+                            <span className="text-[11px] text-gray-500">
+                              Add your usernames
+                            </span>
                           )}
                         </span>
-                        <svg className="h-4 w-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        <svg
+                          className="h-4 w-4 text-gray-500 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
                         </svg>
                       </button>
                       <div className="space-y-2 pt-2 border-t border-gray-800">
-                        <p className="text-[11px] font-medium text-gray-500">League match banners</p>
+                        <p className="text-[11px] font-medium text-gray-500">
+                          League match banners
+                        </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <label className="text-[11px] text-gray-400">Win GIF</label>
+                            <label className="text-[11px] text-gray-400">
+                              Win GIF
+                            </label>
                             <div className="flex gap-2">
                               <input
                                 type="url"
@@ -542,12 +671,21 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                             </div>
                             {winGifUrl && (
                               <div className="h-12 rounded-lg overflow-hidden border border-gray-700">
-                                <img src={winGifUrl} alt="" className="h-full w-full object-cover" onError={(e) => { e.target.style.display = "none"; }} />
+                                <img
+                                  src={winGifUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                  onError={(e) => {
+                                    e.target.style.display = "none";
+                                  }}
+                                />
                               </div>
                             )}
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-[11px] text-gray-400">Lose GIF</label>
+                            <label className="text-[11px] text-gray-400">
+                              Lose GIF
+                            </label>
                             <div className="flex gap-2">
                               <input
                                 type="url"
@@ -566,12 +704,22 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                             </div>
                             {loseGifUrl && (
                               <div className="h-12 rounded-lg overflow-hidden border border-gray-700">
-                                <img src={loseGifUrl} alt="" className="h-full w-full object-cover" onError={(e) => { e.target.style.display = "none"; }} />
+                                <img
+                                  src={loseGifUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                  onError={(e) => {
+                                    e.target.style.display = "none";
+                                  }}
+                                />
                               </div>
                             )}
                           </div>
                         </div>
-                        <p className="text-[10px] text-gray-500">Shown behind your Diana match embeds in #matches when your League username matches</p>
+                        <p className="text-[10px] text-gray-500">
+                          Shown behind your Diana match embeds in #matches when
+                          your League username matches
+                        </p>
                       </div>
                     </div>
 
@@ -606,15 +754,27 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-white">Change avatar</h3>
+                  <h3 className="text-sm font-semibold text-white">
+                    Change avatar
+                  </h3>
                   <button
                     type="button"
                     onClick={() => setAvatarChangeOpen(false)}
                     className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
                     aria-label="Close"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -622,7 +782,11 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                   <div className="flex justify-center mb-4">
                     <div className="h-20 w-20 rounded-full overflow-hidden border-4 border-gray-700 bg-gray-800">
                       {avatarUrl ? (
-                        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                        <img
+                          src={avatarUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-500 to-sky-500 text-xl font-semibold text-white">
                           {initials}
@@ -649,8 +813,18 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                     disabled={avatarUploading}
                     className="w-full flex items-center justify-center gap-2 rounded-xl border border-indigo-500/50 bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-200 hover:bg-indigo-500/30 transition-colors disabled:opacity-60"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                      />
                     </svg>
                     {avatarUploading ? "Uploading…" : "Upload from device"}
                   </button>
@@ -662,13 +836,25 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                     }}
                     className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-600 bg-gray-800/80 px-4 py-3 text-sm font-medium text-gray-200 hover:bg-gray-700/80 transition-colors"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                     Pick a GIF
                   </button>
                   <div className="space-y-1.5 pt-2 border-t border-gray-800">
-                    <label className="text-[11px] font-medium text-gray-500">Or paste image URL</label>
+                    <label className="text-[11px] font-medium text-gray-500">
+                      Or paste image URL
+                    </label>
                     <input
                       type="url"
                       value={avatarUrl}
@@ -707,22 +893,38 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-white">Change banner</h3>
+                  <h3 className="text-sm font-semibold text-white">
+                    Change banner
+                  </h3>
                   <button
                     type="button"
                     onClick={() => setBannerChangeOpen(false)}
                     className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
                     aria-label="Close"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
                 <div className="p-4 space-y-3">
                   <div className="h-20 rounded-xl overflow-hidden border border-gray-700 bg-gray-800">
                     {bannerUrl ? (
-                      <img src={bannerUrl} alt="" className="h-full w-full object-cover" />
+                      <img
+                        src={bannerUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-gray-500 text-xs">
                         No banner
@@ -737,13 +939,25 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
                     }}
                     className="w-full flex items-center justify-center gap-2 rounded-xl border border-indigo-500/50 bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-200 hover:bg-indigo-500/30 transition-colors"
                   >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                     Pick a GIF
                   </button>
                   <div className="space-y-1.5 pt-2 border-t border-gray-800">
-                    <label className="text-[11px] font-medium text-gray-500">Or paste image URL</label>
+                    <label className="text-[11px] font-medium text-gray-500">
+                      Or paste image URL
+                    </label>
                     <input
                       type="url"
                       value={bannerUrl}
@@ -778,7 +992,8 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
             onClose={() => setGamerTagsOpen(false)}
             leagueUsername={leagueUsername}
             onSave={(payload) => {
-              if (payload.leagueUsername !== undefined) setLeagueUsername(payload.leagueUsername);
+              if (payload.leagueUsername !== undefined)
+                setLeagueUsername(payload.leagueUsername);
               onSave?.({ id: profile?.id, ...payload });
               setGamerTagsOpen(false);
             }}

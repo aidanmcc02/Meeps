@@ -10,7 +10,9 @@ const app = require("../app");
 
 describe("Messages API", () => {
   it("GET /api/messages?channel=general returns 200 and channel + messages array", async () => {
-    const res = await request(app).get("/api/messages").query({ channel: "general" });
+    const res = await request(app)
+      .get("/api/messages")
+      .query({ channel: "general" });
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body?.channel, "general");
     assert(Array.isArray(res.body?.messages), "messages should be an array");

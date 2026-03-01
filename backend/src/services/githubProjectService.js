@@ -17,7 +17,7 @@ const STATUS_TO_APP = {
   todo: "todo",
   "to do": "todo",
   "in progress": "in_progress",
-  "in_progress": "in_progress",
+  in_progress: "in_progress",
   done: "done",
 };
 
@@ -33,14 +33,25 @@ let resolvedProjectIdCache = null;
 function getConfig() {
   const token = process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim();
   if (!token) return null;
-  const projectId = process.env.GITHUB_PROJECT_ID && process.env.GITHUB_PROJECT_ID.trim();
+  const projectId =
+    process.env.GITHUB_PROJECT_ID && process.env.GITHUB_PROJECT_ID.trim();
   if (projectId) return { token, projectId };
-  const owner = process.env.GITHUB_PROJECT_OWNER && process.env.GITHUB_PROJECT_OWNER.trim();
-  const numberRaw = process.env.GITHUB_PROJECT_NUMBER && process.env.GITHUB_PROJECT_NUMBER.trim();
+  const owner =
+    process.env.GITHUB_PROJECT_OWNER && process.env.GITHUB_PROJECT_OWNER.trim();
+  const numberRaw =
+    process.env.GITHUB_PROJECT_NUMBER &&
+    process.env.GITHUB_PROJECT_NUMBER.trim();
   const number = numberRaw ? parseInt(numberRaw, 10) : NaN;
   if (!owner || !Number.isInteger(number) || number < 1) return null;
-  const ownerType = (process.env.GITHUB_PROJECT_OWNER_TYPE || "user").toLowerCase();
-  return { token, owner, number, ownerType: ownerType === "org" ? "org" : "user" };
+  const ownerType = (
+    process.env.GITHUB_PROJECT_OWNER_TYPE || "user"
+  ).toLowerCase();
+  return {
+    token,
+    owner,
+    number,
+    ownerType: ownerType === "org" ? "org" : "user",
+  };
 }
 
 /**
@@ -67,14 +78,18 @@ async function getProjectId(config) {
         },
         timeout: 15000,
         validateStatus: (s) => s === 200,
-      }
+      },
     );
     if (data.errors && data.errors.length) {
       const msg = data.errors.map((e) => e.message).join("; ");
       throw new Error(`GitHub project lookup failed: ${msg}`);
     }
-    const node = data.data?.organization?.projectV2 || data.data?.user?.projectV2;
-    if (!node || !node.id) throw new Error("GitHub project not found. Check GITHUB_PROJECT_OWNER and GITHUB_PROJECT_NUMBER.");
+    const node =
+      data.data?.organization?.projectV2 || data.data?.user?.projectV2;
+    if (!node || !node.id)
+      throw new Error(
+        "GitHub project not found. Check GITHUB_PROJECT_OWNER and GITHUB_PROJECT_NUMBER.",
+      );
     resolvedProjectIdCache = node.id;
     return node.id;
   }
@@ -83,7 +98,10 @@ async function getProjectId(config) {
 
 async function graphql(query, variables = {}) {
   const config = getConfig();
-  if (!config) throw new Error("GitHub project not configured (GITHUB_TOKEN, GITHUB_PROJECT_ID)");
+  if (!config)
+    throw new Error(
+      "GitHub project not configured (GITHUB_TOKEN, GITHUB_PROJECT_ID)",
+    );
   const { data } = await axios.post(
     GITHUB_GRAPHQL,
     { query, variables },
@@ -94,7 +112,7 @@ async function graphql(query, variables = {}) {
       },
       timeout: 15000,
       validateStatus: (s) => s === 200,
-    }
+    },
   );
   if (data.errors && data.errors.length) {
     const msg = data.errors.map((e) => e.message).join("; ");
@@ -109,28 +127,32 @@ async function graphql(query, variables = {}) {
  */
 async function getProjectStatusField(projectId) {
   const data = await graphql(
-    `query($projectId: ID!) {
-      node(id: $projectId) {
-        ... on ProjectV2 {
-          fields(first: 20) {
-            nodes {
-              ... on ProjectV2SingleSelectField {
-                id
-                name
-                options {
+    `
+      query ($projectId: ID!) {
+        node(id: $projectId) {
+          ... on ProjectV2 {
+            fields(first: 20) {
+              nodes {
+                ... on ProjectV2SingleSelectField {
                   id
                   name
+                  options {
+                    id
+                    name
+                  }
                 }
               }
             }
           }
         }
       }
-    }`,
-    { projectId }
+    `,
+    { projectId },
   );
   const fields = data?.node?.fields?.nodes ?? [];
-  const statusField = fields.find((f) => f && f.name && f.name.toLowerCase() === "status");
+  const statusField = fields.find(
+    (f) => f && f.name && f.name.toLowerCase() === "status",
+  );
   if (!statusField || !statusField.options?.length) return null;
   const optionsByName = {};
   for (const opt of statusField.options) {
@@ -145,14 +167,22 @@ async function getProjectStatusField(projectId) {
  */
 async function createDraftIssue(projectId, title, body = "") {
   const data = await graphql(
-    `mutation($projectId: ID!, $title: String!, $body: String!) {
-      addProjectV2DraftIssue(input: { projectId: $projectId, title: $title, body: $body }) {
-        projectItem {
-          id
+    `
+      mutation ($projectId: ID!, $title: String!, $body: String!) {
+        addProjectV2DraftIssue(
+          input: { projectId: $projectId, title: $title, body: $body }
+        ) {
+          projectItem {
+            id
+          }
         }
       }
-    }`,
-    { projectId, title: String(title).trim(), body: body ? String(body).trim() : "" }
+    `,
+    {
+      projectId,
+      title: String(title).trim(),
+      body: body ? String(body).trim() : "",
+    },
   );
   const id = data?.addProjectV2DraftIssue?.projectItem?.id;
   if (!id) throw new Error("GitHub did not return project item id");
@@ -169,11 +199,15 @@ async function updateItemStatus(projectId, itemId, statusApp) {
   const optionId = statusMeta.optionsByName[label.toLowerCase()];
   if (!optionId) return;
   await graphql(
-    `mutation($input: UpdateProjectV2ItemFieldValueInput!) {
-      updateProjectV2ItemFieldValue(input: $input) {
-        projectV2Item { id }
+    `
+      mutation ($input: UpdateProjectV2ItemFieldValueInput!) {
+        updateProjectV2ItemFieldValue(input: $input) {
+          projectV2Item {
+            id
+          }
+        }
       }
-    }`,
+    `,
     {
       input: {
         projectId,
@@ -181,7 +215,7 @@ async function updateItemStatus(projectId, itemId, statusApp) {
         fieldId: statusMeta.statusFieldId,
         value: { singleSelectOptionId: optionId },
       },
-    }
+    },
   );
 }
 
@@ -195,31 +229,46 @@ async function listProjectItems(projectId, maxItems = 100) {
   const pageSize = 50;
   while (out.length < maxItems) {
     const data = await graphql(
-      `query($projectId: ID!, $first: Int!, $after: String) {
-        node(id: $projectId) {
-          ... on ProjectV2 {
-            items(first: $first, after: $after) {
-              pageInfo { hasNextPage endCursor }
-              nodes {
-                id
-                fieldValues(first: 12) {
-                  nodes {
-                    ... on ProjectV2ItemFieldSingleSelectValue {
-                      name
-                      field { ... on ProjectV2FieldCommon { name } }
+      `
+        query ($projectId: ID!, $first: Int!, $after: String) {
+          node(id: $projectId) {
+            ... on ProjectV2 {
+              items(first: $first, after: $after) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                nodes {
+                  id
+                  fieldValues(first: 12) {
+                    nodes {
+                      ... on ProjectV2ItemFieldSingleSelectValue {
+                        name
+                        field {
+                          ... on ProjectV2FieldCommon {
+                            name
+                          }
+                        }
+                      }
                     }
                   }
-                }
-                content {
-                  ... on DraftIssue { title body }
-                  ... on Issue { title body }
+                  content {
+                    ... on DraftIssue {
+                      title
+                      body
+                    }
+                    ... on Issue {
+                      title
+                      body
+                    }
+                  }
                 }
               }
             }
           }
         }
-      }`,
-      { projectId, first: pageSize, after: cursor }
+      `,
+      { projectId, first: pageSize, after: cursor },
     );
     const items = data?.node?.items;
     if (!items) break;

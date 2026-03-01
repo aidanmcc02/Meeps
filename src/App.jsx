@@ -1,5 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { appWindow, WebviewWindow, primaryMonitor } from "@tauri-apps/api/window";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  appWindow,
+  WebviewWindow,
+  primaryMonitor,
+} from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/tauri";
 import { emit } from "@tauri-apps/api/event";
 import TextChannels from "./components/TextChannels";
@@ -27,14 +37,14 @@ import {
   playUserJoinedSound,
   playUserLeftSound,
   playMessageSentSound,
-  playMessageReceivedSound
+  playMessageReceivedSound,
 } from "./utils/voiceSounds";
 import {
   messageMentionsMe,
   messageMentionsMeDirectly,
   requestNotificationPermission,
   showMentionNotificationIfBackground,
-  subscribePushSubscription
+  subscribePushSubscription,
 } from "./utils/mentionNotifications";
 
 const THEME_KEY = "meeps-theme";
@@ -51,36 +61,61 @@ const USERS_PANEL_MAX_PX = 360;
 const USERS_PANEL_DEFAULT_PX = 160;
 const DEFAULT_KEYBINDS = {
   mute: { key: "KeyM", mode: "toggle" },
-  muteDeafen: { key: "KeyB", mode: "hold" }
+  muteDeafen: { key: "KeyB", mode: "hold" },
 };
 const DEFAULT_USER_NAME = "Meeps User";
 const CURRENT_USER_ID = 1;
 
 const isDev = import.meta.env.DEV || import.meta.env.MODE === "development";
-const voiceDebug = isDev ? {
-  log: (...args) => console.log("[VOICE]", ...args),
-  warn: (...args) => console.warn("[VOICE]", ...args),
-  error: (...args) => console.error("[VOICE]", ...args)
-} : {
-  log: () => {},
-  warn: () => {},
-  error: () => {}
-};
+const voiceDebug = isDev
+  ? {
+      log: (...args) => console.log("[VOICE]", ...args),
+      warn: (...args) => console.warn("[VOICE]", ...args),
+      error: (...args) => console.error("[VOICE]", ...args),
+    }
+  : {
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    };
 const TEXT_CHANNELS = [
   { id: "general", name: "general" },
   { id: "dev", name: "dev-chat" },
   { id: "Builds", name: "Builds" },
   { id: "matches", name: "Matches" },
-  { id: "board-activity", name: "Board activity" }
+  { id: "board-activity", name: "Board activity" },
 ];
 const VOICE_CHANNELS = [{ id: "voice", name: "Voice" }];
 
 // Known window title substrings that indicate a game (for activity display). Only used for labeling, no anticheat impact.
 const ACTIVITY_KNOWN_GAMES = [
-  "Valorant", "League of Legends", "Counter-Strike", "Overwatch", "Minecraft", "Fortnite",
-  "Roblox", "Among Us", "Rocket League", "Apex Legends", "Call of Duty", "Dota 2", "Genshin",
-  "Elden Ring", "Steam", "RuneScape", "World of Warcraft", "Hearthstone", "Diablo", "Path of Exile",
-  "Destiny 2", "FIFA", "Rocket League", "Fall Guys", "Sea of Thieves", "Halo", "Battlefield"
+  "Valorant",
+  "League of Legends",
+  "Counter-Strike",
+  "Overwatch",
+  "Minecraft",
+  "Fortnite",
+  "Roblox",
+  "Among Us",
+  "Rocket League",
+  "Apex Legends",
+  "Call of Duty",
+  "Dota 2",
+  "Genshin",
+  "Elden Ring",
+  "Steam",
+  "RuneScape",
+  "World of Warcraft",
+  "Hearthstone",
+  "Diablo",
+  "Path of Exile",
+  "Destiny 2",
+  "FIFA",
+  "Rocket League",
+  "Fall Guys",
+  "Sea of Thieves",
+  "Halo",
+  "Battlefield",
 ];
 
 function buildActivityFromWindowTitle(title) {
@@ -88,11 +123,13 @@ function buildActivityFromWindowTitle(title) {
   const t = title.trim();
   if (!t || t === "Meeps") return null;
   const lower = t.toLowerCase();
-  const isGame = ACTIVITY_KNOWN_GAMES.some((g) => lower.includes(g.toLowerCase()));
+  const isGame = ACTIVITY_KNOWN_GAMES.some((g) =>
+    lower.includes(g.toLowerCase()),
+  );
   return {
     type: isGame ? "game" : "app",
     name: t.length > 60 ? t.slice(0, 57) + "…" : t,
-    details: t.length > 60 ? t : undefined
+    details: t.length > 60 ? t : undefined,
   };
 }
 
@@ -121,10 +158,12 @@ function buildActivityForDetailLevel(title, detailLevel) {
     const appName = appNameFromWindowTitle(t);
     if (!appName) return null;
     const lower = appName.toLowerCase();
-    const isGame = ACTIVITY_KNOWN_GAMES.some((g) => lower.includes(g.toLowerCase()));
+    const isGame = ACTIVITY_KNOWN_GAMES.some((g) =>
+      lower.includes(g.toLowerCase()),
+    );
     return {
       type: isGame ? "game" : "app",
-      name: appName.length > 60 ? appName.slice(0, 57) + "…" : appName
+      name: appName.length > 60 ? appName.slice(0, 57) + "…" : appName,
       // no details
     };
   }
@@ -136,7 +175,8 @@ const DEFAULT_HTTP =
 const DEFAULT_WS =
   import.meta.env.VITE_BACKEND_WS_URL || "ws://localhost:4000/ws";
 const DEFAULT_DIANA_API =
-  import.meta.env.VITE_DIANA_API_URL || "https://diana-bot-production.up.railway.app";
+  import.meta.env.VITE_DIANA_API_URL ||
+  "https://diana-bot-production.up.railway.app";
 
 function App() {
   const [apiBase, setApiBase] = useState(DEFAULT_HTTP);
@@ -148,30 +188,49 @@ function App() {
   const [sidebarWidthPx, setSidebarWidthPx] = useState(() => {
     try {
       const v = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
-      if (Number.isFinite(v) && v >= SIDEBAR_MIN_PX && v <= SIDEBAR_MAX_PX) return v;
+      if (Number.isFinite(v) && v >= SIDEBAR_MIN_PX && v <= SIDEBAR_MAX_PX)
+        return v;
     } catch (_) {}
     return SIDEBAR_DEFAULT_PX;
   });
   const [usersPanelWidthPx, setUsersPanelWidthPx] = useState(() => {
     try {
       const v = parseInt(localStorage.getItem(USERS_PANEL_WIDTH_KEY), 10);
-      if (Number.isFinite(v) && v >= USERS_PANEL_MIN_PX && v <= USERS_PANEL_MAX_PX) return v;
+      if (
+        Number.isFinite(v) &&
+        v >= USERS_PANEL_MIN_PX &&
+        v <= USERS_PANEL_MAX_PX
+      )
+        return v;
     } catch (_) {}
     return USERS_PANEL_DEFAULT_PX;
   });
-  const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
+  const [isDesktop, setIsDesktop] = useState(
+    typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 768px)").matches,
+  );
   const [isStandalone, setIsStandalone] = useState(
     () =>
       typeof window !== "undefined" &&
-      (window.matchMedia("(display-mode: standalone)").matches || !!navigator.standalone)
+      (window.matchMedia("(display-mode: standalone)").matches ||
+        !!navigator.standalone),
   );
-  const resizeStateRef = useRef({ active: null, startX: 0, startWidth: 0, lastSidebarPx: SIDEBAR_DEFAULT_PX, lastUsersPx: USERS_PANEL_DEFAULT_PX });
+  const resizeStateRef = useRef({
+    active: null,
+    startX: 0,
+    startWidth: 0,
+    lastSidebarPx: SIDEBAR_DEFAULT_PX,
+    lastUsersPx: USERS_PANEL_DEFAULT_PX,
+  });
   const resizeRafRef = useRef(null);
 
   const [showSplash, setShowSplash] = useState(true);
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches ? "dashboard" : "chat"
+    typeof window !== "undefined" &&
+    window.matchMedia("(min-width: 768px)").matches
+      ? "dashboard"
+      : "chat",
   ); // "dashboard" (desktop only) | "chat" | "board" | "games" | "users" | "settings"
   const [selectedChannelId, setSelectedChannelId] = useState(() => {
     if (typeof window === "undefined") return "general";
@@ -193,7 +252,9 @@ function App() {
   const [presenceUsers, setPresenceUsers] = useState([]);
   const [userStatus, setUserStatus] = useState(() => {
     if (typeof window === "undefined") return "online";
-    const s = (window.localStorage.getItem(USER_STATUS_KEY) || "online").toLowerCase();
+    const s = (
+      window.localStorage.getItem(USER_STATUS_KEY) || "online"
+    ).toLowerCase();
     return ["online", "idle", "do_not_disturb"].includes(s) ? s : "online";
   });
   const userStatusRef = useRef(userStatus);
@@ -217,7 +278,7 @@ function App() {
     outputDeviceId: null,
     volume: 1,
     pushToTalkKey: "Space",
-    pushToTalkEnabled: false
+    pushToTalkEnabled: false,
   });
   const peerConnectionsRef = useRef({});
   const voiceOfferSentToRef = useRef(new Set());
@@ -245,7 +306,7 @@ function App() {
         const parsed = JSON.parse(raw);
         return {
           mute: { ...DEFAULT_KEYBINDS.mute, ...parsed.mute },
-          muteDeafen: { ...DEFAULT_KEYBINDS.muteDeafen, ...parsed.muteDeafen }
+          muteDeafen: { ...DEFAULT_KEYBINDS.muteDeafen, ...parsed.muteDeafen },
         };
       }
     } catch (_) {}
@@ -295,7 +356,8 @@ function App() {
   }, [profiles, currentUser?.id]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    if (typeof window === "undefined" || typeof navigator === "undefined")
+      return;
     const ua = navigator.userAgent || "";
     const isIOS =
       /iPad|iPhone|iPod/.test(ua) ||
@@ -310,7 +372,10 @@ function App() {
     if (!params.has("channel")) return;
     params.delete("channel");
     const search = params.toString();
-    const url = window.location.pathname + (search ? `?${search}` : "") + window.location.hash;
+    const url =
+      window.location.pathname +
+      (search ? `?${search}` : "") +
+      window.location.hash;
     window.history.replaceState(null, "", url);
   }, []);
 
@@ -327,7 +392,8 @@ function App() {
       }
     };
     navigator.serviceWorker.addEventListener("message", handler);
-    return () => navigator.serviceWorker.removeEventListener("message", handler);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", handler);
   }, []);
 
   // In Tauri, open external links (http/https) in the system's default browser
@@ -395,12 +461,19 @@ function App() {
       const r = resizeStateRef.current;
       const { active, startX, startWidth } = r;
       if (!active) return;
-      const delta = active === "sidebar" ? e.clientX - startX : startX - e.clientX;
+      const delta =
+        active === "sidebar" ? e.clientX - startX : startX - e.clientX;
       const next = Math.round(Math.max(0, startWidth + delta));
       if (active === "sidebar") {
-        r.lastSidebarPx = Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, next));
+        r.lastSidebarPx = Math.min(
+          SIDEBAR_MAX_PX,
+          Math.max(SIDEBAR_MIN_PX, next),
+        );
       } else {
-        r.lastUsersPx = Math.min(USERS_PANEL_MAX_PX, Math.max(USERS_PANEL_MIN_PX, next));
+        r.lastUsersPx = Math.min(
+          USERS_PANEL_MAX_PX,
+          Math.max(USERS_PANEL_MIN_PX, next),
+        );
       }
       if (resizeRafRef.current == null) {
         resizeRafRef.current = requestAnimationFrame(() => {
@@ -492,7 +565,8 @@ function App() {
     const seen = new Set();
     const list = [];
     const myProfile = profiles[myId];
-    const myDisplayName = currentUser?.displayName ?? myProfile?.displayName ?? `User ${myId}`;
+    const myDisplayName =
+      currentUser?.displayName ?? myProfile?.displayName ?? `User ${myId}`;
     let me = voiceParticipants.find((p) => String(p.id) === String(myId));
     if (!me) me = { id: myId, displayName: myDisplayName };
     else me = { ...me, displayName: me.displayName || myDisplayName };
@@ -507,16 +581,31 @@ function App() {
     Object.keys(remoteStreams).forEach((peerId) => {
       if (seen.has(String(peerId))) return;
       const profile = profiles[peerId];
-      list.push({ id: peerId, displayName: profile?.displayName ?? `User ${peerId}` });
+      list.push({
+        id: peerId,
+        displayName: profile?.displayName ?? `User ${peerId}`,
+      });
       seen.add(String(peerId));
     });
     return list;
-  }, [joinedVoiceChannelId, voiceParticipants, remoteStreams, profiles, currentUser?.id, currentUser?.displayName]);
+  }, [
+    joinedVoiceChannelId,
+    voiceParticipants,
+    remoteStreams,
+    profiles,
+    currentUser?.id,
+    currentUser?.displayName,
+  ]);
 
   // Gaming overlay: create overlay when in voice call (Tauri only). Show only when Meeps loses focus; hide when it gains focus.
-  const overlayListenersRef = useRef({ blur: null, focus: null, visibility: null });
+  const overlayListenersRef = useRef({
+    blur: null,
+    focus: null,
+    visibility: null,
+  });
   useEffect(() => {
-    if (!window.__TAURI__ || !joinedVoiceChannelId || !gamingOverlayEnabled) return;
+    if (!window.__TAURI__ || !joinedVoiceChannelId || !gamingOverlayEnabled)
+      return;
     let cancelled = false;
     let hideCooldownUntil = 0;
     let showScheduled = null;
@@ -554,18 +643,24 @@ function App() {
             transparent: true,
             resizable: false,
             skipTaskbar: true,
-            focus: false
+            focus: false,
           });
-          win.once("tauri://error", (e) => console.warn("[overlay] Failed to create:", e));
+          win.once("tauri://error", (e) =>
+            console.warn("[overlay] Failed to create:", e),
+          );
           // Center on monitor in background (don't block listener setup)
-          primaryMonitor().then((monitor) => {
-            if (!cancelled && monitor?.size) {
-              const scale = monitor.scaleFactor ?? 1;
-              const logicalW = monitor.size.width / scale;
-              const centeredX = Math.round(logicalW / 2 - overlayWidth / 2);
-              win?.setPosition?.({ x: centeredX, y: overlayTop }).catch(() => {});
-            }
-          }).catch(() => {});
+          primaryMonitor()
+            .then((monitor) => {
+              if (!cancelled && monitor?.size) {
+                const scale = monitor.scaleFactor ?? 1;
+                const logicalW = monitor.size.width / scale;
+                const centeredX = Math.round(logicalW / 2 - overlayWidth / 2);
+                win
+                  ?.setPosition?.({ x: centeredX, y: overlayTop })
+                  .catch(() => {});
+              }
+            })
+            .catch(() => {});
         }
         if (cancelled) return;
         await win.setIgnoreCursorEvents(true).catch(() => {});
@@ -583,23 +678,40 @@ function App() {
             // Emit fresh participants right before show so overlay always has up-to-date list (fixes "0 people" when alone)
             const participants = effectiveInCallParticipantsRef.current;
             emit("voice-overlay-update", {
-              participants: participants.map((p) => ({ id: p.id, displayName: p.displayName || `User ${p.id}` }))
+              participants: participants.map((p) => ({
+                id: p.id,
+                displayName: p.displayName || `User ${p.id}`,
+              })),
             }).catch(() => {});
             const w = WebviewWindow.getByLabel("voice-overlay");
             if (w) w.show().catch(() => {});
           }, 50);
         };
-        const unlistenBlur = await appWindow.listen("tauri://blur", showOverlay);
-        const unlistenFocus = await appWindow.listen("tauri://focus", hideOverlay);
+        const unlistenBlur = await appWindow.listen(
+          "tauri://blur",
+          showOverlay,
+        );
+        const unlistenFocus = await appWindow.listen(
+          "tauri://focus",
+          hideOverlay,
+        );
         const onVisibility = () => {
           if (document.visibilityState === "visible") hideOverlay();
         };
         document.addEventListener("visibilitychange", onVisibility);
-        overlayListenersRef.current = { blur: unlistenBlur, focus: unlistenFocus, visibility: () => document.removeEventListener("visibilitychange", onVisibility) };
+        overlayListenersRef.current = {
+          blur: unlistenBlur,
+          focus: unlistenFocus,
+          visibility: () =>
+            document.removeEventListener("visibilitychange", onVisibility),
+        };
         // If we already lost focus (blur fired before listeners), show now
-        appWindow.isFocused().then((focused) => {
-          if (!cancelled && !focused) showOverlay();
-        }).catch(() => {});
+        appWindow
+          .isFocused()
+          .then((focused) => {
+            if (!cancelled && !focused) showOverlay();
+          })
+          .catch(() => {});
       } catch (err) {
         console.warn("[overlay] Failed to create overlay:", err);
       }
@@ -612,8 +724,14 @@ function App() {
       blur?.();
       focus?.();
       visibility?.();
-      overlayListenersRef.current = { blur: null, focus: null, visibility: null };
-      WebviewWindow.getByLabel("voice-overlay")?.close().catch(() => {});
+      overlayListenersRef.current = {
+        blur: null,
+        focus: null,
+        visibility: null,
+      };
+      WebviewWindow.getByLabel("voice-overlay")
+        ?.close()
+        .catch(() => {});
     };
   }, [joinedVoiceChannelId, gamingOverlayEnabled]);
 
@@ -641,10 +759,17 @@ function App() {
     if (!joinedVoiceChannelId || !window.__TAURI__) return;
     const participants = effectiveInCallParticipants;
     const prev = prevVoiceParticipantsForOverlayRef.current;
-    const justOwnJoin = justJoinedVoiceRef.current || (prev.length === 0 && participants.length >= 1);
+    const justOwnJoin =
+      justJoinedVoiceRef.current ||
+      (prev.length === 0 && participants.length >= 1);
 
     // Emit full list to overlay
-    emit("voice-overlay-update", { participants: participants.map((p) => ({ id: p.id, displayName: p.displayName || `User ${p.id}` })) }).catch(() => {});
+    emit("voice-overlay-update", {
+      participants: participants.map((p) => ({
+        id: p.id,
+        displayName: p.displayName || `User ${p.id}`,
+      })),
+    }).catch(() => {});
 
     // Compute join/leave diff and emit toasts (skip on our own join)
     if (!justOwnJoin && prev.length > 0) {
@@ -654,11 +779,17 @@ function App() {
       const left = prev.filter((p) => !currIds.has(String(p.id)));
       joined.forEach((p) => {
         const name = p.displayName || `User ${p.id}`;
-        emit("voice-overlay-toast", { message: `${name} has joined the call`, type: "join" }).catch(() => {});
+        emit("voice-overlay-toast", {
+          message: `${name} has joined the call`,
+          type: "join",
+        }).catch(() => {});
       });
       left.forEach((p) => {
         const name = p.displayName || `User ${p.id}`;
-        emit("voice-overlay-toast", { message: `${name} has left the call`, type: "leave" }).catch(() => {});
+        emit("voice-overlay-toast", {
+          message: `${name} has left the call`,
+          type: "leave",
+        }).catch(() => {});
       });
     }
 
@@ -667,7 +798,7 @@ function App() {
 
   useEffect(() => {
     if (!joinedVoiceChannelId) return;
-    
+
     const ensureAudioContextActive = () => {
       // Resume audio context if suspended (browser may suspend it when switching views)
       const ctx = voiceAudioContextRef.current;
@@ -675,10 +806,10 @@ function App() {
         ctx.resume().catch(() => {});
       }
     };
-    
+
     // Check immediately when tab changes or when in a call
     ensureAudioContextActive();
-    
+
     // Also check periodically to catch any suspensions while in board mode
     const interval = setInterval(ensureAudioContextActive, 2000);
     return () => clearInterval(interval);
@@ -692,42 +823,57 @@ function App() {
       setSpeakingUserIds([]);
       return;
     }
-    
+
     // Reuse existing audio context if available (created during user gesture in joinVoiceChannel)
     // Otherwise create a new one
     let ctx = voiceAudioContextRef.current;
-    voiceDebug.log("useEffect audio context setup", { hasExisting: !!ctx, state: ctx?.state });
+    voiceDebug.log("useEffect audio context setup", {
+      hasExisting: !!ctx,
+      state: ctx?.state,
+    });
     if (!ctx || ctx.state === "closed") {
       voiceDebug.log("Creating audio context in useEffect");
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       voiceAudioContextRef.current = ctx;
-      voiceDebug.log("Audio context created in useEffect", { state: ctx.state });
+      voiceDebug.log("Audio context created in useEffect", {
+        state: ctx.state,
+      });
       if (ctx.state === "suspended") {
         voiceDebug.log("Attempting to resume newly created context");
-        ctx.resume().catch((err) => voiceDebug.warn("Failed to resume new context:", err));
+        ctx
+          .resume()
+          .catch((err) =>
+            voiceDebug.warn("Failed to resume new context:", err),
+          );
       }
     } else {
       if (ctx.state === "suspended") {
         voiceDebug.log("Resuming existing suspended context in useEffect");
-        ctx.resume().catch((err) => voiceDebug.warn("Failed to resume existing context:", err));
+        ctx
+          .resume()
+          .catch((err) =>
+            voiceDebug.warn("Failed to resume existing context:", err),
+          );
       } else {
-        voiceDebug.log("Audio context already running in useEffect", { state: ctx.state });
+        voiceDebug.log("Audio context already running in useEffect", {
+          state: ctx.state,
+        });
       }
     }
-    
+
     const analysers = voiceAnalysersRef.current;
 
     const addStream = (userId, stream) => {
       if (!stream || typeof stream.getAudioTracks !== "function") return;
       const audioTracks = stream.getAudioTracks();
       if (!audioTracks.length) return;
-      
+
       if (ctx.state === "suspended") {
         ctx.resume().catch((err) => {
           voiceDebug.warn("Failed to resume audio context in addStream:", err);
         });
       }
-      
+
       try {
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -741,10 +887,10 @@ function App() {
     };
 
     const myId = String(currentUser?.id ?? CURRENT_USER_ID);
-    voiceDebug.log("Adding streams to audio context", { 
+    voiceDebug.log("Adding streams to audio context", {
       hasLocalStream: !!localStreamRef.current,
       remoteStreamCount: Object.keys(remoteStreams).length,
-      remoteStreamIds: Object.keys(remoteStreams)
+      remoteStreamIds: Object.keys(remoteStreams),
     });
     if (localStreamRef.current) {
       voiceDebug.log("Adding local stream", { myId });
@@ -779,30 +925,38 @@ function App() {
       previousSpeakingRef.current = next;
       setSpeakingUserIds((prev) => {
         const arr = Array.from(next);
-        if (arr.length !== prev.length || arr.some((id, i) => id !== prev[i])) return arr;
+        if (arr.length !== prev.length || arr.some((id, i) => id !== prev[i]))
+          return arr;
         return prev;
       });
     }, 100);
 
     return () => {
-      if (voiceSpeakingIntervalRef.current) clearInterval(voiceSpeakingIntervalRef.current);
+      if (voiceSpeakingIntervalRef.current)
+        clearInterval(voiceSpeakingIntervalRef.current);
       voiceSpeakingIntervalRef.current = null;
       Object.values(analysers).forEach(({ source }) => {
-        try { source.disconnect(); } catch (_) {}
+        try {
+          source.disconnect();
+        } catch (_) {}
       });
       voiceAnalysersRef.current = {};
-      try { ctx.close(); } catch (_) {}
+      try {
+        ctx.close();
+      } catch (_) {}
       voiceAudioContextRef.current = null;
     };
   }, [joinedVoiceChannelId, remoteStreams, currentUser?.id]);
 
   const tryPlayRemoteAudio = (el) => {
     if (!el || !el.srcObject || el.paused === false) return;
-    el.play().then(() => {
-      voiceDebug.log("Audio element playing successfully");
-    }).catch((err) => {
-      voiceDebug.error("Failed to play audio element:", err);
-    });
+    el.play()
+      .then(() => {
+        voiceDebug.log("Audio element playing successfully");
+      })
+      .catch((err) => {
+        voiceDebug.error("Failed to play audio element:", err);
+      });
   };
 
   useEffect(() => {
@@ -810,15 +964,18 @@ function App() {
     voiceTryPlayAllRemoteAudioRef.current = () => {
       document.querySelectorAll("audio[srcObject]").forEach(tryPlayRemoteAudio);
     };
-    return () => { voiceTryPlayAllRemoteAudioRef.current = null; };
+    return () => {
+      voiceTryPlayAllRemoteAudioRef.current = null;
+    };
   }, [joinedVoiceChannelId]);
 
   useEffect(() => {
-    if (!joinedVoiceChannelId || Object.keys(remoteStreams).length === 0) return;
+    if (!joinedVoiceChannelId || Object.keys(remoteStreams).length === 0)
+      return;
 
     voiceDebug.log("Remote streams changed, checking audio elements", {
       remoteStreamCount: Object.keys(remoteStreams).length,
-      remoteStreamIds: Object.keys(remoteStreams)
+      remoteStreamIds: Object.keys(remoteStreams),
     });
 
     const audioElements = document.querySelectorAll("audio[srcObject]");
@@ -829,7 +986,7 @@ function App() {
         paused: el.paused,
         hasSrcObject: !!el.srcObject,
         volume: el.volume,
-        readyState: el.readyState
+        readyState: el.readyState,
       });
       tryPlayRemoteAudio(el);
     });
@@ -870,7 +1027,8 @@ function App() {
         next[uid] = track ? !track.enabled : false;
       });
       setParticipantMuted((prev) => {
-        const same = Object.keys(next).length === Object.keys(prev).length &&
+        const same =
+          Object.keys(next).length === Object.keys(prev).length &&
           Object.keys(next).every((k) => prev[k] === next[k]);
         return same ? prev : next;
       });
@@ -887,8 +1045,9 @@ function App() {
       setTheme(stored);
       applyTheme(stored);
     } else {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches;
+      const prefersDark = window.matchMedia(
+        "(prefers-color-scheme: dark)",
+      ).matches;
       const initial = prefersDark ? "dark" : "light";
       setTheme(initial);
       applyTheme(initial);
@@ -912,8 +1071,8 @@ function App() {
       try {
         const res = await fetch(`${apiBase}/api/profile`, {
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         });
         if (!res.ok) {
           throw new Error("invalid token");
@@ -961,7 +1120,13 @@ function App() {
       const attempt = reconnectAttemptRef.current;
       const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
       reconnectAttemptRef.current = attempt + 1;
-      console.log("WebSocket reconnecting in", delay, "ms (attempt", attempt + 1, ")");
+      console.log(
+        "WebSocket reconnecting in",
+        delay,
+        "ms (attempt",
+        attempt + 1,
+        ")",
+      );
       reconnectTimeoutRef.current = setTimeout(() => {
         reconnectTimeoutRef.current = null;
         if (socketRef.current?.readyState === WebSocket.OPEN) return;
@@ -996,14 +1161,14 @@ function App() {
             type: "presence:hello",
             userId: uid,
             displayName: dname,
-            status: userStatusRef.current || "online"
-          })
+            status: userStatusRef.current || "online",
+          }),
         );
         socket.send(
           JSON.stringify({
             type: "voice:get_participants",
-            roomIds: VOICE_CHANNELS.map((c) => c.id)
-          })
+            roomIds: VOICE_CHANNELS.map((c) => c.id),
+          }),
         );
         const roomToRejoin = voiceRoomToRejoinRef.current;
         if (roomToRejoin != null) {
@@ -1047,27 +1212,38 @@ function App() {
             if (!isFromMe && !doNotDisturbRef.current) {
               showMentionNotificationIfBackground(
                 payload.sender || "Someone",
-                payload.content || (payload.attachments?.length ? "sent an attachment" : "New message"),
-                payload.channel
+                payload.content ||
+                  (payload.attachments?.length
+                    ? "sent an attachment"
+                    : "New message"),
+                payload.channel,
               );
             }
           } else if (data.type === "message:updated" && data.payload) {
             const payload = data.payload;
             setMessages((prev) =>
-              prev.map((m) => (m.id === payload.id ? { ...m, ...payload } : m))
+              prev.map((m) => (m.id === payload.id ? { ...m, ...payload } : m)),
             );
-          } else if (data.type === "message:deleted" && data.payload?.id != null) {
+          } else if (
+            data.type === "message:deleted" &&
+            data.payload?.id != null
+          ) {
             setMessages((prev) => prev.filter((m) => m.id !== data.payload.id));
-          } else if (data.type === "message:reactions" && data.payload?.messageId != null) {
+          } else if (
+            data.type === "message:reactions" &&
+            data.payload?.messageId != null
+          ) {
             const { messageId, reactions } = data.payload;
             setMessages((prev) =>
-              prev.map((m) => (m.id === messageId ? { ...m, reactions: reactions || {} } : m))
+              prev.map((m) =>
+                m.id === messageId ? { ...m, reactions: reactions || {} } : m,
+              ),
             );
           } else if (data.type === "profileUpdated" && data.payload) {
             const profile = data.payload;
             setProfiles((prev) => ({
               ...prev,
-              [profile.id]: profile
+              [profile.id]: profile,
             }));
             if (
               profile.id === CURRENT_USER_ID &&
@@ -1077,7 +1253,10 @@ function App() {
               applyTheme(profile.theme);
               window.localStorage.setItem(THEME_KEY, profile.theme);
             }
-          } else if (data.type === "presence:state" && Array.isArray(data.payload)) {
+          } else if (
+            data.type === "presence:state" &&
+            Array.isArray(data.payload)
+          ) {
             setPresenceUsers(data.payload);
           } else if (data.type === "presence:updated" && data.payload) {
             const presence = data.payload;
@@ -1093,17 +1272,38 @@ function App() {
           } else if (data.type === "voice:participants" && data.payload) {
             const { roomId, participants, hostUserId } = data.payload;
             const list = participants || [];
-            voiceDebug.log("Received voice:participants", { roomId, participantCount: list.length, hostUserId, participants: list.map(p => ({ id: p.id, displayName: p.displayName })) });
-            setVoiceChannelParticipants((prev) => ({ ...prev, [roomId]: list }));
+            voiceDebug.log("Received voice:participants", {
+              roomId,
+              participantCount: list.length,
+              hostUserId,
+              participants: list.map((p) => ({
+                id: p.id,
+                displayName: p.displayName,
+              })),
+            });
+            setVoiceChannelParticipants((prev) => ({
+              ...prev,
+              [roomId]: list,
+            }));
             const joinedRoomId = joinedVoiceChannelIdRef.current;
-            const isOurRoom = joinedRoomId != null && String(roomId) === String(joinedRoomId);
-            voiceDebug.log("Processing participants for room", { roomId, joinedRoomId, isOurRoom });
+            const isOurRoom =
+              joinedRoomId != null && String(roomId) === String(joinedRoomId);
+            voiceDebug.log("Processing participants for room", {
+              roomId,
+              joinedRoomId,
+              isOurRoom,
+            });
             if (isOurRoom) {
               setVoiceHostUserId(hostUserId != null ? hostUserId : null);
               const newCount = list.length;
               const oldCount = voiceParticipantCountRef.current;
-              const isOurOwnJoin = justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
-              voiceDebug.log("Our room participants updated", { newCount, oldCount, isOurOwnJoin });
+              const isOurOwnJoin =
+                justJoinedVoiceRef.current || (oldCount === 0 && newCount >= 1);
+              voiceDebug.log("Our room participants updated", {
+                newCount,
+                oldCount,
+                isOurOwnJoin,
+              });
               if (newCount <= 1) {
                 setVoiceConnectionStatus("connected");
               }
@@ -1119,10 +1319,15 @@ function App() {
               }
               voiceParticipantCountRef.current = newCount;
               setVoiceParticipants(list);
-              voiceDebug.log("Voice participants state updated", { count: list.length });
+              voiceDebug.log("Voice participants state updated", {
+                count: list.length,
+              });
             }
           } else if (data.type === "voice:signal" && data.payload) {
-            voiceDebug.log("Received voice:signal", { signalType: data.payload.signalType, fromUserId: data.payload.fromUserId });
+            voiceDebug.log("Received voice:signal", {
+              signalType: data.payload.signalType,
+              fromUserId: data.payload.fromUserId,
+            });
             handleIncomingVoiceSignal(data.payload);
           }
         } catch {
@@ -1164,7 +1369,10 @@ function App() {
     const onVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
       const socket = socketRef.current;
-      const closed = !socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING;
+      const closed =
+        !socket ||
+        socket.readyState === WebSocket.CLOSED ||
+        socket.readyState === WebSocket.CLOSING;
       if (!closed) return;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -1174,7 +1382,8 @@ function App() {
       connectWsRef.current?.();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [isAuthenticated]);
 
   // Request voice channel participants when socket is connected (with delay so server is ready)
@@ -1184,8 +1393,8 @@ function App() {
     socket.send(
       JSON.stringify({
         type: "voice:get_participants",
-        roomIds: VOICE_CHANNELS.map((c) => c.id)
-      })
+        roomIds: VOICE_CHANNELS.map((c) => c.id),
+      }),
     );
   };
 
@@ -1197,12 +1406,17 @@ function App() {
 
   // When opening the voice channel modal, request current participants so we show who's in the channel
   useEffect(() => {
-    if (!voiceChannelModalRoomId || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    if (
+      !voiceChannelModalRoomId ||
+      !socketRef.current ||
+      socketRef.current.readyState !== WebSocket.OPEN
+    )
+      return;
     socketRef.current.send(
       JSON.stringify({
         type: "voice:get_participants",
-        roomId: voiceChannelModalRoomId
-      })
+        roomId: voiceChannelModalRoomId,
+      }),
     );
   }, [voiceChannelModalRoomId]);
 
@@ -1237,7 +1451,12 @@ function App() {
   // Request notification permission and push subscription (PWA iPhone – notifications when app closed)
   const notificationPermissionRequestedRef = useRef(false);
   useEffect(() => {
-    if (!isAuthenticated || showProfileSetup || notificationPermissionRequestedRef.current) return;
+    if (
+      !isAuthenticated ||
+      showProfileSetup ||
+      notificationPermissionRequestedRef.current
+    )
+      return;
     notificationPermissionRequestedRef.current = true;
     const t = setTimeout(async () => {
       try {
@@ -1277,7 +1496,13 @@ function App() {
       const tag = el.tagName?.toLowerCase();
       const role = (el.getAttribute?.("role") || "").toLowerCase();
       const editable = el.isContentEditable;
-      return tag === "input" || tag === "textarea" || tag === "select" || role === "textbox" || editable;
+      return (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        role === "textbox" ||
+        editable
+      );
     }
 
     function handleKeyDown(e) {
@@ -1365,7 +1590,7 @@ function App() {
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
       const msg = {
         type: "presence:activity",
-        userId: currentUser.id || CURRENT_USER_ID
+        userId: currentUser.id || CURRENT_USER_ID,
       };
       socket.send(JSON.stringify(msg));
     }
@@ -1393,7 +1618,8 @@ function App() {
     const poll = async () => {
       try {
         const profile = profiles[currentUser?.id ?? CURRENT_USER_ID] || null;
-        const activityLoggingEnabled = profile?.activityLoggingEnabled !== false;
+        const activityLoggingEnabled =
+          profile?.activityLoggingEnabled !== false;
         const detailLevel = profile?.activityDetailLevel || "in_depth";
 
         const title = await invoke("get_foreground_window_title");
@@ -1412,11 +1638,13 @@ function App() {
             activity = buildActivityForDetailLevel(t, detailLevel);
           }
         }
-        socket.send(JSON.stringify({
-          type: "presence:activity",
-          userId: currentUser.id || CURRENT_USER_ID,
-          ...(activity != null ? { activity } : { activity: null })
-        }));
+        socket.send(
+          JSON.stringify({
+            type: "presence:activity",
+            userId: currentUser.id || CURRENT_USER_ID,
+            ...(activity != null ? { activity } : { activity: null }),
+          }),
+        );
       } catch (_) {
         // ignore (e.g. not in Tauri or API unavailable)
       }
@@ -1430,13 +1658,13 @@ function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    
+
     async function loadMessages() {
       try {
         const res = await fetch(
           `${apiBase}/api/messages?channel=${encodeURIComponent(
-            selectedChannelId
-          )}`
+            selectedChannelId,
+          )}`,
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -1454,13 +1682,14 @@ function App() {
 
   const loadOlderMessages = useCallback(
     async (beforeId) => {
-      if (!isAuthenticated || loadingOlderMessages || !hasMoreOlderMessages) return;
+      if (!isAuthenticated || loadingOlderMessages || !hasMoreOlderMessages)
+        return;
       setLoadingOlderMessages(true);
       try {
         const res = await fetch(
           `${apiBase}/api/messages?channel=${encodeURIComponent(
-            selectedChannelId
-          )}&before=${encodeURIComponent(beforeId)}`
+            selectedChannelId,
+          )}&before=${encodeURIComponent(beforeId)}`,
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -1483,15 +1712,19 @@ function App() {
       loadingOlderMessages,
       hasMoreOlderMessages,
       selectedChannelId,
-      apiBase
-    ]
+      apiBase,
+    ],
   );
 
   // Preload profiles for message senders so avatars show in channel
   useEffect(() => {
     if (!isAuthenticated) return;
-    const channelMessages = messages.filter((m) => m.channel === selectedChannelId);
-    const senderIds = [...new Set(channelMessages.map((m) => m.senderId).filter(Boolean))];
+    const channelMessages = messages.filter(
+      (m) => m.channel === selectedChannelId,
+    );
+    const senderIds = [
+      ...new Set(channelMessages.map((m) => m.senderId).filter(Boolean)),
+    ];
     senderIds.forEach((userId) => {
       if (profiles[userId]) return;
       fetch(`${apiBase}/api/profile/${userId}`)
@@ -1543,7 +1776,7 @@ function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    
+
     async function loadProfile() {
       try {
         const userId = currentUser.id || CURRENT_USER_ID;
@@ -1552,7 +1785,7 @@ function App() {
         const data = await res.json();
         setProfiles((prev) => ({
           ...prev,
-          [data.id]: data
+          [data.id]: data,
         }));
         if (data.theme === "light" || data.theme === "dark") {
           setTheme(data.theme);
@@ -1589,7 +1822,11 @@ function App() {
         try {
           const stats = await pc.getStats();
           for (const report of stats.values()) {
-            if (report.type === "candidate-pair" && report.state === "succeeded" && report.currentRoundTripTime) {
+            if (
+              report.type === "candidate-pair" &&
+              report.state === "succeeded" &&
+              report.currentRoundTripTime
+            ) {
               totalRtt += report.currentRoundTripTime * 1000;
               count += 1;
             }
@@ -1623,17 +1860,17 @@ function App() {
 
   const saveThemePreference = async (nextTheme) => {
     if (!isAuthenticated) return;
-    
+
     try {
       const userId = currentUser.id || CURRENT_USER_ID;
       await fetch(`${apiBase}/api/profile/${userId}`, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          theme: nextTheme
-        })
+          theme: nextTheme,
+        }),
       });
     } catch {
       // ignore for skeleton
@@ -1656,17 +1893,33 @@ function App() {
     } catch (_) {}
     const socket = socketRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "presence:status", userId: currentUser?.id ?? CURRENT_USER_ID, status: nextStatus }));
+      socket.send(
+        JSON.stringify({
+          type: "presence:status",
+          userId: currentUser?.id ?? CURRENT_USER_ID,
+          status: nextStatus,
+        }),
+      );
     }
   };
 
-  const handleSend = (contentOrTrimmed, attachmentIds = [], replyToId = null) => {
-    const trimmed = typeof contentOrTrimmed === "string" ? contentOrTrimmed : inputValue.trim();
+  const handleSend = (
+    contentOrTrimmed,
+    attachmentIds = [],
+    replyToId = null,
+  ) => {
+    const trimmed =
+      typeof contentOrTrimmed === "string"
+        ? contentOrTrimmed
+        : inputValue.trim();
     if (!trimmed && (!attachmentIds || attachmentIds.length === 0)) return;
 
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      console.log("Cannot send message - WebSocket not ready. State:", socket?.readyState);
+      console.log(
+        "Cannot send message - WebSocket not ready. State:",
+        socket?.readyState,
+      );
       return;
     }
 
@@ -1678,13 +1931,18 @@ function App() {
       senderId: currentUser?.id ?? undefined,
       content: trimmed || (attachmentIds?.length > 0 ? " " : ""),
       attachmentIds: Array.isArray(attachmentIds) ? attachmentIds : [],
-      ...(idToSend != null && idToSend > 0 && { replyToId: idToSend })
+      ...(idToSend != null && idToSend > 0 && { replyToId: idToSend }),
     };
 
     console.log("Sending message:", payload);
     socket.send(JSON.stringify(payload));
     const content = trimmed || (attachmentIds?.length > 0 ? " " : "");
-    if (!doNotDisturbRef.current && content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
+    if (
+      !doNotDisturbRef.current &&
+      content &&
+      typeof content === "string" &&
+      messageMentionsMeDirectly(content, currentUser?.displayName)
+    ) {
       playMessageSentSound();
     }
     setInputValue("");
@@ -1695,21 +1953,27 @@ function App() {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     const senderName = currentUser?.displayName || DEFAULT_USER_NAME;
-    socket.send(JSON.stringify({ type: "message:edit", messageId, content, senderName }));
+    socket.send(
+      JSON.stringify({ type: "message:edit", messageId, content, senderName }),
+    );
   };
 
   const handleDeleteMessage = (messageId) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     const senderName = currentUser?.displayName || DEFAULT_USER_NAME;
-    socket.send(JSON.stringify({ type: "message:delete", messageId, senderName }));
+    socket.send(
+      JSON.stringify({ type: "message:delete", messageId, senderName }),
+    );
   };
 
   const handleReaction = (messageId, emoji, add) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     if (!messageId || !emoji) return;
-    socket.send(JSON.stringify({ type: "message:reaction", messageId, emoji, add }));
+    socket.send(
+      JSON.stringify({ type: "message:reaction", messageId, emoji, add }),
+    );
   };
 
   const handleSelectGif = (gif) => {
@@ -1725,32 +1989,44 @@ function App() {
       channel: selectedChannelId,
       sender: currentUser?.displayName || DEFAULT_USER_NAME,
       senderId: currentUser?.id ?? undefined,
-      content
+      content,
     };
     socket.send(JSON.stringify(payload));
     // Only play sound if message directly mentions you (not @everyone — that would ping yourself)
-    if (!doNotDisturbRef.current && content && typeof content === "string" && messageMentionsMeDirectly(content, currentUser?.displayName)) {
+    if (
+      !doNotDisturbRef.current &&
+      content &&
+      typeof content === "string" &&
+      messageMentionsMeDirectly(content, currentUser?.displayName)
+    ) {
       playMessageSentSound();
     }
   };
 
   const channelMessages = messages.filter(
-    (m) => m.channel === selectedChannelId
+    (m) => m.channel === selectedChannelId,
   );
 
-  const currentUserProfile = profiles[currentUser?.id || CURRENT_USER_ID] || null;
+  const currentUserProfile =
+    profiles[currentUser?.id || CURRENT_USER_ID] || null;
 
   // Map sender display name -> avatar URL (for messages without senderId or when profile not loaded yet)
   const senderNameToAvatar = useMemo(() => {
     const m = {};
     const curName = currentUser?.displayName || DEFAULT_USER_NAME;
-    if (currentUserProfile?.avatarUrl) m[curName] = currentUserProfile.avatarUrl;
+    if (currentUserProfile?.avatarUrl)
+      m[curName] = currentUserProfile.avatarUrl;
     (presenceUsers || []).forEach((u) => {
       const name = u.displayName || u.name;
       if (name && profiles[u.id]?.avatarUrl) m[name] = profiles[u.id].avatarUrl;
     });
     return m;
-  }, [currentUser?.displayName, currentUserProfile?.avatarUrl, presenceUsers, profiles]);
+  }, [
+    currentUser?.displayName,
+    currentUserProfile?.avatarUrl,
+    presenceUsers,
+    profiles,
+  ]);
 
   // Slug (for @mentions) -> display name (e.g. "Person_One" -> "Person One", "everyone" -> "everyone")
   const mentionSlugToName = useMemo(() => {
@@ -1770,7 +2046,7 @@ function App() {
   const ALLOWED_USERS_EMAILS = new Set([
     "aidanmccarthy3@gmail.com",
     "fakeemail@gmail.com",
-    "sullivanlouis0@gmail.com"
+    "sullivanlouis0@gmail.com",
   ]);
   const usersInDb = useMemo(() => {
     return (presenceUsers || []).filter((u) => {
@@ -1786,7 +2062,7 @@ function App() {
       const constraints = {
         audio: voiceSettings.inputDeviceId
           ? { deviceId: { exact: voiceSettings.inputDeviceId } }
-          : true
+          : true,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
@@ -1820,21 +2096,31 @@ function App() {
   };
 
   const createPeerConnection = async (peerUserId) => {
-    voiceDebug.log("createPeerConnection", { peerUserId, hasExisting: !!peerConnectionsRef.current[peerUserId] });
+    voiceDebug.log("createPeerConnection", {
+      peerUserId,
+      hasExisting: !!peerConnectionsRef.current[peerUserId],
+    });
     if (peerConnectionsRef.current[peerUserId]) {
       voiceDebug.log("Reusing existing peer connection", { peerUserId });
       return peerConnectionsRef.current[peerUserId];
     }
 
     const ctx = voiceAudioContextRef.current;
-    voiceDebug.log("createPeerConnection audio context check", { state: ctx?.state });
+    voiceDebug.log("createPeerConnection audio context check", {
+      state: ctx?.state,
+    });
     if (ctx && ctx.state === "suspended") {
       voiceDebug.log("Resuming audio context in createPeerConnection");
       try {
         await ctx.resume();
-        voiceDebug.log("Audio context resumed in createPeerConnection", { state: ctx.state });
+        voiceDebug.log("Audio context resumed in createPeerConnection", {
+          state: ctx.state,
+        });
       } catch (err) {
-        voiceDebug.error("Failed to resume audio context in createPeerConnection:", err);
+        voiceDebug.error(
+          "Failed to resume audio context in createPeerConnection:",
+          err,
+        );
       }
     }
 
@@ -1846,10 +2132,26 @@ function App() {
       // Metered-style: STUN + multiple TURN endpoints (UDP, TCP, TLS) for better connectivity
       iceServers = [
         { urls: "stun:stun.relay.metered.ca:80" },
-        { urls: `turn:${turnServer}:80`, username: turnUsername, credential: turnCredential },
-        { urls: `turn:${turnServer}:80?transport=tcp`, username: turnUsername, credential: turnCredential },
-        { urls: `turn:${turnServer}:443`, username: turnUsername, credential: turnCredential },
-        { urls: `turns:${turnServer}:443?transport=tcp`, username: turnUsername, credential: turnCredential }
+        {
+          urls: `turn:${turnServer}:80`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
+        {
+          urls: `turn:${turnServer}:80?transport=tcp`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
+        {
+          urls: `turn:${turnServer}:443`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
+        {
+          urls: `turns:${turnServer}:443?transport=tcp`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
       ];
     } else {
       iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -1858,35 +2160,53 @@ function App() {
         iceServers.push({
           urls: turnUrl,
           username: import.meta.env.VITE_TURN_USERNAME || undefined,
-          credential: import.meta.env.VITE_TURN_CREDENTIAL || undefined
+          credential: import.meta.env.VITE_TURN_CREDENTIAL || undefined,
         });
       }
     }
 
-    voiceDebug.log("Creating RTCPeerConnection", { peerUserId, hasTurn: !!turnServer });
+    voiceDebug.log("Creating RTCPeerConnection", {
+      peerUserId,
+      hasTurn: !!turnServer,
+    });
     const pc = new RTCPeerConnection({
       iceServers,
-      bundlePolicy: "max-bundle"
+      bundlePolicy: "max-bundle",
     });
 
     const localStream = await ensureLocalStream();
-    voiceDebug.log("Got local stream for peer connection", { 
+    voiceDebug.log("Got local stream for peer connection", {
       hasStream: !!localStream,
-      audioTracks: localStream?.getAudioTracks()?.length || 0
+      audioTracks: localStream?.getAudioTracks()?.length || 0,
     });
-    const useScreenAsVideo = screenStreamRef.current?.getVideoTracks()?.length > 0;
-    const useCameraAsVideo = !useScreenAsVideo && cameraStreamRef.current?.getVideoTracks()?.length > 0;
+    const useScreenAsVideo =
+      screenStreamRef.current?.getVideoTracks()?.length > 0;
+    const useCameraAsVideo =
+      !useScreenAsVideo &&
+      cameraStreamRef.current?.getVideoTracks()?.length > 0;
     if (localStream) {
       const tracksAdded = [];
       localStream.getTracks().forEach((track) => {
-        if (track.kind === "video" && (useScreenAsVideo || useCameraAsVideo)) return;
-        voiceDebug.log("Adding track to peer connection", { peerUserId, kind: track.kind, id: track.id, enabled: track.enabled });
+        if (track.kind === "video" && (useScreenAsVideo || useCameraAsVideo))
+          return;
+        voiceDebug.log("Adding track to peer connection", {
+          peerUserId,
+          kind: track.kind,
+          id: track.id,
+          enabled: track.enabled,
+        });
         pc.addTrack(track, localStream);
         tracksAdded.push({ kind: track.kind, id: track.id });
       });
-      voiceDebug.log("Tracks added to peer connection", { peerUserId, count: tracksAdded.length, tracks: tracksAdded });
+      voiceDebug.log("Tracks added to peer connection", {
+        peerUserId,
+        count: tracksAdded.length,
+        tracks: tracksAdded,
+      });
     } else {
-      voiceDebug.warn("No local stream to add to peer connection", { peerUserId });
+      voiceDebug.warn("No local stream to add to peer connection", {
+        peerUserId,
+      });
     }
     if (useScreenAsVideo) {
       const screenStream = screenStreamRef.current;
@@ -1911,8 +2231,8 @@ function App() {
           fromUserId: currentUser?.id ?? CURRENT_USER_ID,
           toUserId: peerUserId,
           signalType: "ice-candidate",
-          data: event.candidate
-        })
+          data: event.candidate,
+        }),
       );
     };
 
@@ -1924,11 +2244,12 @@ function App() {
         id: track?.id,
         readyState: track?.readyState,
         streamCount: event.streams?.length || 0,
-        streamTrackInfo: event.streams?.map((s) => ({
-          id: s.id,
-          audioTrackIds: s.getAudioTracks().map((t) => t.id),
-          videoTrackIds: s.getVideoTracks().map((t) => t.id)
-        })) || []
+        streamTrackInfo:
+          event.streams?.map((s) => ({
+            id: s.id,
+            audioTrackIds: s.getAudioTracks().map((t) => t.id),
+            videoTrackIds: s.getVideoTracks().map((t) => t.id),
+          })) || [],
       });
       if (!track || typeof track.kind !== "string") {
         voiceDebug.warn("Invalid track in ontrack", { track });
@@ -1947,26 +2268,37 @@ function App() {
           id: track.id,
           before: {
             audioTrackIds: peerStream.getAudioTracks().map((t) => t.id),
-            videoTrackIds: peerStream.getVideoTracks().map((t) => t.id)
-          }
+            videoTrackIds: peerStream.getVideoTracks().map((t) => t.id),
+          },
         });
         peerStream.addTrack(track);
         track.onended = () => {
-          voiceDebug.log("Remote track ended, flushing streams for UI update", { peerUserId, kind: track.kind });
-          setRemoteStreams((prev) => ({ ...prev, ...remoteStreamsRef.current }));
+          voiceDebug.log("Remote track ended, flushing streams for UI update", {
+            peerUserId,
+            kind: track.kind,
+          });
+          setRemoteStreams((prev) => ({
+            ...prev,
+            ...remoteStreamsRef.current,
+          }));
         };
         voiceDebug.log("Added track to peer stream", {
           peerUserId,
           after: {
             audioTrackIds: peerStream.getAudioTracks().map((t) => t.id),
-            videoTrackIds: peerStream.getVideoTracks().map((t) => t.id)
-          }
+            videoTrackIds: peerStream.getVideoTracks().map((t) => t.id),
+          },
         });
         if (!remoteStreamsFlushScheduledRef.current) {
           remoteStreamsFlushScheduledRef.current = true;
           queueMicrotask(() => {
-            voiceDebug.log("Flushing remote streams to state", { peerIds: Object.keys(remoteStreamsRef.current) });
-            setRemoteStreams((prev) => ({ ...prev, ...remoteStreamsRef.current }));
+            voiceDebug.log("Flushing remote streams to state", {
+              peerIds: Object.keys(remoteStreamsRef.current),
+            });
+            setRemoteStreams((prev) => ({
+              ...prev,
+              ...remoteStreamsRef.current,
+            }));
             remoteStreamsFlushScheduledRef.current = false;
           });
         }
@@ -1984,7 +2316,7 @@ function App() {
       } else if (state === "failed" || state === "disconnected") {
         const pcs = peerConnectionsRef.current;
         const anyConnected = Object.values(pcs).some(
-          (p) => p && p !== pc && p.connectionState === "connected"
+          (p) => p && p !== pc && p.connectionState === "connected",
         );
         if (!anyConnected) setVoiceConnectionStatus("reconnecting");
       }
@@ -2010,7 +2342,12 @@ function App() {
 
   const sendOfferToPeer = async (peerUserId) => {
     const pc = peerConnectionsRef.current[peerUserId];
-    if (!pc || pc.connectionState === "closed" || pc.signalingState === "closed") return;
+    if (
+      !pc ||
+      pc.connectionState === "closed" ||
+      pc.signalingState === "closed"
+    )
+      return;
     const socket = socketRef.current;
     const roomId = joinedVoiceChannelIdRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN || !roomId) return;
@@ -2024,8 +2361,8 @@ function App() {
           fromUserId: currentUser?.id ?? CURRENT_USER_ID,
           toUserId: peerUserId,
           signalType: "offer",
-          data: offer
-        })
+          data: offer,
+        }),
       );
     } catch (err) {
       console.warn("Renegotiation offer failed:", err);
@@ -2036,15 +2373,27 @@ function App() {
     roomId,
     fromUserId,
     signalType,
-    data
+    data,
   }) => {
-    voiceDebug.log("handleIncomingVoiceSignal", { roomId, fromUserId, signalType, currentRoom: joinedVoiceChannelIdRef.current });
+    voiceDebug.log("handleIncomingVoiceSignal", {
+      roomId,
+      fromUserId,
+      signalType,
+      currentRoom: joinedVoiceChannelIdRef.current,
+    });
     if (roomId !== joinedVoiceChannelIdRef.current) {
-      voiceDebug.warn("Signal for wrong room, ignoring", { signalRoom: roomId, currentRoom: joinedVoiceChannelIdRef.current });
+      voiceDebug.warn("Signal for wrong room, ignoring", {
+        signalRoom: roomId,
+        currentRoom: joinedVoiceChannelIdRef.current,
+      });
       return;
     }
     const pc = await createPeerConnection(fromUserId);
-    voiceDebug.log("Peer connection obtained for signal", { fromUserId, signalingState: pc.signalingState, connectionState: pc.connectionState });
+    voiceDebug.log("Peer connection obtained for signal", {
+      fromUserId,
+      signalingState: pc.signalingState,
+      connectionState: pc.connectionState,
+    });
 
     if (signalType === "offer") {
       await pc.setRemoteDescription(new RTCSessionDescription(data));
@@ -2061,8 +2410,8 @@ function App() {
             fromUserId: currentUser?.id ?? CURRENT_USER_ID,
             toUserId: fromUserId,
             signalType: "answer",
-            data: answer
-          })
+            data: answer,
+          }),
         );
       }
     } else if (signalType === "answer") {
@@ -2089,7 +2438,9 @@ function App() {
   useEffect(() => {
     if (!joinedVoiceChannelId) return;
     const myId = currentUser?.id ?? CURRENT_USER_ID;
-    const participantIds = new Set((voiceParticipants || []).map((p) => Number(p.id)));
+    const participantIds = new Set(
+      (voiceParticipants || []).map((p) => Number(p.id)),
+    );
 
     const toRemove = [];
     for (const peerId of Object.keys(peerConnectionsRef.current)) {
@@ -2117,10 +2468,19 @@ function App() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     const run = async () => {
-      const sortedIds = voiceParticipants.map((p) => Number(p.id)).sort((a, b) => a - b);
-      const effectiveHost = voiceHostUserId != null ? voiceHostUserId : (sortedIds[0] ?? myId);
+      const sortedIds = voiceParticipants
+        .map((p) => Number(p.id))
+        .sort((a, b) => a - b);
+      const effectiveHost =
+        voiceHostUserId != null ? voiceHostUserId : (sortedIds[0] ?? myId);
       const iAmHost = Number(myId) === Number(effectiveHost);
-      voiceDebug.log("Sending offers to peers", { myId, effectiveHost, iAmHost, participants: voiceParticipants.map(p => p.id), participantCount: voiceParticipants.length });
+      voiceDebug.log("Sending offers to peers", {
+        myId,
+        effectiveHost,
+        iAmHost,
+        participants: voiceParticipants.map((p) => p.id),
+        participantCount: voiceParticipants.length,
+      });
       for (const p of voiceParticipants) {
         const peerId = Number(p.id);
         if (peerId === myId) {
@@ -2128,7 +2488,11 @@ function App() {
           continue;
         }
         if (!iAmHost) {
-          voiceDebug.log("Skipping (not host; host is first to join)", { peerId, myId, effectiveHost });
+          voiceDebug.log("Skipping (not host; host is first to join)", {
+            peerId,
+            myId,
+            effectiveHost,
+          });
           continue;
         }
         if (voiceOfferSentToRef.current.has(peerId)) {
@@ -2139,10 +2503,15 @@ function App() {
         voiceOfferSentToRef.current.add(peerId);
         try {
           const pc = await createPeerConnection(peerId);
-          voiceDebug.log("Creating offer", { peerId, signalingState: pc.signalingState });
+          voiceDebug.log("Creating offer", {
+            peerId,
+            signalingState: pc.signalingState,
+          });
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          voiceDebug.log("Offer created and set as local description", { peerId });
+          voiceDebug.log("Offer created and set as local description", {
+            peerId,
+          });
           const s = socketRef.current;
           if (s && s.readyState === WebSocket.OPEN) {
             s.send(
@@ -2152,12 +2521,15 @@ function App() {
                 fromUserId: myId,
                 toUserId: peerId,
                 signalType: "offer",
-                data: offer
-              })
+                data: offer,
+              }),
             );
             voiceDebug.log("Offer sent via WebSocket", { peerId });
           } else {
-            voiceDebug.warn("Cannot send offer, socket not ready", { peerId, readyState: s?.readyState });
+            voiceDebug.warn("Cannot send offer, socket not ready", {
+              peerId,
+              readyState: s?.readyState,
+            });
           }
         } catch (err) {
           voiceDebug.error("Voice offer failed:", err, { peerId });
@@ -2166,7 +2538,12 @@ function App() {
       }
     };
     run();
-  }, [joinedVoiceChannelId, voiceParticipants, currentUser?.id, voiceHostUserId]);
+  }, [
+    joinedVoiceChannelId,
+    voiceParticipants,
+    currentUser?.id,
+    voiceHostUserId,
+  ]);
 
   const handleSaveProfile = async (payload) => {
     if (!isAuthenticated) return;
@@ -2190,16 +2567,28 @@ function App() {
           loseGifUrl: payload.loseGifUrl,
           leagueUsername: payload.leagueUsername,
           theme,
-          ...(payload.activityLoggingEnabled !== undefined && { activityLoggingEnabled: payload.activityLoggingEnabled }),
-          ...(payload.activityDetailLevel !== undefined && { activityDetailLevel: payload.activityDetailLevel }),
-          ...(payload.doNotDisturb !== undefined && { doNotDisturb: payload.doNotDisturb })
-        })
+          ...(payload.activityLoggingEnabled !== undefined && {
+            activityLoggingEnabled: payload.activityLoggingEnabled,
+          }),
+          ...(payload.activityDetailLevel !== undefined && {
+            activityDetailLevel: payload.activityDetailLevel,
+          }),
+          ...(payload.doNotDisturb !== undefined && {
+            doNotDisturb: payload.doNotDisturb,
+          }),
+        }),
       });
       if (!res.ok) return;
       const updated = await res.json();
       setProfiles((prev) => ({ ...prev, [updated.id]: updated }));
-      if (userId === (currentUser?.id ?? CURRENT_USER_ID) && payload.displayName !== currentUser?.displayName) {
-        setCurrentUser((prev) => ({ ...prev, displayName: payload.displayName }));
+      if (
+        userId === (currentUser?.id ?? CURRENT_USER_ID) &&
+        payload.displayName !== currentUser?.displayName
+      ) {
+        setCurrentUser((prev) => ({
+          ...prev,
+          displayName: payload.displayName,
+        }));
       }
     } catch {
       // ignore
@@ -2228,28 +2617,41 @@ function App() {
     fetch(`${apiBase}/api/profile/${numId}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setProfiles((prev) => ({ ...prev, [data.id]: data }));
+        if (!cancelled && data)
+          setProfiles((prev) => ({ ...prev, [data.id]: data }));
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedUserForProfile?.id, apiBase]);
 
   const joinVoiceChannel = async (roomId) => {
-    voiceDebug.log("===== joinVoiceChannel START =====", { roomId, isAuthenticated, hasSocket: !!socketRef.current });
+    voiceDebug.log("===== joinVoiceChannel START =====", {
+      roomId,
+      isAuthenticated,
+      hasSocket: !!socketRef.current,
+    });
     if (!isAuthenticated) {
       voiceDebug.warn("Not authenticated, aborting join");
       return;
     }
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      voiceDebug.warn("Socket not ready", { hasSocket: !!socket, readyState: socket?.readyState });
+      voiceDebug.warn("Socket not ready", {
+        hasSocket: !!socket,
+        readyState: socket?.readyState,
+      });
       return;
     }
     setVoiceConnectionStatus("joining");
     playConnectSound();
-    
+
     let ctx = voiceAudioContextRef.current;
-    voiceDebug.log("Audio context check", { hasExistingCtx: !!ctx, state: ctx?.state });
+    voiceDebug.log("Audio context check", {
+      hasExistingCtx: !!ctx,
+      state: ctx?.state,
+    });
     if (!ctx || ctx.state === "closed") {
       voiceDebug.log("Creating new audio context");
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -2267,7 +2669,7 @@ function App() {
     } else {
       voiceDebug.log("Audio context already running", { state: ctx.state });
     }
-    
+
     joinedVoiceChannelIdRef.current = roomId;
     setJoinedVoiceChannelId(roomId);
     setVoiceParticipants([]);
@@ -2278,46 +2680,58 @@ function App() {
     setRemoteStreams({});
     voiceParticipantCountRef.current = 0;
     justJoinedVoiceRef.current = true;
-    
+
     setVoiceConnectionStatus("getting_mic");
     voiceDebug.log("Requesting local stream");
     await ensureLocalStream();
     const localStream = localStreamRef.current;
-    voiceDebug.log("Local stream obtained", { 
-      hasStream: !!localStream, 
+    voiceDebug.log("Local stream obtained", {
+      hasStream: !!localStream,
       audioTracks: localStream?.getAudioTracks()?.length || 0,
-      videoTracks: localStream?.getVideoTracks()?.length || 0
+      videoTracks: localStream?.getVideoTracks()?.length || 0,
     });
-    
+
     const finalCtx = voiceAudioContextRef.current;
     voiceDebug.log("Final audio context check", { state: finalCtx?.state });
     if (finalCtx && finalCtx.state === "suspended") {
       voiceDebug.log("Audio context suspended again, resuming");
       try {
         await finalCtx.resume();
-        voiceDebug.log("Audio context resumed again", { state: finalCtx.state });
+        voiceDebug.log("Audio context resumed again", {
+          state: finalCtx.state,
+        });
       } catch (err) {
-        voiceDebug.error("Failed to resume audio context after ensureLocalStream:", err);
+        voiceDebug.error(
+          "Failed to resume audio context after ensureLocalStream:",
+          err,
+        );
       }
     }
-    
+
     if (localStream) {
       const audioTracks = localStream.getAudioTracks();
-      voiceDebug.log("Local stream audio tracks", { 
+      voiceDebug.log("Local stream audio tracks", {
         count: audioTracks.length,
-        tracks: audioTracks.map(t => ({ id: t.id, enabled: t.enabled, readyState: t.readyState, muted: t.muted }))
+        tracks: audioTracks.map((t) => ({
+          id: t.id,
+          enabled: t.enabled,
+          readyState: t.readyState,
+          muted: t.muted,
+        })),
       });
       if (audioTracks.length === 0) {
         voiceDebug.warn("Local stream has no audio tracks");
       } else {
-        audioTracks.forEach(track => {
+        audioTracks.forEach((track) => {
           if (!track.enabled) {
-            voiceDebug.log("Enabling disabled audio track", { trackId: track.id });
+            voiceDebug.log("Enabling disabled audio track", {
+              trackId: track.id,
+            });
             track.enabled = true;
           }
         });
       }
-      
+
       if (finalCtx && localStream.getAudioTracks().length > 0) {
         const analysers = voiceAnalysersRef.current;
         const myId = String(currentUser?.id ?? CURRENT_USER_ID);
@@ -2344,10 +2758,16 @@ function App() {
     } else {
       voiceDebug.warn("No local stream obtained");
     }
-    
+
     setVoiceConnectionStatus("connecting");
     voiceDebug.log("Sending voice:join message");
-    socket.send(JSON.stringify({ type: "voice:join", roomId, userId: currentUser?.id ?? CURRENT_USER_ID }));
+    socket.send(
+      JSON.stringify({
+        type: "voice:join",
+        roomId,
+        userId: currentUser?.id ?? CURRENT_USER_ID,
+      }),
+    );
     preloadNotificationSound();
     voiceDebug.log("===== joinVoiceChannel END =====");
   };
@@ -2358,9 +2778,16 @@ function App() {
     // Play sound immediately while still in the user gesture (unless DND)
     if (!doNotDisturbRef.current) playUserLeftSound();
     const socket = socketRef.current;
-    const roomIdToLeave = joinedVoiceChannelIdRef.current ?? joinedVoiceChannelId;
+    const roomIdToLeave =
+      joinedVoiceChannelIdRef.current ?? joinedVoiceChannelId;
     if (roomIdToLeave && socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "voice:leave", roomId: roomIdToLeave, userId: currentUser?.id ?? CURRENT_USER_ID }));
+      socket.send(
+        JSON.stringify({
+          type: "voice:leave",
+          roomId: roomIdToLeave,
+          userId: currentUser?.id ?? CURRENT_USER_ID,
+        }),
+      );
     }
     joinedVoiceChannelIdRef.current = null;
     setJoinedVoiceChannelId(null);
@@ -2413,13 +2840,14 @@ function App() {
 
   const startScreenShare = async () => {
     voiceDebug.log("startScreenShare: invoked", {
-      existingScreenTracks: screenStreamRef.current?.getTracks()?.map((t) => ({
-        id: t.id,
-        kind: t.kind,
-        enabled: t.enabled,
-        muted: t.muted,
-        readyState: t.readyState
-      })) || []
+      existingScreenTracks:
+        screenStreamRef.current?.getTracks()?.map((t) => ({
+          id: t.id,
+          kind: t.kind,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+        })) || [],
     });
     try {
       let stream;
@@ -2427,9 +2855,11 @@ function App() {
         const constraints = {
           video: true,
           audio: true,
-          systemAudio: "include"
+          systemAudio: "include",
         };
-        voiceDebug.log("startScreenShare: calling getDisplayMedia", { constraints });
+        voiceDebug.log("startScreenShare: calling getDisplayMedia", {
+          constraints,
+        });
         stream = await navigator.mediaDevices.getDisplayMedia(constraints);
         voiceDebug.log("startScreenShare: got stream from getDisplayMedia", {
           videoTrackCount: stream.getVideoTracks().length,
@@ -2438,81 +2868,106 @@ function App() {
             id: t.id,
             enabled: t.enabled,
             muted: t.muted,
-            readyState: t.readyState
+            readyState: t.readyState,
           })),
           audioTracks: stream.getAudioTracks().map((t) => ({
             id: t.id,
             enabled: t.enabled,
             muted: t.muted,
-            readyState: t.readyState
-          }))
+            readyState: t.readyState,
+          })),
         });
       } catch (audioErr) {
-        voiceDebug.warn("startScreenShare: getDisplayMedia with system audio failed", {
-          error: audioErr,
-          name: audioErr?.name,
-          message: audioErr?.message
-        });
+        voiceDebug.warn(
+          "startScreenShare: getDisplayMedia with system audio failed",
+          {
+            error: audioErr,
+            name: audioErr?.name,
+            message: audioErr?.message,
+          },
+        );
         // NotReadableError often happens on Windows when system audio capture fails.
         // Try tab/window audio only (systemAudio: "exclude") — e.g. share a Chrome tab with "Share tab audio".
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: true,
             audio: true,
-            systemAudio: "exclude"
+            systemAudio: "exclude",
           });
-          voiceDebug.log("startScreenShare: got stream with tab/window audio (systemAudio: exclude)", {
-            videoTrackCount: stream.getVideoTracks().length,
-            audioTrackCount: stream.getAudioTracks().length
-          });
+          voiceDebug.log(
+            "startScreenShare: got stream with tab/window audio (systemAudio: exclude)",
+            {
+              videoTrackCount: stream.getVideoTracks().length,
+              audioTrackCount: stream.getAudioTracks().length,
+            },
+          );
         } catch (tabAudioErr) {
-          voiceDebug.warn("startScreenShare: tab/window audio also failed, falling back to video-only", {
-            error: tabAudioErr,
-            name: tabAudioErr?.name,
-            message: tabAudioErr?.message
-          });
+          voiceDebug.warn(
+            "startScreenShare: tab/window audio also failed, falling back to video-only",
+            {
+              error: tabAudioErr,
+              name: tabAudioErr?.name,
+              message: tabAudioErr?.message,
+            },
+          );
           try {
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: false,
+            });
             voiceDebug.log("startScreenShare: got fallback video-only stream", {
               videoTrackCount: stream.getVideoTracks().length,
-              audioTrackCount: stream.getAudioTracks().length
+              audioTrackCount: stream.getAudioTracks().length,
             });
           } catch {
-            voiceDebug.error("startScreenShare: fallback getDisplayMedia without audio also failed", { error: audioErr });
+            voiceDebug.error(
+              "startScreenShare: fallback getDisplayMedia without audio also failed",
+              { error: audioErr },
+            );
             throw audioErr;
           }
         }
       }
       if (!stream?.getVideoTracks()?.length) {
-        voiceDebug.warn("startScreenShare: no video tracks in stream, stopping tracks and aborting");
+        voiceDebug.warn(
+          "startScreenShare: no video tracks in stream, stopping tracks and aborting",
+        );
         stream?.getTracks().forEach((t) => t.stop());
         return;
       }
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
       stream.getVideoTracks()[0].onended = () => {
-        voiceDebug.log("startScreenShare: video track onended fired, stopping screen share");
+        voiceDebug.log(
+          "startScreenShare: video track onended fired, stopping screen share",
+        );
         stopScreenShare();
       };
       setIsSharingScreen(true);
       const videoTrack = stream.getVideoTracks()[0];
       const audioTrack = stream.getAudioTracks()[0] ?? null;
       voiceDebug.log("startScreenShare: prepared tracks for peers", {
-        videoTrack: videoTrack ? {
-          id: videoTrack.id,
-          enabled: videoTrack.enabled,
-          muted: videoTrack.muted,
-          readyState: videoTrack.readyState
-        } : null,
-        audioTrack: audioTrack ? {
-          id: audioTrack.id,
-          enabled: audioTrack.enabled,
-          muted: audioTrack.muted,
-          readyState: audioTrack.readyState
-        } : null
+        videoTrack: videoTrack
+          ? {
+              id: videoTrack.id,
+              enabled: videoTrack.enabled,
+              muted: videoTrack.muted,
+              readyState: videoTrack.readyState,
+            }
+          : null,
+        audioTrack: audioTrack
+          ? {
+              id: audioTrack.id,
+              enabled: audioTrack.enabled,
+              muted: audioTrack.muted,
+              readyState: audioTrack.readyState,
+            }
+          : null,
       });
       const peersToRenegotiate = [];
-      for (const [peerUserId, pc] of Object.entries(peerConnectionsRef.current)) {
+      for (const [peerUserId, pc] of Object.entries(
+        peerConnectionsRef.current,
+      )) {
         voiceDebug.log("startScreenShare: iterating peer for screen share", {
           peerUserId,
           connectionState: pc.connectionState,
@@ -2520,43 +2975,61 @@ function App() {
           senderKinds: pc.getSenders().map((s) => ({
             trackId: s.track?.id,
             kind: s.track?.kind,
-            readyState: s.track?.readyState
-          }))
+            readyState: s.track?.readyState,
+          })),
         });
         if (pc.connectionState !== "closed") {
-          const videoSender = pc.getSenders().find((s) => s.track?.kind === "video");
+          const videoSender = pc
+            .getSenders()
+            .find((s) => s.track?.kind === "video");
           if (videoSender) {
-            voiceDebug.log("startScreenShare: replacing existing video sender track with screen video", {
-              peerUserId,
-              senderTrackId: videoSender.track?.id,
-              newTrackId: videoTrack?.id
-            });
+            voiceDebug.log(
+              "startScreenShare: replacing existing video sender track with screen video",
+              {
+                peerUserId,
+                senderTrackId: videoSender.track?.id,
+                newTrackId: videoTrack?.id,
+              },
+            );
             videoSender.replaceTrack(videoTrack);
           } else {
-            voiceDebug.log("startScreenShare: adding new video track for screen share", {
-              peerUserId,
-              trackId: videoTrack?.id
-            });
+            voiceDebug.log(
+              "startScreenShare: adding new video track for screen share",
+              {
+                peerUserId,
+                trackId: videoTrack?.id,
+              },
+            );
             pc.addTrack(videoTrack, stream);
             peersToRenegotiate.push(Number(peerUserId));
           }
           if (audioTrack) {
-            const hasScreenAudio = pc.getSenders().some((s) => s.track?.id === audioTrack.id);
-            voiceDebug.log("startScreenShare: checking/adding screen audio sender", {
-              peerUserId,
-              hasScreenAudio,
-              audioTrackId: audioTrack.id
-            });
+            const hasScreenAudio = pc
+              .getSenders()
+              .some((s) => s.track?.id === audioTrack.id);
+            voiceDebug.log(
+              "startScreenShare: checking/adding screen audio sender",
+              {
+                peerUserId,
+                hasScreenAudio,
+                audioTrackId: audioTrack.id,
+              },
+            );
             if (!hasScreenAudio) {
               pc.addTrack(audioTrack, stream);
               peersToRenegotiate.push(Number(peerUserId));
             }
           } else {
-            voiceDebug.log("startScreenShare: no audio track present on screen stream", { peerUserId });
+            voiceDebug.log(
+              "startScreenShare: no audio track present on screen stream",
+              { peerUserId },
+            );
           }
         }
       }
-      voiceDebug.log("startScreenShare: renegotiating with peers", { peersToRenegotiate });
+      voiceDebug.log("startScreenShare: renegotiating with peers", {
+        peersToRenegotiate,
+      });
       for (const peerId of peersToRenegotiate) await sendOfferToPeer(peerId);
       voiceDebug.log("startScreenShare: completed");
     } catch (err) {
@@ -2572,21 +3045,25 @@ function App() {
       hasStream: !!stream,
       videoTrackCount: stream?.getVideoTracks().length || 0,
       audioTrackCount: stream?.getAudioTracks().length || 0,
-      screenAudioTrack: screenAudioTrack ? {
-        id: screenAudioTrack.id,
-        enabled: screenAudioTrack.enabled,
-        muted: screenAudioTrack.muted,
-        readyState: screenAudioTrack.readyState
-      } : null
+      screenAudioTrack: screenAudioTrack
+        ? {
+            id: screenAudioTrack.id,
+            enabled: screenAudioTrack.enabled,
+            muted: screenAudioTrack.muted,
+            readyState: screenAudioTrack.readyState,
+          }
+        : null,
     });
     if (stream) {
       for (const pc of Object.values(peerConnectionsRef.current)) {
         if (pc.connectionState !== "closed" && screenAudioTrack) {
-          const audioSender = pc.getSenders().find((s) => s.track?.id === screenAudioTrack.id);
+          const audioSender = pc
+            .getSenders()
+            .find((s) => s.track?.id === screenAudioTrack.id);
           voiceDebug.log("stopScreenShare: cleaning up screen audio sender", {
             connectionState: pc.connectionState,
             foundAudioSender: !!audioSender,
-            audioTrackId: screenAudioTrack.id
+            audioTrackId: screenAudioTrack.id,
           });
           if (audioSender) audioSender.replaceTrack(null);
         }
@@ -2599,13 +3076,15 @@ function App() {
     const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
     const peerIds = Object.keys(peerConnectionsRef.current).map(Number);
     voiceDebug.log("stopScreenShare: restoring camera video (if any)", {
-      cameraTrack: cameraTrack ? {
-        id: cameraTrack.id,
-        enabled: cameraTrack.enabled,
-        muted: cameraTrack.muted,
-        readyState: cameraTrack.readyState
-      } : null,
-      peerIds
+      cameraTrack: cameraTrack
+        ? {
+            id: cameraTrack.id,
+            enabled: cameraTrack.enabled,
+            muted: cameraTrack.muted,
+            readyState: cameraTrack.readyState,
+          }
+        : null,
+      peerIds,
     });
     for (const pc of Object.values(peerConnectionsRef.current)) {
       if (pc.connectionState !== "closed") {
@@ -2619,13 +3098,18 @@ function App() {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
       cameraStreamRef.current = stream;
       setLocalCameraStream(stream);
       setIsCameraEnabled(true);
       const track = stream.getVideoTracks()[0];
       const peersToRenegotiate = [];
-      for (const [peerUserId, pc] of Object.entries(peerConnectionsRef.current)) {
+      for (const [peerUserId, pc] of Object.entries(
+        peerConnectionsRef.current,
+      )) {
         if (pc.connectionState !== "closed") {
           const sender = pc.getSenders().find((s) => s.track?.kind === "video");
           if (sender) sender.replaceTrack(track);
@@ -2669,7 +3153,10 @@ function App() {
         user={currentUser}
         onComplete={(updatedProfile) => {
           if (updatedProfile) {
-            setProfiles((prev) => ({ ...prev, [updatedProfile.id]: updatedProfile }));
+            setProfiles((prev) => ({
+              ...prev,
+              [updatedProfile.id]: updatedProfile,
+            }));
           }
           setShowProfileSetup(false);
         }}
@@ -2684,7 +3171,7 @@ function App() {
           paddingLeft: "env(safe-area-inset-left)",
           paddingRight: "env(safe-area-inset-right)",
           height: "100dvh",
-          maxHeight: "100vh"
+          maxHeight: "100vh",
         }}
         onClickCapture={(e) => {
           const target = e.target;
@@ -2698,7 +3185,8 @@ function App() {
           if (!anchor) return;
           const href = (anchor.getAttribute("href") || "").trim();
           if (!href) return;
-          const isHttp = href.startsWith("http://") || href.startsWith("https://");
+          const isHttp =
+            href.startsWith("http://") || href.startsWith("https://");
           const isHash = href.startsWith("#");
           const isMailto = href.startsWith("mailto:");
           const isTel = href.startsWith("tel:");
@@ -2708,1092 +3196,1546 @@ function App() {
           }
         }}
       >
-      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0" data-tauri-drag-region>
-        <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((o) => !o)}
-            className="md:hidden inline-flex h-11 w-11 min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:active:bg-gray-700"
-            aria-label="Open menu"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <div className="flex flex-col min-w-0">
-            <span className="text-base font-semibold truncate">Meeps</span>
+        <header
+          className="relative z-50 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 sm:px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur min-w-0 shrink-0 h-12 min-h-12 md:h-auto md:min-h-0"
+          data-tauri-drag-region
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((o) => !o)}
+              className="md:hidden inline-flex h-11 w-11 min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:active:bg-gray-700"
+              aria-label="Open menu"
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            </button>
+            <div className="flex flex-col min-w-0">
+              <span className="text-base font-semibold truncate">Meeps</span>
+            </div>
           </div>
-        </div>
 
-        <div className="flex-1 min-w-0 min-h-[24px] self-stretch" data-tauri-drag-region aria-hidden="true" />
+          <div
+            className="flex-1 min-w-0 min-h-[24px] self-stretch"
+            data-tauri-drag-region
+            aria-hidden="true"
+          />
 
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0" data-tauri-drag-region="false">
-          {/* Desktop top tabs; mobile uses bottom nav for primary sections */}
-          <nav className="hidden md:flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800" aria-label="Tabs">
-            {isDesktop && (
+          <div
+            className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0"
+            data-tauri-drag-region="false"
+          >
+            {/* Desktop top tabs; mobile uses bottom nav for primary sections */}
+            <nav
+              className="hidden md:flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800"
+              aria-label="Tabs"
+            >
+              {isDesktop && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("dashboard")}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    activeTab === "dashboard"
+                      ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                      : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                  }`}
+                >
+                  Dashboard
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setActiveTab("dashboard")}
+                onClick={() => setActiveTab("chat")}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  activeTab === "dashboard"
+                  activeTab === "chat"
                     ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
                     : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
                 }`}
               >
-                Dashboard
+                Chat
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setActiveTab("chat")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === "chat"
-                  ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
-                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-              }`}
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("board")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === "board"
-                  ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
-                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-              }`}
-            >
-              Board
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("games")}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === "games"
-                  ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
-                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-              }`}
-            >
-              Games
-            </button>
-          </nav>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setUsersPanelOpen((o) => !o)}
-              className={`hidden md:inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border transition-colors ${
-                usersPanelOpen
-                  ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
-              }`}
-              aria-label={usersPanelOpen ? "Close users list" : "Open users list"}
-              aria-expanded={usersPanelOpen}
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            </button>
-            <div className="relative hidden md:block" ref={topMenuRef}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setTopMenuOpen((o) => !o);
-              }}
-              className="inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
-              aria-label="Menu"
-              aria-expanded={topMenuOpen}
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-              {topMenuOpen && (
-              <div
-                className="absolute right-0 top-full z-50 mt-0.5 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
-                role="menu"
+              <button
+                type="button"
+                onClick={() => setActiveTab("board")}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === "board"
+                    ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                }`}
               >
+                Board
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("games")}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === "games"
+                    ? "bg-white text-indigo-600 shadow dark:bg-gray-700 dark:text-indigo-300"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                }`}
+              >
+                Games
+              </button>
+            </nav>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setUsersPanelOpen((o) => !o)}
+                className={`hidden md:inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border transition-colors ${
+                  usersPanelOpen
+                    ? "border-indigo-300 bg-indigo-50 text-indigo-600 dark:border-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
+                }`}
+                aria-label={
+                  usersPanelOpen ? "Close users list" : "Open users list"
+                }
+                aria-expanded={usersPanelOpen}
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                  />
+                </svg>
+              </button>
+              <div className="relative hidden md:block" ref={topMenuRef}>
                 <button
                   type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setIsSettingsOpen(true);
-                    setTopMenuOpen(false);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTopMenuOpen((o) => !o);
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                  className="inline-flex h-9 w-9 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:active:bg-gray-700"
+                  aria-label="Menu"
+                  aria-expanded={topMenuOpen}
                 >
-                  <svg className="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 6h16M4 12h16M4 18h16"
+                    />
                   </svg>
-                  <span>Settings</span>
                 </button>
-                <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    handleLogout();
-                    setTopMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  <span>Logout</span>
-                </button>
+                {topMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full z-50 mt-0.5 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                    role="menu"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsSettingsOpen(true);
+                        setTopMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <svg
+                        className="h-4 w-4 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                      <span>Settings</span>
+                    </button>
+                    <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        handleLogout();
+                        setTopMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                        />
+                      </svg>
+                      <span>Logout</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+              {isTauri && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleTauriMinimize}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                    aria-label="Minimize"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M20 12H4"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTauriClose}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                    aria-label="Close"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </>
+              )}
             </div>
-            {isTauri && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleTauriMinimize}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                  aria-label="Minimize"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleTauriClose}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-                  aria-label="Close"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </>
-            )}
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Mobile sidebar backdrop */}
-      <div
-        role="presentation"
-        className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        style={{ top: "calc(48px + env(safe-area-inset-top))", bottom: "3.75rem" }}
-        onClick={() => setSidebarOpen(false)}
-        aria-hidden="true"
-      />
-      {/* Mobile users panel backdrop */}
-      <div
-        role="presentation"
-        className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${usersPanelOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
-        style={{ top: "calc(48px + env(safe-area-inset-top))", bottom: "3.75rem" }}
-        onClick={() => setUsersPanelOpen(false)}
-        aria-hidden="true"
-      />
-
-      <div className="flex min-h-0 min-w-0 flex-1 flex-row">
-        {/* On mobile this wrapper takes 0 flex space so main content fills the screen; sidebar overlays via fixed */}
+        {/* Mobile sidebar backdrop */}
         <div
-          className="flex-shrink-0 md:min-w-0 w-0 min-w-0 max-w-0 overflow-visible md:w-auto md:min-w-0 md:max-w-none"
-          aria-hidden={!sidebarOpen && !isDesktop}
-        >
-          <aside
-            className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 px-2 py-2 md:p-3 dark:border-gray-800 dark:bg-gray-900/95
+          role="presentation"
+          className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+          style={{
+            top: "calc(48px + env(safe-area-inset-top))",
+            bottom: "3.75rem",
+          }}
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+        {/* Mobile users panel backdrop */}
+        <div
+          role="presentation"
+          className={`fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden ${usersPanelOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+          style={{
+            top: "calc(48px + env(safe-area-inset-top))",
+            bottom: "3.75rem",
+          }}
+          onClick={() => setUsersPanelOpen(false)}
+          aria-hidden="true"
+        />
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-row">
+          {/* On mobile this wrapper takes 0 flex space so main content fills the screen; sidebar overlays via fixed */}
+          <div
+            className="flex-shrink-0 md:min-w-0 w-0 min-w-0 max-w-0 overflow-visible md:w-auto md:min-w-0 md:max-w-none"
+            aria-hidden={!sidebarOpen && !isDesktop}
+          >
+            <aside
+              className={`flex min-h-0 flex-col border-r border-gray-200 bg-white/95 px-2 py-2 md:p-3 dark:border-gray-800 dark:bg-gray-900/95
               fixed left-0 z-50 w-[85vw] max-w-[22rem] md:w-72 md:max-w-[20rem] top-[calc(3rem+env(safe-area-inset-top))] bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:bottom-auto transition-transform duration-200 ease-out
               md:relative md:top-0 md:h-full md:min-h-0 md:flex-shrink-0 md:transform-none
               pt-1 md:pt-3
               ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
-            style={{
-              ...(isDesktop
-                ? {
-                    width: sidebarWidthPx,
-                    minWidth: SIDEBAR_MIN_PX,
-                    maxWidth: SIDEBAR_MAX_PX,
-                    fontSize: `clamp(0.8125rem, 0.75rem + (${sidebarWidthPx - SIDEBAR_MIN_PX} / ${SIDEBAR_MAX_PX - SIDEBAR_MIN_PX}) * 0.125rem, 0.9375rem)`
-                  }
-                : {
-                    paddingLeft: "max(0.5rem, env(safe-area-inset-left))"
-                  })
-            }}
-          >
-          <div className="flex flex-shrink-0 justify-between items-center md:hidden mb-1">
-            <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Channels
-            </h2>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(false)}
-              className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
-              aria-label="Close menu"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1 mt-0 md:mt-0">
-            <section>
-              <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Text Channels
-              </h2>
-              <TextChannels
-                channels={TEXT_CHANNELS}
-                selectedChannelId={selectedChannelId}
-                unreadChannelIds={unreadChannelIds}
-                onSelectChannel={(id) => {
-                  setSelectedChannelId(id);
-                  setUnreadChannelIds((prev) => {
-                    const next = new Set(prev);
-                    next.delete(id);
-                    return next;
-                  });
-                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard" || activeTab === "users" || activeTab === "settings") {
-                    setActiveTab("chat");
-                  }
-                  setSidebarOpen(false);
-                }}
-              />
-            </section>
-
-            <section>
-              <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Voice
-              </h2>
-              <VoiceChannels
-                channels={VOICE_CHANNELS}
-                joinedChannelId={joinedVoiceChannelId}
-                channelParticipants={voiceChannelParticipants}
-                profiles={profiles}
-                speakingUserIds={speakingUserIds}
-                onOpenChannelView={(roomId) => {
-                  if (activeTab === "board" || activeTab === "games" || activeTab === "dashboard" || activeTab === "users" || activeTab === "settings") {
-                    setActiveTab("chat");
-                  }
-                  setVoiceChannelModalRoomId(roomId);
-                  setSidebarOpen(false);
-                }}
-                onJoinChannel={joinVoiceChannel}
-                onLeaveChannel={leaveVoiceChannel}
-              />
-              {joinedVoiceChannelId && (
-                <div
-                  className="mt-2 flex items-center justify-center rounded-lg border border-gray-200/80 bg-gray-100/90 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:border-gray-600/80 dark:bg-gray-800/90 dark:text-gray-300"
-                  role="status"
-                  aria-live="polite"
-                >
-                  {voiceConnectionStatus === "joining" && (
-                    <>
-                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-                      Joining…
-                    </>
-                  )}
-                  {voiceConnectionStatus === "getting_mic" && (
-                    <>
-                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-                      Getting microphone…
-                    </>
-                  )}
-                  {voiceConnectionStatus === "connecting" && (
-                    <>
-                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" />
-                      Making connection…
-                    </>
-                  )}
-                  {voiceConnectionStatus === "connected" && (
-                    <>
-                      <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      Connected
-                    </>
-                  )}
-                  {voiceConnectionStatus === "reconnecting" && (
-                    <>
-                      <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-                      Reconnecting…
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="mt-2">
-                <h3 className="mb-1.5 px-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                  In call
-                </h3>
-                <div className="flex flex-col gap-0.5">
-                  {(() => {
-                    const voiceChannelId = VOICE_CHANNELS[0]?.id;
-                    const myId = currentUser?.id ?? CURRENT_USER_ID;
-                    let inCallList;
-                    if (joinedVoiceChannelId) {
-                      inCallList = effectiveInCallParticipants;
-                    } else {
-                      inCallList = voiceChannelParticipants[voiceChannelId] || [];
+              style={{
+                ...(isDesktop
+                  ? {
+                      width: sidebarWidthPx,
+                      minWidth: SIDEBAR_MIN_PX,
+                      maxWidth: SIDEBAR_MAX_PX,
+                      fontSize: `clamp(0.8125rem, 0.75rem + (${sidebarWidthPx - SIDEBAR_MIN_PX} / ${SIDEBAR_MAX_PX - SIDEBAR_MIN_PX}) * 0.125rem, 0.9375rem)`,
                     }
-                    const showMuteSpeaking = !!joinedVoiceChannelId;
-                    return inCallList.map((p) => {
-                      const profile = profiles[p.id];
-                      const avatarUrl = profile?.avatarUrl || null;
-                      const bannerUrl = profile?.bannerUrl || null;
-                      const name = p.displayName || profile?.displayName || `User ${p.id}`;
-                      const initials = (name || "?")
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .slice(0, 2)
-                        .toUpperCase() || "?";
-                      const userIdStr = String(p.id);
-                      const perUserVolume = voiceUserVolumes[userIdStr] ?? 1;
-                      const showVolumeBadge = Math.abs(perUserVolume - 1) > 0.01;
-                      const isSpeaking = showMuteSpeaking && speakingUserIds.includes(String(p.id));
-                      const isMuted = showMuteSpeaking && participantMuted[String(p.id)] === true;
-                      const handleContextMenu = (e) => {
-                        if (!joinedVoiceChannelId || !isDesktop) return;
-                        e.preventDefault();
-                        setVoiceVolumeContext({
-                          userId: userIdStr,
-                          name,
-                          x: e.clientX,
-                          y: e.clientY
-                        });
-                      };
-                      return (
-                        <div
-                          key={p.id}
-                          className="group/call relative overflow-hidden rounded-lg"
-                          onContextMenu={handleContextMenu}
-                        >
-                          {bannerUrl && (
-                            <div className="pointer-events-none absolute inset-0">
-                              <img
-                                src={bannerUrl}
-                                alt=""
-                                className="h-full w-full object-cover opacity-70 transition-transform duration-300 ease-out group-hover/call:scale-105"
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/10" />
-                            </div>
-                          )}
-                          <div
-                            className={`relative flex items-center gap-2 rounded-lg px-2 py-1.5 ${
-                              bannerUrl
-                                ? "text-white hover:bg-white/5"
-                                : isSpeaking
-                                  ? "bg-emerald-100 dark:bg-emerald-900/30 text-gray-700 dark:text-gray-300"
-                                  : ""
-                            }`}
-                          >
-                            <div
-                              className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-medium ring-2 ${
-                                isSpeaking ? "ring-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 voice-speaking-glow" : "ring-gray-200 dark:ring-gray-600 bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white"
-                              }`}
-                            >
-                              {avatarUrl ? (
-                                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                              ) : (
-                                <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">{initials}</span>
-                              )}
-                              {isSpeaking && (
-                                <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white bg-emerald-500 dark:border-gray-900" title="Speaking" />
-                              )}
-                            </div>
-                            <span
-                              className={`min-w-0 flex-1 truncate text-sm ${bannerUrl ? "text-white" : "text-gray-700 dark:text-gray-300"}`}
-                              title={name}
-                            >
-                              {name}
-                            </span>
-                            {showVolumeBadge && (
-                              <span className="ml-2 flex-shrink-0 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-medium text-white/80">
-                                {Math.round(perUserVolume * 100)}%
-                              </span>
-                            )}
-                            {showMuteSpeaking && isMuted && (
-                              <span className="flex-shrink-0 text-red-400 dark:text-red-300" title="Muted">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                                </svg>
-                              </span>
-                            )}
-                            {showMuteSpeaking && String(p.id) === String(myId) && isDeafened && (
-                              <span className="flex-shrink-0 text-red-400 dark:text-red-300" title="Deafened">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
-                                </svg>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            </section>
-          </div>
-
-          {!joinedVoiceChannelId && (
-            <div className="mt-auto flex flex-shrink-0 flex-col border-t border-gray-200 dark:border-gray-700 pt-3">
-              <UserProfile
-                profile={currentUserProfile}
-                onSave={handleSaveProfile}
-                activity={presenceUsers?.find((u) => String(u.id) === String(currentUser?.id ?? CURRENT_USER_ID))?.activity}
-                userStatus={userStatus}
-                onUserStatusChange={handleUserStatusChange}
-                onLogout={handleLogout}
-              />
-            </div>
-          )}
-          {isDesktop && (
-            <div
-              role="separator"
-              aria-label="Resize sidebar"
-              className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize shrink-0 hover:bg-indigo-300/50 dark:hover:bg-indigo-500/30 active:bg-indigo-400/50 md:block"
-              style={{ touchAction: "none" }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                const r = resizeStateRef.current;
-                r.active = "sidebar";
-                r.startX = e.clientX;
-                r.startWidth = sidebarWidthPx;
-                r.lastSidebarPx = sidebarWidthPx;
-                r.lastUsersPx = usersPanelWidthPx;
-                document.body.style.cursor = "col-resize";
-                document.body.style.userSelect = "none";
+                  : {
+                      paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
+                    }),
               }}
-            />
-          )}
-          </aside>
-        </div>
-
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden w-full min-w-0">
-          {activeTab === "dashboard" && isDesktop ? (
-            <Dashboard onNavigate={setActiveTab} />
-          ) : activeTab === "board" ? (
-            <Board currentUser={currentUser} apiBase={apiBase} />
-          ) : activeTab === "games" ? (
-            <Games
-              dianaApiBase={dianaApiBase}
-              apiBase={apiBase}
-              token={localStorage.getItem("meeps_token")}
-              currentUser={currentUser}
-            />
-          ) : !isDesktop && activeTab === "settings" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2">
-              <SettingsModal
-                isOpen
-                inline
-                onClose={() => setActiveTab("chat")}
-                onOpenVoiceSettings={() => {
-                  setIsVoiceSettingsOpen(true);
-                }}
-                keybinds={keybinds}
-                onKeybindsChange={handleKeybindsChange}
-                isTauri={isTauri}
-                theme={theme}
-                onThemeChange={toggleTheme}
-                activityLoggingEnabled={currentUserProfile ? (currentUserProfile.activityLoggingEnabled !== false) : undefined}
-                onActivityLoggingChange={async (enabled) => {
-                  const userId = currentUser?.id ?? CURRENT_USER_ID;
-                  await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
-                }}
-                activityDetailLevel={currentUserProfile?.activityDetailLevel ?? "in_depth"}
-                onActivityDetailLevelChange={async (level) => {
-                  const userId = currentUser?.id ?? CURRENT_USER_ID;
-                  await handleSaveProfileForUser(userId, { activityDetailLevel: level });
-                }}
-                doNotDisturb={currentUserProfile?.doNotDisturb === true}
-                onDoNotDisturbChange={async (enabled) => {
-                  const userId = currentUser?.id ?? CURRENT_USER_ID;
-                  await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
-                }}
-                gamingOverlayEnabled={isTauri ? gamingOverlayEnabled : undefined}
-                onGamingOverlayChange={(enabled) => {
-                  setGamingOverlayEnabled(enabled);
-                  try {
-                    localStorage.setItem(GAMING_OVERLAY_KEY, enabled ? "true" : "false");
-                  } catch (_) {}
-                }}
-              />
-            </div>
-          ) : !isDesktop && activeTab === "users" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
-                <h1 className="text-base font-semibold truncate">Users</h1>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-                <UserList
-                  users={usersInDb}
-                  profiles={profiles}
-                  onUserClick={(user) => {
-                    setProfileModalAnchor("center");
-                    setSelectedUserForProfile(user);
-                  }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className={`flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-0.5 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0 -mt-1 sm:mt-0 ${
-                sidebarOpen && !isDesktop ? "hidden" : ""
-              }`}>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xl font-semibold truncate">
-                      # {selectedChannelId}
-                    </span>
-
-                  </div>
-
-                </div>
-              </div>
-
-              <MessageList
-                messages={channelMessages}
-                channelId={selectedChannelId}
-                currentUserName={currentUser.displayName || DEFAULT_USER_NAME}
-                currentUserId={currentUser?.id}
-                profiles={profiles}
-                senderNameToAvatar={senderNameToAvatar}
-                mentionSlugToName={mentionSlugToName}
-                onEditMessage={handleEditMessage}
-                onDeleteMessage={handleDeleteMessage}
-                onReaction={handleReaction}
-                replyToMessage={replyToMessage}
-                onReplyMessage={setReplyToMessage}
-                onLoadOlder={loadOlderMessages}
-                hasMoreOlder={hasMoreOlderMessages}
-                loadingOlder={loadingOlderMessages}
-                onSenderClick={(user) => {
-                  setProfileModalAnchor("center");
-                  setSelectedUserForProfile({ id: user.id, displayName: user.displayName || user.name });
-                }}
-              />
-
-              <div
-                className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 min-w-0"
-                style={{
-                  paddingBottom: isDesktop
-                    ? "env(safe-area-inset-bottom)"
-                    : "calc(env(safe-area-inset-bottom) + 3.75rem)"
-                }}
-              >
-                <MessageInput
-                  value={inputValue}
-                  onChange={setInputValue}
-                  onSend={handleSend}
-                  replyTo={replyToMessage}
-                  onClearReply={() => setReplyToMessage(null)}
-                  onGifClick={() => setIsGifModalOpen(true)}
-                  placeholder={`Message #${selectedChannelId}`}
-                  presenceUsers={presenceUsers}
-                  currentUser={currentUser}
-                  profiles={profiles}
-                  apiBase={apiBase}
-                />
-              </div>
-            </div>
-          )}
-        </main>
-
-        {/* hidden audio elements for remote peers – must always be mounted while in a call */}
-        <div className="sr-only">
-          {Object.entries(remoteStreams).map(([userId, stream]) => (
-            <audio
-              key={userId}
-              autoPlay
-              playsInline
-              ref={(el) => {
-                if (!el || !stream || typeof stream.getTracks !== "function") return;
-                const baseVolume = isDeafened ? 0 : voiceSettings.volume;
-                const perUserMultiplier = voiceUserVolumes[String(userId)] ?? 1;
-                const targetVolume = Math.max(0, Math.min(1, baseVolume * perUserMultiplier));
-                if (el.srcObject !== stream) {
-                  voiceDebug.log("Setting up audio element", {
-                    userId,
-                    hasStream: !!stream,
-                    audioTracks: stream.getAudioTracks().length,
-                    videoTracks: stream.getVideoTracks().length
-                  });
-                  el.srcObject = stream;
-                  voiceDebug.log("Audio element configured", { userId, volume: targetVolume, deafened: isDeafened, perUserMultiplier });
-                }
-                if (el.volume !== targetVolume) el.volume = targetVolume;
-                if (el.paused) {
-                  voiceDebug.log("Audio element paused, attempting to play", { userId });
-                  tryPlayRemoteAudio(el);
-                }
-              }}
-              onCanPlay={(e) => tryPlayRemoteAudio(e.currentTarget)}
-            />
-          ))}
-        </div>
-
-        {usersPanelOpen && (
-          <aside
-            className={`flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95
-              fixed right-0 top-[calc(3rem+env(safe-area-inset-top))] z-50 w-64 max-w-[85vw] shadow-lg
-              md:relative md:top-0 md:bottom-auto md:z-auto md:shadow-none md:flex-shrink-0 md:w-40 md:min-w-[8rem] md:max-w-[10rem]`}
-            style={isDesktop ? {
-              width: usersPanelWidthPx,
-              minWidth: USERS_PANEL_MIN_PX,
-              maxWidth: USERS_PANEL_MAX_PX,
-              fontSize: `clamp(0.8125rem, 0.75rem + (${usersPanelWidthPx - USERS_PANEL_MIN_PX} / ${USERS_PANEL_MAX_PX - USERS_PANEL_MIN_PX}) * 0.125rem, 0.9375rem)`
-            } : {
-              paddingRight: "max(0.5rem, env(safe-area-inset-right))",
-              bottom: "calc(3.75rem + env(safe-area-inset-bottom))"
-            }}
-          >
-            {isDesktop && (
-              <div
-                role="separator"
-                aria-label="Resize users panel"
-                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize shrink-0 hover:bg-indigo-300/50 dark:hover:bg-indigo-500/30 active:bg-indigo-400/50 z-10"
-                style={{ touchAction: "none" }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const r = resizeStateRef.current;
-                  r.active = "users";
-                  r.startX = e.clientX;
-                  r.startWidth = usersPanelWidthPx;
-                  r.lastUsersPx = usersPanelWidthPx;
-                  r.lastSidebarPx = sidebarWidthPx;
-                  document.body.style.cursor = "col-resize";
-                  document.body.style.userSelect = "none";
-                }}
-              />
-            )}
-            <section className="flex flex-col min-h-0 flex-1 overflow-hidden">
-              <div className="mb-1 flex items-center justify-between gap-1">
-                <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">
-                  Users
+            >
+              <div className="flex flex-shrink-0 justify-between items-center md:hidden mb-1">
+                <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Channels
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setUsersPanelOpen(false)}
-                  className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-                  aria-label="Close users list"
+                  onClick={() => setSidebarOpen(false)}
+                  className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Close menu"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 min-h-0 flex flex-col overflow-hidden pr-0.5">
-                <UserList
-                  users={usersInDb}
-                  profiles={profiles}
-                  onUserClick={(user) => {
-                    setProfileModalAnchor("center");
-                    setSelectedUserForProfile(user);
+
+              <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1 mt-0 md:mt-0">
+                <section>
+                  <h2 className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Text Channels
+                  </h2>
+                  <TextChannels
+                    channels={TEXT_CHANNELS}
+                    selectedChannelId={selectedChannelId}
+                    unreadChannelIds={unreadChannelIds}
+                    onSelectChannel={(id) => {
+                      setSelectedChannelId(id);
+                      setUnreadChannelIds((prev) => {
+                        const next = new Set(prev);
+                        next.delete(id);
+                        return next;
+                      });
+                      if (
+                        activeTab === "board" ||
+                        activeTab === "games" ||
+                        activeTab === "dashboard" ||
+                        activeTab === "users" ||
+                        activeTab === "settings"
+                      ) {
+                        setActiveTab("chat");
+                      }
+                      setSidebarOpen(false);
+                    }}
+                  />
+                </section>
+
+                <section>
+                  <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Voice
+                  </h2>
+                  <VoiceChannels
+                    channels={VOICE_CHANNELS}
+                    joinedChannelId={joinedVoiceChannelId}
+                    channelParticipants={voiceChannelParticipants}
+                    profiles={profiles}
+                    speakingUserIds={speakingUserIds}
+                    onOpenChannelView={(roomId) => {
+                      if (
+                        activeTab === "board" ||
+                        activeTab === "games" ||
+                        activeTab === "dashboard" ||
+                        activeTab === "users" ||
+                        activeTab === "settings"
+                      ) {
+                        setActiveTab("chat");
+                      }
+                      setVoiceChannelModalRoomId(roomId);
+                      setSidebarOpen(false);
+                    }}
+                    onJoinChannel={joinVoiceChannel}
+                    onLeaveChannel={leaveVoiceChannel}
+                  />
+                  {joinedVoiceChannelId && (
+                    <div
+                      className="mt-2 flex items-center justify-center rounded-lg border border-gray-200/80 bg-gray-100/90 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:border-gray-600/80 dark:bg-gray-800/90 dark:text-gray-300"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {voiceConnectionStatus === "joining" && (
+                        <>
+                          <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                          Joining…
+                        </>
+                      )}
+                      {voiceConnectionStatus === "getting_mic" && (
+                        <>
+                          <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                          Getting microphone…
+                        </>
+                      )}
+                      {voiceConnectionStatus === "connecting" && (
+                        <>
+                          <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" />
+                          Making connection…
+                        </>
+                      )}
+                      {voiceConnectionStatus === "connected" && (
+                        <>
+                          <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Connected
+                        </>
+                      )}
+                      {voiceConnectionStatus === "reconnecting" && (
+                        <>
+                          <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                          Reconnecting…
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-2">
+                    <h3 className="mb-1.5 px-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                      In call
+                    </h3>
+                    <div className="flex flex-col gap-0.5">
+                      {(() => {
+                        const voiceChannelId = VOICE_CHANNELS[0]?.id;
+                        const myId = currentUser?.id ?? CURRENT_USER_ID;
+                        let inCallList;
+                        if (joinedVoiceChannelId) {
+                          inCallList = effectiveInCallParticipants;
+                        } else {
+                          inCallList =
+                            voiceChannelParticipants[voiceChannelId] || [];
+                        }
+                        const showMuteSpeaking = !!joinedVoiceChannelId;
+                        return inCallList.map((p) => {
+                          const profile = profiles[p.id];
+                          const avatarUrl = profile?.avatarUrl || null;
+                          const bannerUrl = profile?.bannerUrl || null;
+                          const name =
+                            p.displayName ||
+                            profile?.displayName ||
+                            `User ${p.id}`;
+                          const initials =
+                            (name || "?")
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase() || "?";
+                          const userIdStr = String(p.id);
+                          const perUserVolume =
+                            voiceUserVolumes[userIdStr] ?? 1;
+                          const showVolumeBadge =
+                            Math.abs(perUserVolume - 1) > 0.01;
+                          const isSpeaking =
+                            showMuteSpeaking &&
+                            speakingUserIds.includes(String(p.id));
+                          const isMuted =
+                            showMuteSpeaking &&
+                            participantMuted[String(p.id)] === true;
+                          const handleContextMenu = (e) => {
+                            if (!joinedVoiceChannelId || !isDesktop) return;
+                            e.preventDefault();
+                            setVoiceVolumeContext({
+                              userId: userIdStr,
+                              name,
+                              x: e.clientX,
+                              y: e.clientY,
+                            });
+                          };
+                          return (
+                            <div
+                              key={p.id}
+                              className="group/call relative overflow-hidden rounded-lg"
+                              onContextMenu={handleContextMenu}
+                            >
+                              {bannerUrl && (
+                                <div className="pointer-events-none absolute inset-0">
+                                  <img
+                                    src={bannerUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover opacity-70 transition-transform duration-300 ease-out group-hover/call:scale-105"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/10" />
+                                </div>
+                              )}
+                              <div
+                                className={`relative flex items-center gap-2 rounded-lg px-2 py-1.5 ${
+                                  bannerUrl
+                                    ? "text-white hover:bg-white/5"
+                                    : isSpeaking
+                                      ? "bg-emerald-100 dark:bg-emerald-900/30 text-gray-700 dark:text-gray-300"
+                                      : ""
+                                }`}
+                              >
+                                <div
+                                  className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-medium ring-2 ${
+                                    isSpeaking
+                                      ? "ring-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 voice-speaking-glow"
+                                      : "ring-gray-200 dark:ring-gray-600 bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white"
+                                  }`}
+                                >
+                                  {avatarUrl ? (
+                                    <img
+                                      src={avatarUrl}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">
+                                      {initials}
+                                    </span>
+                                  )}
+                                  {isSpeaking && (
+                                    <span
+                                      className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-white bg-emerald-500 dark:border-gray-900"
+                                      title="Speaking"
+                                    />
+                                  )}
+                                </div>
+                                <span
+                                  className={`min-w-0 flex-1 truncate text-sm ${bannerUrl ? "text-white" : "text-gray-700 dark:text-gray-300"}`}
+                                  title={name}
+                                >
+                                  {name}
+                                </span>
+                                {showVolumeBadge && (
+                                  <span className="ml-2 flex-shrink-0 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-medium text-white/80">
+                                    {Math.round(perUserVolume * 100)}%
+                                  </span>
+                                )}
+                                {showMuteSpeaking && isMuted && (
+                                  <span
+                                    className="flex-shrink-0 text-red-400 dark:text-red-300"
+                                    title="Muted"
+                                  >
+                                    <svg
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                                      />
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                                      />
+                                    </svg>
+                                  </span>
+                                )}
+                                {showMuteSpeaking &&
+                                  String(p.id) === String(myId) &&
+                                  isDeafened && (
+                                    <span
+                                      className="flex-shrink-0 text-red-400 dark:text-red-300"
+                                      title="Deafened"
+                                    >
+                                      <svg
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M3 3l18 18"
+                                        />
+                                      </svg>
+                                    </span>
+                                  )}
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              {!joinedVoiceChannelId && (
+                <div className="mt-auto flex flex-shrink-0 flex-col border-t border-gray-200 dark:border-gray-700 pt-3">
+                  <UserProfile
+                    profile={currentUserProfile}
+                    onSave={handleSaveProfile}
+                    activity={
+                      presenceUsers?.find(
+                        (u) =>
+                          String(u.id) ===
+                          String(currentUser?.id ?? CURRENT_USER_ID),
+                      )?.activity
+                    }
+                    userStatus={userStatus}
+                    onUserStatusChange={handleUserStatusChange}
+                    onLogout={handleLogout}
+                  />
+                </div>
+              )}
+              {isDesktop && (
+                <div
+                  role="separator"
+                  aria-label="Resize sidebar"
+                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize shrink-0 hover:bg-indigo-300/50 dark:hover:bg-indigo-500/30 active:bg-indigo-400/50 md:block"
+                  style={{ touchAction: "none" }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    const r = resizeStateRef.current;
+                    r.active = "sidebar";
+                    r.startX = e.clientX;
+                    r.startWidth = sidebarWidthPx;
+                    r.lastSidebarPx = sidebarWidthPx;
+                    r.lastUsersPx = usersPanelWidthPx;
+                    document.body.style.cursor = "col-resize";
+                    document.body.style.userSelect = "none";
+                  }}
+                />
+              )}
+            </aside>
+          </div>
+
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-50/60 dark:bg-gray-950/70 overflow-hidden w-full min-w-0">
+            {activeTab === "dashboard" && isDesktop ? (
+              <Dashboard onNavigate={setActiveTab} />
+            ) : activeTab === "board" ? (
+              <Board currentUser={currentUser} apiBase={apiBase} />
+            ) : activeTab === "games" ? (
+              <Games
+                dianaApiBase={dianaApiBase}
+                apiBase={apiBase}
+                token={localStorage.getItem("meeps_token")}
+                currentUser={currentUser}
+              />
+            ) : !isDesktop && activeTab === "settings" ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2">
+                <SettingsModal
+                  isOpen
+                  inline
+                  onClose={() => setActiveTab("chat")}
+                  onOpenVoiceSettings={() => {
+                    setIsVoiceSettingsOpen(true);
+                  }}
+                  keybinds={keybinds}
+                  onKeybindsChange={handleKeybindsChange}
+                  isTauri={isTauri}
+                  theme={theme}
+                  onThemeChange={toggleTheme}
+                  activityLoggingEnabled={
+                    currentUserProfile
+                      ? currentUserProfile.activityLoggingEnabled !== false
+                      : undefined
+                  }
+                  onActivityLoggingChange={async (enabled) => {
+                    const userId = currentUser?.id ?? CURRENT_USER_ID;
+                    await handleSaveProfileForUser(userId, {
+                      activityLoggingEnabled: enabled,
+                    });
+                  }}
+                  activityDetailLevel={
+                    currentUserProfile?.activityDetailLevel ?? "in_depth"
+                  }
+                  onActivityDetailLevelChange={async (level) => {
+                    const userId = currentUser?.id ?? CURRENT_USER_ID;
+                    await handleSaveProfileForUser(userId, {
+                      activityDetailLevel: level,
+                    });
+                  }}
+                  doNotDisturb={currentUserProfile?.doNotDisturb === true}
+                  onDoNotDisturbChange={async (enabled) => {
+                    const userId = currentUser?.id ?? CURRENT_USER_ID;
+                    await handleSaveProfileForUser(userId, {
+                      doNotDisturb: enabled,
+                    });
+                  }}
+                  gamingOverlayEnabled={
+                    isTauri ? gamingOverlayEnabled : undefined
+                  }
+                  onGamingOverlayChange={(enabled) => {
+                    setGamingOverlayEnabled(enabled);
+                    try {
+                      localStorage.setItem(
+                        GAMING_OVERLAY_KEY,
+                        enabled ? "true" : "false",
+                      );
+                    } catch (_) {}
                   }}
                 />
               </div>
-            </section>
-          </aside>
-        )}
-      </div>
+            ) : !isDesktop && activeTab === "users" ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0">
+                  <h1 className="text-base font-semibold truncate">Users</h1>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+                  <UserList
+                    users={usersInDb}
+                    profiles={profiles}
+                    onUserClick={(user) => {
+                      setProfileModalAnchor("center");
+                      setSelectedUserForProfile(user);
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div
+                  className={`flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-3 py-0.5 sm:px-4 sm:py-3 dark:border-gray-800 min-w-0 -mt-1 sm:mt-0 ${
+                    sidebarOpen && !isDesktop ? "hidden" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xl font-semibold truncate">
+                        # {selectedChannelId}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-      {/* Voice control bar when in a call - bottom left, flexes with sidebar width */}
-      {joinedVoiceChannelId && (
-        <div
-          className="fixed bottom-6 md:bottom-8 z-50 flex justify-center transition-[width] duration-150 ease-out"
-          style={{
-            left: 0,
-            width: sidebarWidthPx,
-            minWidth: isDesktop ? SIDEBAR_MIN_PX : undefined,
-            maxWidth: isDesktop ? SIDEBAR_MAX_PX : undefined,
-            paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
-            paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
-            paddingRight: "max(0.5rem, env(safe-area-inset-right))"
-          }}
-        >
-          <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 md:gap-1.5 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 md:px-3 md:py-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
-          <button
-            type="button"
-            onClick={toggleMute}
-            className={`rounded-xl p-3 md:p-3.5 transition-colors ${
-              participantMuted[currentUser?.id ?? CURRENT_USER_ID]
-                ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            }`}
-            aria-label={participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? "Unmute" : "Mute"}
-          >
-            {participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? (
-              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
-              </svg>
-            ) : (
-              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-              </svg>
+                <MessageList
+                  messages={channelMessages}
+                  channelId={selectedChannelId}
+                  currentUserName={currentUser.displayName || DEFAULT_USER_NAME}
+                  currentUserId={currentUser?.id}
+                  profiles={profiles}
+                  senderNameToAvatar={senderNameToAvatar}
+                  mentionSlugToName={mentionSlugToName}
+                  onEditMessage={handleEditMessage}
+                  onDeleteMessage={handleDeleteMessage}
+                  onReaction={handleReaction}
+                  replyToMessage={replyToMessage}
+                  onReplyMessage={setReplyToMessage}
+                  onLoadOlder={loadOlderMessages}
+                  hasMoreOlder={hasMoreOlderMessages}
+                  loadingOlder={loadingOlderMessages}
+                  onSenderClick={(user) => {
+                    setProfileModalAnchor("center");
+                    setSelectedUserForProfile({
+                      id: user.id,
+                      displayName: user.displayName || user.name,
+                    });
+                  }}
+                />
+
+                <div
+                  className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 min-w-0"
+                  style={{
+                    paddingBottom: isDesktop
+                      ? "env(safe-area-inset-bottom)"
+                      : "calc(env(safe-area-inset-bottom) + 3.75rem)",
+                  }}
+                >
+                  <MessageInput
+                    value={inputValue}
+                    onChange={setInputValue}
+                    onSend={handleSend}
+                    replyTo={replyToMessage}
+                    onClearReply={() => setReplyToMessage(null)}
+                    onGifClick={() => setIsGifModalOpen(true)}
+                    placeholder={`Message #${selectedChannelId}`}
+                    presenceUsers={presenceUsers}
+                    currentUser={currentUser}
+                    profiles={profiles}
+                    apiBase={apiBase}
+                  />
+                </div>
+              </div>
             )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsDeafened((d) => !d)}
-            className={`rounded-xl p-3 md:p-3.5 transition-colors ${
-              isDeafened
-                ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            }`}
-            aria-label={isDeafened ? "Undeafen" : "Deafen"}
-          >
-            {isDeafened ? (
-              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
-              </svg>
-            ) : (
-              <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z" />
-              </svg>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              leaveVoiceChannel();
-              setVoiceChannelModalRoomId(null);
-            }}
-            className="rounded-xl bg-red-100 p-3 md:p-3.5 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
-            aria-label="Leave call"
-          >
-            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 3l-2 2m0 0l-2 2m2-2l2-2m-2 2l-2-2" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setProfileModalAnchor("bottom-left");
-              setSelectedUserForProfile(currentUser ? { id: currentUser.id ?? CURRENT_USER_ID, displayName: currentUser.displayName } : { id: CURRENT_USER_ID, displayName: "Meeps User" });
-            }}
-            className="rounded-xl p-3 md:p-3.5 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            aria-label="Profile"
-          >
-            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="rounded-xl p-3 md:p-3.5 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            aria-label="Settings"
-          >
-            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
+          </main>
+
+          {/* hidden audio elements for remote peers – must always be mounted while in a call */}
+          <div className="sr-only">
+            {Object.entries(remoteStreams).map(([userId, stream]) => (
+              <audio
+                key={userId}
+                autoPlay
+                playsInline
+                ref={(el) => {
+                  if (!el || !stream || typeof stream.getTracks !== "function")
+                    return;
+                  const baseVolume = isDeafened ? 0 : voiceSettings.volume;
+                  const perUserMultiplier =
+                    voiceUserVolumes[String(userId)] ?? 1;
+                  const targetVolume = Math.max(
+                    0,
+                    Math.min(1, baseVolume * perUserMultiplier),
+                  );
+                  if (el.srcObject !== stream) {
+                    voiceDebug.log("Setting up audio element", {
+                      userId,
+                      hasStream: !!stream,
+                      audioTracks: stream.getAudioTracks().length,
+                      videoTracks: stream.getVideoTracks().length,
+                    });
+                    el.srcObject = stream;
+                    voiceDebug.log("Audio element configured", {
+                      userId,
+                      volume: targetVolume,
+                      deafened: isDeafened,
+                      perUserMultiplier,
+                    });
+                  }
+                  if (el.volume !== targetVolume) el.volume = targetVolume;
+                  if (el.paused) {
+                    voiceDebug.log("Audio element paused, attempting to play", {
+                      userId,
+                    });
+                    tryPlayRemoteAudio(el);
+                  }
+                }}
+                onCanPlay={(e) => tryPlayRemoteAudio(e.currentTarget)}
+              />
+            ))}
           </div>
+
+          {usersPanelOpen && (
+            <aside
+              className={`flex min-h-0 flex-col border-l border-gray-200 bg-white/95 p-2 dark:border-gray-800 dark:bg-gray-900/95
+              fixed right-0 top-[calc(3rem+env(safe-area-inset-top))] z-50 w-64 max-w-[85vw] shadow-lg
+              md:relative md:top-0 md:bottom-auto md:z-auto md:shadow-none md:flex-shrink-0 md:w-40 md:min-w-[8rem] md:max-w-[10rem]`}
+              style={
+                isDesktop
+                  ? {
+                      width: usersPanelWidthPx,
+                      minWidth: USERS_PANEL_MIN_PX,
+                      maxWidth: USERS_PANEL_MAX_PX,
+                      fontSize: `clamp(0.8125rem, 0.75rem + (${usersPanelWidthPx - USERS_PANEL_MIN_PX} / ${USERS_PANEL_MAX_PX - USERS_PANEL_MIN_PX}) * 0.125rem, 0.9375rem)`,
+                    }
+                  : {
+                      paddingRight: "max(0.5rem, env(safe-area-inset-right))",
+                      bottom: "calc(3.75rem + env(safe-area-inset-bottom))",
+                    }
+              }
+            >
+              {isDesktop && (
+                <div
+                  role="separator"
+                  aria-label="Resize users panel"
+                  className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize shrink-0 hover:bg-indigo-300/50 dark:hover:bg-indigo-500/30 active:bg-indigo-400/50 z-10"
+                  style={{ touchAction: "none" }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    const r = resizeStateRef.current;
+                    r.active = "users";
+                    r.startX = e.clientX;
+                    r.startWidth = usersPanelWidthPx;
+                    r.lastUsersPx = usersPanelWidthPx;
+                    r.lastSidebarPx = sidebarWidthPx;
+                    document.body.style.cursor = "col-resize";
+                    document.body.style.userSelect = "none";
+                  }}
+                />
+              )}
+              <section className="flex flex-col min-h-0 flex-1 overflow-hidden">
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">
+                    Users
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setUsersPanelOpen(false)}
+                    className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                    aria-label="Close users list"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden pr-0.5">
+                  <UserList
+                    users={usersInDb}
+                    profiles={profiles}
+                    onUserClick={(user) => {
+                      setProfileModalAnchor("center");
+                      setSelectedUserForProfile(user);
+                    }}
+                  />
+                </div>
+              </section>
+            </aside>
+          )}
         </div>
-      )}
 
-      {/* Mobile bottom navigation for primary sections */}
-      {!isDesktop && (
-        <nav
-          className="fixed inset-x-0 bottom-0 z-40 md:hidden border-t border-gray-200 bg-white dark:bg-gray-900 px-2 pt-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.22)] dark:border-gray-800"
-          style={{
-            /* In PWA standalone, no browser UI—use minimal padding. In browser, extra padding leaves room for Safari's bottom bar. */
-            paddingBottom: isStandalone
-              ? "env(safe-area-inset-bottom, 0px)"
-              : "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)"
-          }}
-          aria-label="Primary"
-        >
-          <div className="mx-auto flex max-w-xl items-stretch justify-around gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("chat");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
-                activeTab === "chat"
-                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-              }`}
-            >
-              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h6m-6 4h3M5 5a2 2 0 012-2h10a2 2 0 012 2v9.5a2.5 2.5 0 01-2.5 2.5H10l-3.293 3.293A1 1 0 015 19.586V5z" />
-              </svg>
-              <span>Chat</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("board");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
-                activeTab === "board"
-                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-              }`}
-            >
-              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h3v7H4V6zm0 7h5v7H6a2 2 0 01-2-2v-5zm7-9h5a2 2 0 012 2v5h-7V4zm0 9h7v5a2 2 0 01-2 2h-5v-7z" />
-              </svg>
-              <span>Board</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("games");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
-                activeTab === "games"
-                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-              }`}
-            >
-              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8a3 3 0 013-3h8a3 3 0 013 3v5a4 4 0 01-4 4h-1.382a1 1 0 00-.723.276L11 20l-1.895-1.724A1 1 0 008.382 17H7a4 4 0 01-4-4V8z" />
-              </svg>
-              <span>Games</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("settings");
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
-                activeTab === "settings"
-                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-              }`}
-            >
-              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span>Settings</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("users");
-                setUsersPanelOpen(false);
-                setSidebarOpen(false);
-              }}
-              className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
-                activeTab === "users"
-                  ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-              }`}
-            >
-              <svg className="mb-0.5 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7zM6.5 20a5.5 5.5 0 0111 0M4 9.5A2.5 2.5 0 119 9.5 2.5 2.5 0 014 9.5zM3 20a4 4 0 017.446-1.641M15 10.5A2.5 2.5 0 1119.999 10.5 2.5 2.5 0 0115 10.5zm1.554 7.859A4 4 0 0121 20" />
-              </svg>
-              <span>Users</span>
-            </button>
+        {/* Voice control bar when in a call - bottom left, flexes with sidebar width */}
+        {joinedVoiceChannelId && (
+          <div
+            className="fixed bottom-6 md:bottom-8 z-50 flex justify-center transition-[width] duration-150 ease-out"
+            style={{
+              left: 0,
+              width: sidebarWidthPx,
+              minWidth: isDesktop ? SIDEBAR_MIN_PX : undefined,
+              maxWidth: isDesktop ? SIDEBAR_MAX_PX : undefined,
+              paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
+              paddingLeft: "max(0.5rem, env(safe-area-inset-left))",
+              paddingRight: "max(0.5rem, env(safe-area-inset-right))",
+            }}
+          >
+            <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 md:gap-1.5 rounded-2xl border border-gray-200 bg-white/95 px-2 py-2 md:px-3 md:py-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+              <button
+                type="button"
+                onClick={toggleMute}
+                className={`rounded-xl p-3 md:p-3.5 transition-colors ${
+                  participantMuted[currentUser?.id ?? CURRENT_USER_ID]
+                    ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                }`}
+                aria-label={
+                  participantMuted[currentUser?.id ?? CURRENT_USER_ID]
+                    ? "Unmute"
+                    : "Mute"
+                }
+              >
+                {participantMuted[currentUser?.id ?? CURRENT_USER_ID] ? (
+                  <svg
+                    className="h-5 w-5 md:h-6 md:w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 3l18 18"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-5 w-5 md:h-6 md:w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+                    />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDeafened((d) => !d)}
+                className={`rounded-xl p-3 md:p-3.5 transition-colors ${
+                  isDeafened
+                    ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                }`}
+                aria-label={isDeafened ? "Undeafen" : "Deafen"}
+              >
+                {isDeafened ? (
+                  <svg
+                    className="h-5 w-5 md:h-6 md:w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 3l18 18"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-5 w-5 md:h-6 md:w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 12a8 8 0 018-8V4a8 8 0 00-8 8h2c0-3.314 2.686-6 6-6s6 2.686 6 6h2a8 8 0 00-8-8v.001a8 8 0 00-8 8v8a2 2 0 002 2h2a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2V12z"
+                    />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  leaveVoiceChannel();
+                  setVoiceChannelModalRoomId(null);
+                }}
+                className="rounded-xl bg-red-100 p-3 md:p-3.5 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-900/60"
+                aria-label="Leave call"
+              >
+                <svg
+                  className="h-5 w-5 md:h-6 md:w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 3l-2 2m0 0l-2 2m2-2l2-2m-2 2l-2-2"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalAnchor("bottom-left");
+                  setSelectedUserForProfile(
+                    currentUser
+                      ? {
+                          id: currentUser.id ?? CURRENT_USER_ID,
+                          displayName: currentUser.displayName,
+                        }
+                      : { id: CURRENT_USER_ID, displayName: "Meeps User" },
+                  );
+                }}
+                className="rounded-xl p-3 md:p-3.5 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                aria-label="Profile"
+              >
+                <svg
+                  className="h-5 w-5 md:h-6 md:w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                className="rounded-xl p-3 md:p-3.5 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                aria-label="Settings"
+              >
+                <svg
+                  className="h-5 w-5 md:h-6 md:w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
-        </nav>
-      )}
+        )}
 
-      <GifPickerModal
-        isOpen={isGifModalOpen}
-        onClose={() => setIsGifModalOpen(false)}
-        onSelectGif={handleSelectGif}
-        apiBase={apiBase}
-      />
-      {isDesktop && (
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          onOpenVoiceSettings={() => {
-            setIsSettingsOpen(false);
-            setIsVoiceSettingsOpen(true);
-          }}
-          keybinds={keybinds}
-          onKeybindsChange={handleKeybindsChange}
-          isTauri={isTauri}
-          theme={theme}
-          onThemeChange={toggleTheme}
-          activityLoggingEnabled={currentUserProfile ? (currentUserProfile.activityLoggingEnabled !== false) : undefined}
-          onActivityLoggingChange={async (enabled) => {
-            const userId = currentUser?.id ?? CURRENT_USER_ID;
-            await handleSaveProfileForUser(userId, { activityLoggingEnabled: enabled });
-          }}
-          activityDetailLevel={currentUserProfile?.activityDetailLevel ?? "in_depth"}
-          onActivityDetailLevelChange={async (level) => {
-            const userId = currentUser?.id ?? CURRENT_USER_ID;
-            await handleSaveProfileForUser(userId, { activityDetailLevel: level });
-          }}
-          doNotDisturb={currentUserProfile?.doNotDisturb === true}
-          onDoNotDisturbChange={async (enabled) => {
-            const userId = currentUser?.id ?? CURRENT_USER_ID;
-            await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
-          }}
-          gamingOverlayEnabled={isTauri ? gamingOverlayEnabled : undefined}
-          onGamingOverlayChange={(enabled) => {
-            setGamingOverlayEnabled(enabled);
-            try {
-              localStorage.setItem(GAMING_OVERLAY_KEY, enabled ? "true" : "false");
-            } catch (_) {}
+        {/* Mobile bottom navigation for primary sections */}
+        {!isDesktop && (
+          <nav
+            className="fixed inset-x-0 bottom-0 z-40 md:hidden border-t border-gray-200 bg-white dark:bg-gray-900 px-2 pt-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.22)] dark:border-gray-800"
+            style={{
+              /* In PWA standalone, no browser UI—use minimal padding. In browser, extra padding leaves room for Safari's bottom bar. */
+              paddingBottom: isStandalone
+                ? "env(safe-area-inset-bottom, 0px)"
+                : "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)",
+            }}
+            aria-label="Primary"
+          >
+            <div className="mx-auto flex max-w-xl items-stretch justify-around gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("chat");
+                  setSidebarOpen(false);
+                }}
+                className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                  activeTab === "chat"
+                    ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                    : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                }`}
+              >
+                <svg
+                  className="mb-0.5 h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 8h10M7 12h6m-6 4h3M5 5a2 2 0 012-2h10a2 2 0 012 2v9.5a2.5 2.5 0 01-2.5 2.5H10l-3.293 3.293A1 1 0 015 19.586V5z"
+                  />
+                </svg>
+                <span>Chat</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("board");
+                  setSidebarOpen(false);
+                }}
+                className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                  activeTab === "board"
+                    ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                    : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                }`}
+              >
+                <svg
+                  className="mb-0.5 h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6a2 2 0 012-2h3v7H4V6zm0 7h5v7H6a2 2 0 01-2-2v-5zm7-9h5a2 2 0 012 2v5h-7V4zm0 9h7v5a2 2 0 01-2 2h-5v-7z"
+                  />
+                </svg>
+                <span>Board</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("games");
+                  setSidebarOpen(false);
+                }}
+                className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                  activeTab === "games"
+                    ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                    : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                }`}
+              >
+                <svg
+                  className="mb-0.5 h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 8a3 3 0 013-3h8a3 3 0 013 3v5a4 4 0 01-4 4h-1.382a1 1 0 00-.723.276L11 20l-1.895-1.724A1 1 0 008.382 17H7a4 4 0 01-4-4V8z"
+                  />
+                </svg>
+                <span>Games</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("settings");
+                  setSidebarOpen(false);
+                }}
+                className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                  activeTab === "settings"
+                    ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                    : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                }`}
+              >
+                <svg
+                  className="mb-0.5 h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                <span>Settings</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("users");
+                  setUsersPanelOpen(false);
+                  setSidebarOpen(false);
+                }}
+                className={`flex flex-1 flex-col items-center justify-center rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
+                  activeTab === "users"
+                    ? "bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/40 dark:text-indigo-200"
+                    : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                }`}
+              >
+                <svg
+                  className="mb-0.5 h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7zM6.5 20a5.5 5.5 0 0111 0M4 9.5A2.5 2.5 0 119 9.5 2.5 2.5 0 014 9.5zM3 20a4 4 0 017.446-1.641M15 10.5A2.5 2.5 0 1119.999 10.5 2.5 2.5 0 0115 10.5zm1.554 7.859A4 4 0 0121 20"
+                  />
+                </svg>
+                <span>Users</span>
+              </button>
+            </div>
+          </nav>
+        )}
+
+        <GifPickerModal
+          isOpen={isGifModalOpen}
+          onClose={() => setIsGifModalOpen(false)}
+          onSelectGif={handleSelectGif}
+          apiBase={apiBase}
+        />
+        {isDesktop && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            onOpenVoiceSettings={() => {
+              setIsSettingsOpen(false);
+              setIsVoiceSettingsOpen(true);
+            }}
+            keybinds={keybinds}
+            onKeybindsChange={handleKeybindsChange}
+            isTauri={isTauri}
+            theme={theme}
+            onThemeChange={toggleTheme}
+            activityLoggingEnabled={
+              currentUserProfile
+                ? currentUserProfile.activityLoggingEnabled !== false
+                : undefined
+            }
+            onActivityLoggingChange={async (enabled) => {
+              const userId = currentUser?.id ?? CURRENT_USER_ID;
+              await handleSaveProfileForUser(userId, {
+                activityLoggingEnabled: enabled,
+              });
+            }}
+            activityDetailLevel={
+              currentUserProfile?.activityDetailLevel ?? "in_depth"
+            }
+            onActivityDetailLevelChange={async (level) => {
+              const userId = currentUser?.id ?? CURRENT_USER_ID;
+              await handleSaveProfileForUser(userId, {
+                activityDetailLevel: level,
+              });
+            }}
+            doNotDisturb={currentUserProfile?.doNotDisturb === true}
+            onDoNotDisturbChange={async (enabled) => {
+              const userId = currentUser?.id ?? CURRENT_USER_ID;
+              await handleSaveProfileForUser(userId, { doNotDisturb: enabled });
+            }}
+            gamingOverlayEnabled={isTauri ? gamingOverlayEnabled : undefined}
+            onGamingOverlayChange={(enabled) => {
+              setGamingOverlayEnabled(enabled);
+              try {
+                localStorage.setItem(
+                  GAMING_OVERLAY_KEY,
+                  enabled ? "true" : "false",
+                );
+              } catch (_) {}
+            }}
+          />
+        )}
+        <VoiceSettingsModal
+          isOpen={isVoiceSettingsOpen}
+          onClose={() => setIsVoiceSettingsOpen(false)}
+          voiceSettings={voiceSettings}
+          onSave={(next) => {
+            setVoiceSettings((prev) => ({ ...prev, ...next }));
+            setIsVoiceSettingsOpen(false);
           }}
         />
-      )}
-      <VoiceSettingsModal
-        isOpen={isVoiceSettingsOpen}
-        onClose={() => setIsVoiceSettingsOpen(false)}
-        voiceSettings={voiceSettings}
-        onSave={(next) => {
-          setVoiceSettings((prev) => ({ ...prev, ...next }));
-          setIsVoiceSettingsOpen(false);
-        }}
-      />
-      <VoiceChannelModal
-        isOpen={voiceChannelModalRoomId != null}
-        onClose={() => setVoiceChannelModalRoomId(null)}
-        channel={VOICE_CHANNELS.find((c) => c.id === voiceChannelModalRoomId) || null}
-        participants={voiceChannelModalRoomId ? (joinedVoiceChannelId === voiceChannelModalRoomId ? effectiveInCallParticipants : (voiceChannelParticipants[voiceChannelModalRoomId] || [])) : []}
-        profiles={profiles}
-        isJoined={joinedVoiceChannelId === voiceChannelModalRoomId}
-        speakingUserIds={speakingUserIds}
-        voicePingMs={voicePingMs}
-        isSharingScreen={isSharingScreen}
-        onStartScreenShare={startScreenShare}
-        onStopScreenShare={stopScreenShare}
-        localScreenStream={localScreenStream}
-        isCameraEnabled={isCameraEnabled}
-        onStartCamera={startCamera}
-        onStopCamera={stopCamera}
-        localCameraStream={localCameraStream}
-        remoteStreams={remoteStreams}
-        onJoin={() => {
-          if (voiceChannelModalRoomId) joinVoiceChannel(voiceChannelModalRoomId);
-        }}
-        onLeave={leaveVoiceChannel}
-      />
-      {voiceVolumeContext && (
-        <div
-          className="fixed inset-0 z-[70]"
-          onClick={() => setVoiceVolumeContext(null)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setVoiceVolumeContext(null);
+        <VoiceChannelModal
+          isOpen={voiceChannelModalRoomId != null}
+          onClose={() => setVoiceChannelModalRoomId(null)}
+          channel={
+            VOICE_CHANNELS.find((c) => c.id === voiceChannelModalRoomId) || null
+          }
+          participants={
+            voiceChannelModalRoomId
+              ? joinedVoiceChannelId === voiceChannelModalRoomId
+                ? effectiveInCallParticipants
+                : voiceChannelParticipants[voiceChannelModalRoomId] || []
+              : []
+          }
+          profiles={profiles}
+          isJoined={joinedVoiceChannelId === voiceChannelModalRoomId}
+          speakingUserIds={speakingUserIds}
+          voicePingMs={voicePingMs}
+          isSharingScreen={isSharingScreen}
+          onStartScreenShare={startScreenShare}
+          onStopScreenShare={stopScreenShare}
+          localScreenStream={localScreenStream}
+          isCameraEnabled={isCameraEnabled}
+          onStartCamera={startCamera}
+          onStopCamera={stopCamera}
+          localCameraStream={localCameraStream}
+          remoteStreams={remoteStreams}
+          onJoin={() => {
+            if (voiceChannelModalRoomId)
+              joinVoiceChannel(voiceChannelModalRoomId);
           }}
-        >
+          onLeave={leaveVoiceChannel}
+        />
+        {voiceVolumeContext && (
           <div
-            className="absolute z-[71] w-64 rounded-lg border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
-            style={{ left: voiceVolumeContext.x, top: voiceVolumeContext.y }}
-            onClick={(e) => e.stopPropagation()}
-            onContextMenu={(e) => e.preventDefault()}
+            className="fixed inset-0 z-[70]"
+            onClick={() => setVoiceVolumeContext(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setVoiceVolumeContext(null);
+            }}
           >
-            <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Adjust volume
-            </div>
-            <div className="px-3 pb-2 text-sm text-gray-900 dark:text-gray-100 truncate">
-              {voiceVolumeContext.name}
-            </div>
-            <div className="px-3 pb-3">
-              <input
-                type="range"
-                min={0}
-                max={2}
-                step={0.05}
-                value={voiceUserVolumes[voiceVolumeContext.userId] ?? 1}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  setVoiceUserVolumes((prev) => {
-                    const next = { ...prev, [voiceVolumeContext.userId]: value };
-                    if (Math.abs(value - 1) < 0.01) {
-                      delete next[voiceVolumeContext.userId];
-                    }
-                    return next;
-                  });
-                }}
-                className="w-full h-2 rounded-lg appearance-none bg-gray-200 dark:bg-gray-700 accent-indigo-500 dark:accent-indigo-400"
-              />
-              <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
-                <span>{Math.round((voiceUserVolumes[voiceVolumeContext.userId] ?? 1) * 100)}%</span>
-                <button
-                  type="button"
-                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-                  onClick={() => {
+            <div
+              className="absolute z-[71] w-64 rounded-lg border border-gray-200 bg-white py-2 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              style={{ left: voiceVolumeContext.x, top: voiceVolumeContext.y }}
+              onClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Adjust volume
+              </div>
+              <div className="px-3 pb-2 text-sm text-gray-900 dark:text-gray-100 truncate">
+                {voiceVolumeContext.name}
+              </div>
+              <div className="px-3 pb-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={voiceUserVolumes[voiceVolumeContext.userId] ?? 1}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
                     setVoiceUserVolumes((prev) => {
-                      const next = { ...prev };
-                      delete next[voiceVolumeContext.userId];
+                      const next = {
+                        ...prev,
+                        [voiceVolumeContext.userId]: value,
+                      };
+                      if (Math.abs(value - 1) < 0.01) {
+                        delete next[voiceVolumeContext.userId];
+                      }
                       return next;
                     });
                   }}
-                >
-                  Reset
-                </button>
+                  className="w-full h-2 rounded-lg appearance-none bg-gray-200 dark:bg-gray-700 accent-indigo-500 dark:accent-indigo-400"
+                />
+                <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                  <span>
+                    {Math.round(
+                      (voiceUserVolumes[voiceVolumeContext.userId] ?? 1) * 100,
+                    )}
+                    %
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    onClick={() => {
+                      setVoiceUserVolumes((prev) => {
+                        const next = { ...prev };
+                        delete next[voiceVolumeContext.userId];
+                        return next;
+                      });
+                    }}
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
+              <button
+                type="button"
+                className="mt-1 block w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                onClick={() => setVoiceVolumeContext(null)}
+              >
+                Close
+              </button>
             </div>
-            <button
-              type="button"
-              className="mt-1 block w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-              onClick={() => setVoiceVolumeContext(null)}
-            >
-              Close
-            </button>
           </div>
-        </div>
-      )}
-      {selectedUserForProfile != null && (() => {
-        const profileUserId = selectedUserForProfile?.id;
-        const numId = Number(profileUserId);
-        const isSelf = profileUserId != null && String(profileUserId) === String(currentUser?.id ?? CURRENT_USER_ID);
-        const profileForSelected = Number.isNaN(numId) ? null : profiles[numId];
-        const isBot = profileForSelected?.userType === "bot";
-        const editable = isSelf || isBot;
-        const closeProfile = () => {
-          setSelectedUserForProfile(null);
-          setProfileModalAnchor("center");
-        };
-        const profile = isSelf ? (profiles[currentUser?.id ?? CURRENT_USER_ID] || null) : profileForSelected;
+        )}
+        {selectedUserForProfile != null &&
+          (() => {
+            const profileUserId = selectedUserForProfile?.id;
+            const numId = Number(profileUserId);
+            const isSelf =
+              profileUserId != null &&
+              String(profileUserId) ===
+                String(currentUser?.id ?? CURRENT_USER_ID);
+            const profileForSelected = Number.isNaN(numId)
+              ? null
+              : profiles[numId];
+            const isBot = profileForSelected?.userType === "bot";
+            const editable = isSelf || isBot;
+            const closeProfile = () => {
+              setSelectedUserForProfile(null);
+              setProfileModalAnchor("center");
+            };
+            const profile = isSelf
+              ? profiles[currentUser?.id ?? CURRENT_USER_ID] || null
+              : profileForSelected;
 
-        const isBottomLeft = profileModalAnchor === "bottom-left";
-        const wrapperClass = isBottomLeft
-          ? "fixed inset-0 z-50 flex items-end justify-start bg-black/50 p-4 pb-24 pl-6"
-          : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4";
-        return (
-          <div className={wrapperClass} onClick={closeProfile}>
-            <div
-              className="w-full max-w-sm rounded-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-end pr-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeProfile}
-                  className="rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
-                  aria-label="Close"
+            const isBottomLeft = profileModalAnchor === "bottom-left";
+            const wrapperClass = isBottomLeft
+              ? "fixed inset-0 z-50 flex items-end justify-start bg-black/50 p-4 pb-24 pl-6"
+              : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4";
+            return (
+              <div className={wrapperClass} onClick={closeProfile}>
+                <div
+                  className="w-full max-w-sm rounded-xl overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                  <div className="flex justify-end pr-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeProfile}
+                      className="rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
+                      aria-label="Close"
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <UserProfile
+                    profile={profile}
+                    onSave={
+                      editable
+                        ? async (payload) => {
+                            const targetId = isSelf
+                              ? (currentUser?.id ?? CURRENT_USER_ID)
+                              : numId;
+                            await handleSaveProfileForUser(targetId, payload);
+                            closeProfile();
+                          }
+                        : undefined
+                    }
+                    activity={
+                      presenceUsers?.find(
+                        (u) => String(u.id) === String(profileUserId),
+                      )?.activity
+                    }
+                    editable={editable}
+                  />
+                </div>
               </div>
-              <UserProfile
-                profile={profile}
-                onSave={editable ? async (payload) => {
-                  const targetId = isSelf ? (currentUser?.id ?? CURRENT_USER_ID) : numId;
-                  await handleSaveProfileForUser(targetId, payload);
-                  closeProfile();
-                } : undefined}
-                activity={presenceUsers?.find((u) => String(u.id) === String(profileUserId))?.activity}
-                editable={editable}
-              />
-            </div>
-          </div>
-        );
-      })()}
-    </div>
-  );
+            );
+          })()}
+      </div>
+    );
   }
   return (
     <>
       {content}
-      {showSplash && isDesktop && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {showSplash && isDesktop && (
+        <SplashScreen onDone={() => setShowSplash(false)} />
+      )}
     </>
   );
 }

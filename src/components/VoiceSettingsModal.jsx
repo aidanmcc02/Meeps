@@ -1,11 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 
 function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
-  const [inputDeviceId, setInputDeviceId] = useState(voiceSettings?.inputDeviceId ?? "");
-  const [outputDeviceId, setOutputDeviceId] = useState(voiceSettings?.outputDeviceId ?? "");
+  const [inputDeviceId, setInputDeviceId] = useState(
+    voiceSettings?.inputDeviceId ?? "",
+  );
+  const [outputDeviceId, setOutputDeviceId] = useState(
+    voiceSettings?.outputDeviceId ?? "",
+  );
   const [volume, setVolume] = useState(voiceSettings?.volume ?? 1);
-  const [pushToTalkEnabled, setPushToTalkEnabled] = useState(voiceSettings?.pushToTalkEnabled ?? false);
-  const [pushToTalkKey, setPushToTalkKey] = useState(voiceSettings?.pushToTalkKey ?? "Space");
+  const [pushToTalkEnabled, setPushToTalkEnabled] = useState(
+    voiceSettings?.pushToTalkEnabled ?? false,
+  );
+  const [pushToTalkKey, setPushToTalkKey] = useState(
+    voiceSettings?.pushToTalkKey ?? "Space",
+  );
   const [inputDevices, setInputDevices] = useState([]);
   const [outputDevices, setOutputDevices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,8 +50,8 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
       const audioOutputs = devices.filter((d) => d.kind === "audiooutput");
       setInputDevices(audioInputs);
       setOutputDevices(audioOutputs);
-      setInputDeviceId((prev) => (prev || (audioInputs[0]?.deviceId ?? "")));
-      setOutputDeviceId((prev) => (prev || (audioOutputs[0]?.deviceId ?? "")));
+      setInputDeviceId((prev) => prev || (audioInputs[0]?.deviceId ?? ""));
+      setOutputDeviceId((prev) => prev || (audioOutputs[0]?.deviceId ?? ""));
     }
 
     function done() {
@@ -63,9 +71,14 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
       })
       .catch((err) => {
         const name = err?.name || "";
-        const denied = name === "NotAllowedError" || name === "PermissionDeniedError";
+        const denied =
+          name === "NotAllowedError" || name === "PermissionDeniedError";
         if (!scanCancelledRef.current) {
-          setMicError(denied ? "Microphone access was denied." : "Could not access microphone.");
+          setMicError(
+            denied
+              ? "Microphone access was denied."
+              : "Could not access microphone.",
+          );
         }
         return navigator.mediaDevices.enumerateDevices().then(applyDevices);
       })
@@ -119,7 +132,7 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
       outputDeviceId: outputDeviceId || null,
       volume: Number(volume),
       pushToTalkEnabled,
-      pushToTalkKey: pushToTalkKey || "Space"
+      pushToTalkKey: pushToTalkKey || "Space",
     });
     onClose?.();
   };
@@ -157,7 +170,8 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
               </button>
             </div>
             <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-              Allow microphone once here; your browser will remember it for future sessions and voice calls.
+              Allow microphone once here; your browser will remember it for
+              future sessions and voice calls.
             </p>
             <select
               value={inputDeviceId}
@@ -167,7 +181,11 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
             >
               <option value="">Default</option>
               {inputDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId} className="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                <option
+                  key={d.deviceId}
+                  value={d.deviceId}
+                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
                   {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
                 </option>
               ))}
@@ -177,7 +195,9 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
                 <p>{micError}</p>
                 {isTauri && (
                   <p className="mt-1 opacity-90">
-                    In the desktop app, allow microphone in your system settings (e.g. System Preferences → Privacy &amp; Security → Microphone) and restart the app or click Rescan.
+                    In the desktop app, allow microphone in your system settings
+                    (e.g. System Preferences → Privacy &amp; Security →
+                    Microphone) and restart the app or click Rescan.
                   </p>
                 )}
                 <button
@@ -191,7 +211,8 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
             )}
             {inputDevices.length === 0 && !loading && !micError && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                No microphones found. Allow mic access and rescan, or plug in a device.
+                No microphones found. Allow mic access and rescan, or plug in a
+                device.
               </p>
             )}
           </div>
@@ -208,7 +229,11 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
             >
               <option value="">Default</option>
               {outputDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId} className="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                <option
+                  key={d.deviceId}
+                  value={d.deviceId}
+                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
                   {d.label || `Speaker ${d.deviceId.slice(0, 8)}`}
                 </option>
               ))}
@@ -232,7 +257,9 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
 
           <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700">
             <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Push to talk</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Push to talk
+              </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Hold a key to transmit (optional)
               </p>
@@ -244,7 +271,9 @@ function VoiceSettingsModal({ isOpen, onClose, voiceSettings, onSave }) {
                 onChange={(e) => setPushToTalkEnabled(e.target.checked)}
                 className="rounded border-gray-300 text-indigo-500 focus:ring-indigo-500 dark:border-gray-500 dark:bg-gray-600 dark:checked:bg-indigo-500 dark:checked:border-indigo-500"
               />
-              <span className="text-sm text-gray-700 dark:text-gray-200">Enable</span>
+              <span className="text-sm text-gray-700 dark:text-gray-200">
+                Enable
+              </span>
             </label>
           </div>
 

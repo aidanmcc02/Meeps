@@ -4,7 +4,11 @@ const githubProject = require("../services/githubProjectService");
 const { postMessageToChannel } = require("../websocket/websocketServer");
 
 const BOARD_ACTIVITY_CHANNEL = "board-activity";
-const STATUS_LABELS = { todo: "To Do", in_progress: "In Progress", done: "Done" };
+const STATUS_LABELS = {
+  todo: "To Do",
+  in_progress: "In Progress",
+  done: "Done",
+};
 const { exec } = require("child_process");
 const path = require("path");
 const util = require("util");
@@ -44,10 +48,13 @@ async function getGitHubCommitCount(repoSlug) {
       `https://api.github.com/repos/${owner}/${repo}/commits`,
       {
         params: { per_page: 1 },
-        headers: { "User-Agent": "Meeps-Board-Stats", Accept: "application/vnd.github.v3+json" },
+        headers: {
+          "User-Agent": "Meeps-Board-Stats",
+          Accept: "application/vnd.github.v3+json",
+        },
         timeout: 10000,
         validateStatus: () => true,
-      }
+      },
     );
     if (status !== 200) return null;
     let count = null;
@@ -78,16 +85,22 @@ async function getGitHubContributors(repoSlug) {
       `https://api.github.com/repos/${owner}/${repo}/contributors`,
       {
         params: { per_page: 100 },
-        headers: { "User-Agent": "Meeps-Board-Stats", Accept: "application/vnd.github.v3+json" },
+        headers: {
+          "User-Agent": "Meeps-Board-Stats",
+          Accept: "application/vnd.github.v3+json",
+        },
         timeout: 10000,
         validateStatus: () => true,
-      }
+      },
     );
     if (status !== 200 || !Array.isArray(data)) return null;
-    const list = data.map((c) => ({
-      login: c.login || String(c.id),
-      contributions: typeof c.contributions === "number" ? c.contributions : 0,
-    })).sort((a, b) => b.contributions - a.contributions);
+    const list = data
+      .map((c) => ({
+        login: c.login || String(c.id),
+        contributions:
+          typeof c.contributions === "number" ? c.contributions : 0,
+      }))
+      .sort((a, b) => b.contributions - a.contributions);
     githubContributorsCache.set(slug, { list, at: Date.now() });
     return list;
   } catch (_) {
@@ -133,7 +146,7 @@ exports.listIssues = async (req, res, next) => {
     const result = await db.query(
       `SELECT id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at
        FROM board_issues
-       ORDER BY created_at DESC`
+       ORDER BY created_at DESC`,
     );
     const issues = result.rows.map(rowToIssue);
     return res.json({ issues });
@@ -144,23 +157,33 @@ exports.listIssues = async (req, res, next) => {
 
 exports.createIssue = async (req, res, next) => {
   try {
-    const { title, description, status, priority, assigneeId, assigneeName } = req.body;
+    const { title, description, status, priority, assigneeId, assigneeName } =
+      req.body;
     if (!title || typeof title !== "string" || !title.trim()) {
       return res.status(400).json({ message: "title is required" });
     }
-    const statusVal = status === "todo" || status === "in_progress" || status === "done" ? status : "todo";
+    const statusVal =
+      status === "todo" || status === "in_progress" || status === "done"
+        ? status
+        : "todo";
     const result = await db.query(
       `INSERT INTO board_issues (title, description, status, priority, assignee_id, assignee_name)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at`,
       [
         title.trim(),
-        description && typeof description === "string" ? description.trim() : null,
+        description && typeof description === "string"
+          ? description.trim()
+          : null,
         statusVal,
-        priority === "low" || priority === "medium" || priority === "high" ? priority : "medium",
+        priority === "low" || priority === "medium" || priority === "high"
+          ? priority
+          : "medium",
         assigneeId != null ? Number(assigneeId) : null,
-        assigneeName && typeof assigneeName === "string" ? assigneeName.trim() : null,
-      ]
+        assigneeName && typeof assigneeName === "string"
+          ? assigneeName.trim()
+          : null,
+      ],
     );
     const row = result.rows[0];
     const config = githubProject.getConfig();
@@ -171,11 +194,11 @@ exports.createIssue = async (req, res, next) => {
           const projectItemId = await githubProject.createDraftIssue(
             projectId,
             row.title,
-            row.description || ""
+            row.description || "",
           );
           await db.query(
             "UPDATE board_issues SET github_project_item_id = $1 WHERE id = $2",
-            [projectItemId, row.id]
+            [projectItemId, row.id],
           );
         }
       } catch (ghErr) {
@@ -194,17 +217,29 @@ exports.updateIssue = async (req, res, next) => {
     if (!Number.isInteger(id) || id < 1) {
       return res.status(400).json({ message: "invalid issue id" });
     }
-    const { title, description, status, priority, assigneeId, assigneeName, movedBy, movedById } = req.body;
+    const {
+      title,
+      description,
+      status,
+      priority,
+      assigneeId,
+      assigneeName,
+      movedBy,
+      movedById,
+    } = req.body;
 
     // When status or assignee is changing, fetch current row for board-activity messages
     let previousRow = null;
     const needPrevious =
-      status === "todo" || status === "in_progress" || status === "done" ||
-      assigneeId !== undefined || assigneeName !== undefined;
+      status === "todo" ||
+      status === "in_progress" ||
+      status === "done" ||
+      assigneeId !== undefined ||
+      assigneeName !== undefined;
     if (needPrevious) {
       const prev = await db.query(
         "SELECT id, title, status, assignee_id, assignee_name FROM board_issues WHERE id = $1",
-        [id]
+        [id],
       );
       if (prev.rows.length > 0) previousRow = prev.rows[0];
     }
@@ -218,7 +253,11 @@ exports.updateIssue = async (req, res, next) => {
     }
     if (description !== undefined) {
       updates.push(`description = $${paramIndex++}`);
-      values.push(description && typeof description === "string" ? description.trim() : null);
+      values.push(
+        description && typeof description === "string"
+          ? description.trim()
+          : null,
+      );
     }
     if (status === "todo" || status === "in_progress" || status === "done") {
       updates.push(`status = $${paramIndex++}`);
@@ -234,7 +273,11 @@ exports.updateIssue = async (req, res, next) => {
     }
     if (assigneeName !== undefined) {
       updates.push(`assignee_name = $${paramIndex++}`);
-      values.push(assigneeName && typeof assigneeName === "string" ? assigneeName.trim() : null);
+      values.push(
+        assigneeName && typeof assigneeName === "string"
+          ? assigneeName.trim()
+          : null,
+      );
     }
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(id);
@@ -245,31 +288,41 @@ exports.updateIssue = async (req, res, next) => {
 
     const result = await db.query(
       `UPDATE board_issues SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at, github_project_item_id`,
-      values
+      values,
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "issue not found" });
     }
     const updatedRow = result.rows[0];
     const config = githubProject.getConfig();
-    if (config && updatedRow.github_project_item_id && typeof status === "string") {
+    if (
+      config &&
+      updatedRow.github_project_item_id &&
+      typeof status === "string"
+    ) {
       try {
         const projectId = await githubProject.getProjectId(config);
         if (projectId) {
           await githubProject.updateItemStatus(
             projectId,
             updatedRow.github_project_item_id,
-            updatedRow.status
+            updatedRow.status,
           );
         }
       } catch (ghErr) {
-        console.warn("Board: GitHub project status update failed", ghErr.message);
+        console.warn(
+          "Board: GitHub project status update failed",
+          ghErr.message,
+        );
       }
     }
 
     const actorName = (movedBy && String(movedBy).trim()) || "Someone";
     const actorId = movedById != null ? Number(movedById) : null;
-    const safeTitle = (updatedRow.title || "Untitled").replace(/`/g, "'").replace(/\n/g, " ").trim();
+    const safeTitle = (updatedRow.title || "Untitled")
+      .replace(/`/g, "'")
+      .replace(/\n/g, " ")
+      .trim();
 
     // Post to board-activity channel when status changed (e.g. card moved)
     if (previousRow && previousRow.status !== updatedRow.status) {
@@ -283,21 +336,36 @@ exports.updateIssue = async (req, res, next) => {
         "*" + fromLabel + "* → *" + toLabel + "*",
       ].join("\n");
       try {
-        await postMessageToChannel(BOARD_ACTIVITY_CHANNEL, actorId, actorName, content, null);
+        await postMessageToChannel(
+          BOARD_ACTIVITY_CHANNEL,
+          actorId,
+          actorName,
+          content,
+          null,
+        );
       } catch (postErr) {
-        console.warn("Board: failed to post move to board-activity channel", postErr.message);
+        console.warn(
+          "Board: failed to post move to board-activity channel",
+          postErr.message,
+        );
       }
     }
 
     // Post to board-activity channel when assignee changed (reassignment)
     const prevAssigneeId = previousRow?.assignee_id ?? null;
-    const prevAssigneeName = (previousRow?.assignee_name && String(previousRow.assignee_name).trim()) || null;
+    const prevAssigneeName =
+      (previousRow?.assignee_name &&
+        String(previousRow.assignee_name).trim()) ||
+      null;
     const newAssigneeId = updatedRow.assignee_id ?? null;
-    const newAssigneeName = (updatedRow.assignee_name && String(updatedRow.assignee_name).trim()) || null;
+    const newAssigneeName =
+      (updatedRow.assignee_name && String(updatedRow.assignee_name).trim()) ||
+      null;
     const assigneeChanged =
       previousRow &&
       (Number(prevAssigneeId) !== Number(newAssigneeId) ||
-       (prevAssigneeName || "Unassigned") !== (newAssigneeName || "Unassigned"));
+        (prevAssigneeName || "Unassigned") !==
+          (newAssigneeName || "Unassigned"));
     if (assigneeChanged) {
       const fromName = prevAssigneeName || "Unassigned";
       const toName = newAssigneeName || "Unassigned";
@@ -309,9 +377,18 @@ exports.updateIssue = async (req, res, next) => {
         "*" + fromName + "* → *" + toName + "*",
       ].join("\n");
       try {
-        await postMessageToChannel(BOARD_ACTIVITY_CHANNEL, actorId, actorName, content, null);
+        await postMessageToChannel(
+          BOARD_ACTIVITY_CHANNEL,
+          actorId,
+          actorName,
+          content,
+          null,
+        );
       } catch (postErr) {
-        console.warn("Board: failed to post reassignment to board-activity channel", postErr.message);
+        console.warn(
+          "Board: failed to post reassignment to board-activity channel",
+          postErr.message,
+        );
       }
     }
 
@@ -327,7 +404,10 @@ exports.deleteIssue = async (req, res, next) => {
     if (!Number.isInteger(id) || id < 1) {
       return res.status(400).json({ message: "invalid issue id" });
     }
-    const result = await db.query("DELETE FROM board_issues WHERE id = $1 RETURNING id", [id]);
+    const result = await db.query(
+      "DELETE FROM board_issues WHERE id = $1 RETURNING id",
+      [id],
+    );
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "issue not found" });
     }
@@ -339,9 +419,7 @@ exports.deleteIssue = async (req, res, next) => {
 
 exports.getStats = async (req, res, next) => {
   try {
-    const issuesResult = await db.query(
-      "SELECT status FROM board_issues"
-    );
+    const issuesResult = await db.query("SELECT status FROM board_issues");
 
     const issuesByStatus = {
       todo: 0,
@@ -367,11 +445,14 @@ exports.getStats = async (req, res, next) => {
        FROM board_issues
        WHERE status IN ('in_progress', 'done')
        GROUP BY assignee_id, assignee_name
-       ORDER BY tickets_taken DESC`
+       ORDER BY tickets_taken DESC`,
     );
     const ticketsByAssignee = ticketsByAssigneeResult.rows.map((row) => ({
       assigneeId: row.assignee_id ?? null,
-      assigneeName: row.assignee_name && String(row.assignee_name).trim() ? row.assignee_name : "Unassigned",
+      assigneeName:
+        row.assignee_name && String(row.assignee_name).trim()
+          ? row.assignee_name
+          : "Unassigned",
       ticketsTaken: parseInt(row.tickets_taken, 10) || 0,
     }));
 
@@ -382,7 +463,9 @@ exports.getStats = async (req, res, next) => {
     const githubRepo =
       (req.query.githubRepo && typeof req.query.githubRepo === "string"
         ? req.query.githubRepo.trim()
-        : null) || process.env.MEEPS_GITHUB_REPO || DEFAULT_GITHUB_REPO;
+        : null) ||
+      process.env.MEEPS_GITHUB_REPO ||
+      DEFAULT_GITHUB_REPO;
 
     const fromGitHub = await getGitHubCommitCount(githubRepo);
     if (fromGitHub != null) {
@@ -439,21 +522,25 @@ exports.syncFromGitHub = async (req, res, next) => {
     const config = githubProject.getConfig();
     if (!config) {
       return res.status(503).json({
-        message: "GitHub project not configured. Set GITHUB_TOKEN and either GITHUB_PROJECT_ID or GITHUB_PROJECT_OWNER + GITHUB_PROJECT_NUMBER.",
+        message:
+          "GitHub project not configured. Set GITHUB_TOKEN and either GITHUB_PROJECT_ID or GITHUB_PROJECT_OWNER + GITHUB_PROJECT_NUMBER.",
       });
     }
     const projectId = await githubProject.getProjectId(config);
     if (!projectId) {
       return res.status(503).json({
-        message: "Could not resolve GitHub project. Check GITHUB_PROJECT_OWNER and GITHUB_PROJECT_NUMBER (from the project URL).",
+        message:
+          "Could not resolve GitHub project. Check GITHUB_PROJECT_OWNER and GITHUB_PROJECT_NUMBER (from the project URL).",
       });
     }
     const items = await githubProject.listProjectItems(projectId);
     const existing = await db.query(
-      "SELECT github_project_item_id FROM board_issues WHERE github_project_item_id IS NOT NULL"
+      "SELECT github_project_item_id FROM board_issues WHERE github_project_item_id IS NOT NULL",
     );
     const existingIds = new Set(
-      (existing.rows || []).map((r) => r.github_project_item_id).filter(Boolean)
+      (existing.rows || [])
+        .map((r) => r.github_project_item_id)
+        .filter(Boolean),
     );
     const created = [];
     for (const item of items) {
@@ -463,7 +550,7 @@ exports.syncFromGitHub = async (req, res, next) => {
         `INSERT INTO board_issues (title, description, status, priority, assignee_id, assignee_name, github_project_item_id)
          VALUES ($1, $2, $3, 'medium', NULL, NULL, $4)
          RETURNING id, title, description, status, priority, assignee_id, assignee_name, created_at, updated_at`,
-        [item.title, item.description, status, item.id]
+        [item.title, item.description, status, item.id],
       );
       const row = result.rows[0];
       if (row) {

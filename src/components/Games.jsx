@@ -9,7 +9,7 @@ function formatTimestamp(ts) {
     month: "short",
     day: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   });
 }
 
@@ -24,12 +24,14 @@ function formatDuration(seconds) {
 const RESULT_STYLES = {
   Win: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200",
   Lose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-  Remake: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+  Remake:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200",
 };
 const RESULT_ROW_STYLES = {
   Win: "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-900/20",
   Lose: "border-rose-200 bg-rose-50/60 dark:border-rose-900/60 dark:bg-rose-900/20",
-  Remake: "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-900/20"
+  Remake:
+    "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-900/20",
 };
 const RANK_COLORS = {
   UNRANKED: "#95a5a6",
@@ -42,7 +44,7 @@ const RANK_COLORS = {
   DIAMOND: "#b9f2ff",
   MASTER: "#800080",
   GRANDMASTER: "#8b0000",
-  CHALLENGER: "#1e90ff"
+  CHALLENGER: "#1e90ff",
 };
 
 function DianaMatchCard({ match, showDetails }) {
@@ -55,8 +57,7 @@ function DianaMatchCard({ match, showDetails }) {
   const rankTier = (match?.rankTier || "").toUpperCase();
   const showRankTier = Boolean(rankTier && rankTier !== "UNRANKED");
   const rankColor = RANK_COLORS[rankTier] || "#94a3b8";
-  const lpChange =
-    typeof match?.lpChange === "number" ? match.lpChange : null;
+  const lpChange = typeof match?.lpChange === "number" ? match.lpChange : null;
   const lpChangeLabel =
     lpChange == null ? "—" : `${lpChange > 0 ? "+" : ""}${lpChange} LP`;
   const showRankUpdate = lpChange != null && lpChange !== 0;
@@ -75,17 +76,24 @@ function DianaMatchCard({ match, showDetails }) {
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">
               {summoner}
-              {tagLine && <span className="text-sm text-gray-500 dark:text-gray-400"> {tagLine}</span>}
+              {tagLine && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {" "}
+                  {tagLine}
+                </span>
+              )}
             </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {match?.queueName || "Unknown queue"}
-            {durationLabel !== "—" ? ` · ${durationLabel}` : ""}
-            {timestamp ? ` · ${timestamp}` : ""}
-          </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {match?.queueName || "Unknown queue"}
+              {durationLabel !== "—" ? ` · ${durationLabel}` : ""}
+              {timestamp ? ` · ${timestamp}` : ""}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${resultClass}`}>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${resultClass}`}
+          >
             {match?.result || "Match"}
           </span>
           {showRankUpdate ? (
@@ -126,14 +134,23 @@ function DianaMatchCard({ match, showDetails }) {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
             <span>Rank</span>
             {showRankTier ? (
-              <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ backgroundColor: `${rankColor}22`, color: rankColor }}>
+              <span
+                className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style={{ backgroundColor: `${rankColor}22`, color: rankColor }}
+              >
                 {rankTier}
               </span>
             ) : null}
           </div>
           <div className="mt-0.5 flex items-center justify-between text-sm text-gray-800 dark:text-gray-200">
             <span>{match?.rank || "Unranked"}</span>
-            <span className={lpChange != null && lpChange < 0 ? "text-rose-600 dark:text-rose-300" : "text-emerald-600 dark:text-emerald-300"}></span>
+            <span
+              className={
+                lpChange != null && lpChange < 0
+                  ? "text-rose-600 dark:text-rose-300"
+                  : "text-emerald-600 dark:text-emerald-300"
+              }
+            ></span>
           </div>
         </div>
         {showDetails ? (
@@ -174,12 +191,12 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
   const [filterOptions, setFilterOptions] = useState({
     players: [],
     matchTypes: [],
-    results: ["Win", "Lose", "Remake"]
+    results: ["Win", "Lose", "Remake"],
   });
   const [filters, setFilters] = useState({
     player: "all",
     matchType: "all",
-    result: "all"
+    result: "all",
   });
   const filtersRef = useRef(null);
 
@@ -221,16 +238,21 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     const offset = nextPage * LIMIT;
     const params = new URLSearchParams({
       limit: String(LIMIT),
-      offset: String(offset)
+      offset: String(offset),
     });
     if (nextFilters.player !== "all") params.set("player", nextFilters.player);
-    if (nextFilters.matchType !== "all") params.set("queueId", nextFilters.matchType);
+    if (nextFilters.matchType !== "all")
+      params.set("queueId", nextFilters.matchType);
     if (nextFilters.result !== "all") params.set("result", nextFilters.result);
-    fetch(`${dianaApiBase.replace(/\/$/, "")}/match/recent?${params.toString()}`, {
-      headers: { "Cache-Control": "no-cache" }
-    })
+    fetch(
+      `${dianaApiBase.replace(/\/$/, "")}/match/recent?${params.toString()}`,
+      {
+        headers: { "Cache-Control": "no-cache" },
+      },
+    )
       .then((res) => {
-        if (!res.ok) throw new Error(res.statusText || "Failed to load matches");
+        if (!res.ok)
+          throw new Error(res.statusText || "Failed to load matches");
         return res.json();
       })
       .then((data) => {
@@ -245,7 +267,7 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
   useEffect(() => {
     if (!dianaApiBase) return;
     fetch(`${dianaApiBase.replace(/\/$/, "")}/match/filters`, {
-      headers: { "Cache-Control": "no-cache" }
+      headers: { "Cache-Control": "no-cache" },
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -253,7 +275,9 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
         setFilterOptions({
           players: Array.isArray(data.players) ? data.players : [],
           matchTypes: Array.isArray(data.matchTypes) ? data.matchTypes : [],
-          results: Array.isArray(data.results) ? data.results : ["Win", "Lose", "Remake"]
+          results: Array.isArray(data.results)
+            ? data.results
+            : ["Win", "Lose", "Remake"],
         });
       })
       .catch(() => {});
@@ -269,10 +293,18 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     const poll = () => {
       if (activeView !== "diana") return;
       if (page !== 0) return;
-      if (filters.player !== "all" || filters.matchType !== "all" || filters.result !== "all") return;
-      fetch(`${dianaApiBase.replace(/\/$/, "")}/match/recent?limit=${LIMIT}&offset=0`, {
-        headers: { "Cache-Control": "no-cache" }
-      })
+      if (
+        filters.player !== "all" ||
+        filters.matchType !== "all" ||
+        filters.result !== "all"
+      )
+        return;
+      fetch(
+        `${dianaApiBase.replace(/\/$/, "")}/match/recent?limit=${LIMIT}&offset=0`,
+        {
+          headers: { "Cache-Control": "no-cache" },
+        },
+      )
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!data?.matches || !Array.isArray(data.matches)) return;
@@ -292,7 +324,10 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     if (!newMatches.length) return;
     setMatches((prev) => {
       const existingIds = new Set(prev.map((m) => m.matchId));
-      const merged = [...newMatches, ...prev.filter((m) => !existingIds.has(m.matchId))];
+      const merged = [
+        ...newMatches,
+        ...prev.filter((m) => !existingIds.has(m.matchId)),
+      ];
       return merged.slice(0, LIMIT);
     });
     setNewMatches([]);
@@ -302,7 +337,9 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
     <div className="flex h-full flex-col overflow-hidden bg-gray-50/60 dark:bg-gray-950/70">
       <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
         <div>
-          <label className="sr-only" htmlFor="games-view-select">Game view</label>
+          <label className="sr-only" htmlFor="games-view-select">
+            Game view
+          </label>
           <select
             id="games-view-select"
             value={activeView}
@@ -321,9 +358,24 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               aria-label="Refresh"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 8a8 8 0 00-14.64-3.36L4 10M4 16a8 8 0 0014.64 3.36L20 14" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v6h6M20 20v-6h-6"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M20 8a8 8 0 00-14.64-3.36L4 10M4 16a8 8 0 0014.64 3.36L20 14"
+                />
               </svg>
             </button>
             <div className="relative">
@@ -334,61 +386,104 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
                 aria-label="Filters"
                 aria-expanded={filtersOpen}
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M6 12h12M10 19h4" />
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 5h18M6 12h12M10 19h4"
+                  />
                 </svg>
               </button>
               {filtersOpen && (
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Player</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Player
+                      </label>
                       <select
                         value={filters.player}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, player: e.target.value }))}
+                        onChange={(e) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            player: e.target.value,
+                          }))
+                        }
                         className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                       >
-                      {playerOptions.map((opt) => (
-                        opt === "all" ? (
-                          <option key="all" value="all">All players</option>
-                        ) : (
-                          <option key={opt.puuid} value={opt.puuid}>
-                            {opt.gameName}{opt.tagLine ? `#${opt.tagLine}` : ""}
-                          </option>
-                        )
-                      ))}
+                        {playerOptions.map((opt) =>
+                          opt === "all" ? (
+                            <option key="all" value="all">
+                              All players
+                            </option>
+                          ) : (
+                            <option key={opt.puuid} value={opt.puuid}>
+                              {opt.gameName}
+                              {opt.tagLine ? `#${opt.tagLine}` : ""}
+                            </option>
+                          ),
+                        )}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Match type</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Match type
+                      </label>
                       <select
                         value={filters.matchType}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, matchType: e.target.value }))}
+                        onChange={(e) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            matchType: e.target.value,
+                          }))
+                        }
                         className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                       >
-                      {matchTypeOptions.map((opt) => (
-                        opt === "all" ? (
-                          <option key="all" value="all">All types</option>
-                        ) : (
-                          <option key={opt.queueId} value={String(opt.queueId)}>
-                            {opt.name}
-                          </option>
-                        )
-                      ))}
+                        {matchTypeOptions.map((opt) =>
+                          opt === "all" ? (
+                            <option key="all" value="all">
+                              All types
+                            </option>
+                          ) : (
+                            <option
+                              key={opt.queueId}
+                              value={String(opt.queueId)}
+                            >
+                              {opt.name}
+                            </option>
+                          ),
+                        )}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Result</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Result
+                      </label>
                       <select
                         value={filters.result}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, result: e.target.value }))}
+                        onChange={(e) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            result: e.target.value,
+                          }))
+                        }
                         className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                       >
-                      {resultOptions.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt === "all" ? "All results" : opt === "Lose" ? "Loss" : opt}
-                        </option>
-                      ))}
+                        {resultOptions.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt === "all"
+                              ? "All results"
+                              : opt === "Lose"
+                                ? "Loss"
+                                : opt}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -401,18 +496,26 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
         )}
       </div>
 
-      {activeView === "diana" && newMatches.length > 0 && page === 0 && filters.player === "all" && filters.matchType === "all" && filters.result === "all" && (
-        <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
-          <span>{newMatches.length} new match{newMatches.length === 1 ? "" : "es"} completed.</span>
-          <button
-            type="button"
-            onClick={showNewMatches}
-            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-          >
-            Show
-          </button>
-        </div>
-      )}
+      {activeView === "diana" &&
+        newMatches.length > 0 &&
+        page === 0 &&
+        filters.player === "all" &&
+        filters.matchType === "all" &&
+        filters.result === "all" && (
+          <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+            <span>
+              {newMatches.length} new match{newMatches.length === 1 ? "" : "es"}{" "}
+              completed.
+            </span>
+            <button
+              type="button"
+              onClick={showNewMatches}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              Show
+            </button>
+          </div>
+        )}
 
       {activeView === "diana" && error && (
         <div className="flex-shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
@@ -449,32 +552,32 @@ export default function Games({ dianaApiBase, apiBase, token, currentUser }) {
           </div>
 
           <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-300">
-              {page > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => loadPage(Math.max(page - 1, 0))}
-                  disabled={loading}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                >
-                  Previous
-                </button>
-              ) : (
-                <span />
-              )}
-              <span>Page {page + 1}</span>
-              {hasMore ? (
-                <button
-                  type="button"
-                  onClick={() => loadPage(page + 1)}
-                  disabled={loading}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                >
-                  Next
-                </button>
-              ) : (
-                <span />
-              )}
-            </div>
+            {page > 0 ? (
+              <button
+                type="button"
+                onClick={() => loadPage(Math.max(page - 1, 0))}
+                disabled={loading}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              >
+                Previous
+              </button>
+            ) : (
+              <span />
+            )}
+            <span>Page {page + 1}</span>
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={() => loadPage(page + 1)}
+                disabled={loading}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              >
+                Next
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
         </>
       )}
     </div>

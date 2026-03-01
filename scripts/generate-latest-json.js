@@ -44,12 +44,12 @@ function main() {
     "src-tauri",
     "target",
     "release",
-    "bundle"
+    "bundle",
   );
 
   if (!fs.existsSync(bundleRoot)) {
     console.error(
-      "Bundle directory not found. Run `npm run tauri:build` before generating latest.json."
+      "Bundle directory not found. Run `npm run tauri:build` before generating latest.json.",
     );
     process.exit(1);
   }
@@ -86,7 +86,7 @@ function main() {
 
   if (!sigFile) {
     console.error(
-      "No *.zip.sig updater bundle found. Make sure `npm run tauri:build` completed successfully."
+      "No *.zip.sig updater bundle found. Make sure `npm run tauri:build` completed successfully.",
     );
     process.exit(1);
   }
@@ -121,4 +121,3 @@ function main() {
 }
 
 main();
-

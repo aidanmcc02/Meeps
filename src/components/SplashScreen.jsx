@@ -21,7 +21,7 @@ function SplashScreen({ onDone }) {
     { id: 2, delay: 160, scale: 0.9, left: -6, bottom: 8 },
     { id: 3, delay: 260, scale: 0.95, left: 4, bottom: -4 },
     { id: 4, delay: 360, scale: 1.05, left: -10, bottom: -10 },
-    { id: 5, delay: 460, scale: 0.85, left: 8, bottom: 12 }
+    { id: 5, delay: 460, scale: 0.85, left: 8, bottom: 12 },
   ];
 
   const renderMeep = (meep) => (
@@ -32,7 +32,7 @@ function SplashScreen({ onDone }) {
         animationDelay: `${meep.delay}ms`,
         "--meep-scale": meep.scale,
         left: `${meep.left}%`,
-        bottom: `${meep.bottom}%`
+        bottom: `${meep.bottom}%`,
       }}
       aria-hidden="true"
     >
@@ -47,8 +47,22 @@ function SplashScreen({ onDone }) {
           fill="#facc15"
         />
         <circle cx="60" cy="46" r="30" fill="#facc15" />
-        <circle cx="48" cy="44" r="9.5" fill="#ffffff" stroke="#f59e0b" strokeWidth="3" />
-        <circle cx="72" cy="44" r="9.5" fill="#ffffff" stroke="#f59e0b" strokeWidth="3" />
+        <circle
+          cx="48"
+          cy="44"
+          r="9.5"
+          fill="#ffffff"
+          stroke="#f59e0b"
+          strokeWidth="3"
+        />
+        <circle
+          cx="72"
+          cy="44"
+          r="9.5"
+          fill="#ffffff"
+          stroke="#f59e0b"
+          strokeWidth="3"
+        />
         <path
           d="M43 30 C38 30 36 33 36 36 C36 40 39 42 42 42 C45 42 47 40 47 38 C47 36 46 35 44.5 34.5"
           fill="none"
@@ -87,4 +101,3 @@ function SplashScreen({ onDone }) {
 }
 
 export default SplashScreen;
-

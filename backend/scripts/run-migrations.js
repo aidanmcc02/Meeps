@@ -29,7 +29,7 @@ async function ensureMigrationsTable() {
 
 async function getAppliedMigrations() {
   const result = await pool.query(
-    "SELECT name FROM schema_migrations ORDER BY id"
+    "SELECT name FROM schema_migrations ORDER BY id",
   );
   return new Set(result.rows.map((r) => r.name));
 }
@@ -49,10 +49,9 @@ async function runMigration(name, sql) {
   try {
     await client.query("BEGIN");
     await client.query(sql);
-    await client.query(
-      "INSERT INTO schema_migrations (name) VALUES ($1)",
-      [name]
-    );
+    await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [
+      name,
+    ]);
     await client.query("COMMIT");
     return true;
   } catch (err) {

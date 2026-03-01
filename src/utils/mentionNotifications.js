@@ -29,10 +29,10 @@ function stripMarkdown(text) {
  */
 export function messageMentionsMe(content, displayName) {
   if (!content || typeof content !== "string") return false;
-  
+
   // Check for @everyone first (always triggers, regardless of displayName)
   if (/@everyone\b/i.test(content)) return true;
-  
+
   // Check for user-specific mentions only if displayName is set
   const trimmed = (displayName || "").trim();
   if (!trimmed) return false;
@@ -90,9 +90,8 @@ export async function requestNotificationPermission() {
   if (typeof window === "undefined") return false;
   if (window.__TAURI__) {
     try {
-      const { isPermissionGranted, requestPermission } = await import(
-        "@tauri-apps/api/notification"
-      );
+      const { isPermissionGranted, requestPermission } =
+        await import("@tauri-apps/api/notification");
       let granted = await isPermissionGranted();
       if (!granted) {
         const result = await requestPermission();
@@ -104,7 +103,7 @@ export async function requestNotificationPermission() {
     }
   }
   if (!("Notification" in window)) return false;
-  
+
   // Ensure service worker is registered for iOS PWA
   if ("serviceWorker" in navigator) {
     try {
@@ -113,7 +112,7 @@ export async function requestNotificationPermission() {
       // Service worker not ready, but continue with notification permission
     }
   }
-  
+
   if (Notification.permission === "granted") return true;
   if (Notification.permission === "denied") return false;
   const result = await Notification.requestPermission();
@@ -145,8 +144,10 @@ function urlBase64ToUint8Array(base64String) {
  */
 export async function subscribePushSubscription(apiBase, token) {
   if (typeof window === "undefined" || window.__TAURI__) return false;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
-  if (!Notification.permission || Notification.permission !== "granted") return false;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window))
+    return false;
+  if (!Notification.permission || Notification.permission !== "granted")
+    return false;
   if (!apiBase || !token) return false;
 
   const base = apiBase.replace(/\/$/, "");
@@ -160,16 +161,16 @@ export async function subscribePushSubscription(apiBase, token) {
 
     const subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey)
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
     });
 
     const subRes = await fetch(`${base}/api/push-subscribe`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ subscription: subscription.toJSON() })
+      body: JSON.stringify({ subscription: subscription.toJSON() }),
     });
     return subRes.ok;
   } catch {
@@ -189,25 +190,28 @@ export async function subscribePushSubscription(apiBase, token) {
 export async function showMentionNotificationIfBackground(
   senderName,
   bodyPreview,
-  channel
+  channel,
 ) {
-  if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+  if (
+    typeof document === "undefined" ||
+    document.visibilityState !== "hidden"
+  ) {
     return;
   }
 
   const title = "Meeps";
   const sender = senderName || "Someone";
   const plainPreview = stripMarkdown(
-    typeof bodyPreview === "string" ? bodyPreview : ""
+    typeof bodyPreview === "string" ? bodyPreview : "",
   ).slice(0, 80);
-  const previewText = plainPreview + (plainPreview.length >= 80 ? "…" : "") || "New message";
+  const previewText =
+    plainPreview + (plainPreview.length >= 80 ? "…" : "") || "New message";
   const body = `${sender}: ${previewText}`;
 
   if (window.__TAURI__) {
     try {
-      const { isPermissionGranted, sendNotification } = await import(
-        "@tauri-apps/api/notification"
-      );
+      const { isPermissionGranted, sendNotification } =
+        await import("@tauri-apps/api/notification");
       const granted = await isPermissionGranted();
       if (granted) {
         sendNotification({ title, body });
@@ -235,13 +239,13 @@ export async function showMentionNotificationIfBackground(
         tag: `message-${channelId}`,
         data: {
           url,
-          channel: channelId
-        }
+          channel: channelId,
+        },
       });
     } else {
       new Notification(title, {
         body,
-        icon: "/apple-touch-icon.png"
+        icon: "/apple-touch-icon.png",
       });
     }
   } catch {

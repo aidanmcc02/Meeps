@@ -1,8 +1,16 @@
 import React from "react";
 
-function TextChannels({ channels, selectedChannelId, unreadChannelIds, onSelectChannel }) {
+function TextChannels({
+  channels,
+  selectedChannelId,
+  unreadChannelIds,
+  onSelectChannel,
+}) {
   const hasUnread = (channelId) =>
-    unreadChannelIds && (unreadChannelIds instanceof Set ? unreadChannelIds.has(channelId) : unreadChannelIds.includes(channelId));
+    unreadChannelIds &&
+    (unreadChannelIds instanceof Set
+      ? unreadChannelIds.has(channelId)
+      : unreadChannelIds.includes(channelId));
 
   return (
     <ul className="space-y-0.5 text-sm">
@@ -16,7 +24,7 @@ function TextChannels({ channels, selectedChannelId, unreadChannelIds, onSelectC
             className={[
               "flex items-center gap-2 cursor-pointer rounded-md px-2 py-1",
               "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800",
-              isActive ? "bg-gray-200 dark:bg-gray-800" : ""
+              isActive ? "bg-gray-200 dark:bg-gray-800" : "",
             ]
               .filter(Boolean)
               .join(" ")}

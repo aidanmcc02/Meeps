@@ -9,9 +9,9 @@ if (process.env.DATABASE_URL) {
     connectionString: process.env.DATABASE_URL,
     ssl: isProduction
       ? {
-          rejectUnauthorized: false
+          rejectUnauthorized: false,
         }
-      : false
+      : false,
   });
 } else {
   pool = new Pool({
@@ -19,12 +19,11 @@ if (process.env.DATABASE_URL) {
     port: Number(process.env.PGPORT) || 5432,
     database: process.env.PGDATABASE || "meeps",
     user: process.env.PGUSER || "postgres",
-    password: process.env.PGPASSWORD || "postgres"
+    password: process.env.PGPASSWORD || "postgres",
   });
 }
 
 module.exports = {
   pool,
-  query: (text, params) => pool.query(text, params)
+  query: (text, params) => pool.query(text, params),
 };
-

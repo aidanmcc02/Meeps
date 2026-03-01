@@ -6,4 +6,3 @@ const router = express.Router();
 router.get("/search-gifs", gifController.searchGifs);
 
 module.exports = router;
-

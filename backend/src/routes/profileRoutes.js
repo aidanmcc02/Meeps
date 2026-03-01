@@ -15,7 +15,10 @@ router.get("/profile/:id", profileController.getProfileById);
 router.put("/profile/:id", profileController.updateProfileById);
 
 // Manually trigger Diana banner backfill for current user (e.g. after adding league username)
-router.post("/profile/backfill-diana-banners", authenticate, profileController.backfillDianaBanners);
+router.post(
+  "/profile/backfill-diana-banners",
+  authenticate,
+  profileController.backfillDianaBanners,
+);
 
 module.exports = router;
-

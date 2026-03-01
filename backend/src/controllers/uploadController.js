@@ -12,11 +12,13 @@ const useRailwayVolume =
   (!rawUploads || rawUploads === "$RAILWAY_VOLUME_MOUNT_PATH");
 const UPLOADS_PATH = useRailwayVolume
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "uploads")
-  : (rawUploads || path.join(process.cwd(), "uploads"));
+  : rawUploads || path.join(process.cwd(), "uploads");
 
 // Short‑lived, file-scoped token secret for signed file URLs.
 const FILE_TOKEN_SECRET =
-  process.env.FILE_TOKEN_SECRET || process.env.JWT_SECRET || "dev_secret_change_me_files";
+  process.env.FILE_TOKEN_SECRET ||
+  process.env.JWT_SECRET ||
+  "dev_secret_change_me_files";
 const UPLOAD_MAX_AGE_DAYS = 3;
 const UPLOAD_MAX_AGE_MS = UPLOAD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB per file
@@ -26,7 +28,10 @@ function createSignedFilePath(publicId, maxAgeMs = 60 * 60 * 1000) {
   if (!publicId) return null;
   const expiresAt = Date.now() + maxAgeMs;
   const payload = `${publicId}.${expiresAt}`;
-  const sig = crypto.createHmac("sha256", FILE_TOKEN_SECRET).update(payload).digest("base64url");
+  const sig = crypto
+    .createHmac("sha256", FILE_TOKEN_SECRET)
+    .update(payload)
+    .digest("base64url");
   return `/api/files/${publicId}?e=${expiresAt}&s=${sig}`;
 }
 
@@ -48,10 +53,12 @@ const storage = multer.diskStorage({
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || "";
-    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const base = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9._-]/g, "_");
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     cb(null, `${base}-${unique}${ext}`);
-  }
+  },
 });
 
 const upload = multer({
@@ -60,7 +67,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     // Basic safety: avoid executable types if you want; for now allow common docs/images
     cb(null, true);
-  }
+  },
 });
 
 exports.getMulterUpload = () => upload.array("files", MAX_FILES);
@@ -71,7 +78,7 @@ exports.uploadFiles = async (req, res, next) => {
   if (!req.files || req.files.length === 0) {
     console.warn("[uploads] Rejecting upload with no files", {
       userId,
-      ip: req.ip
+      ip: req.ip,
     });
     return res.status(400).json({ message: "No files uploaded" });
   }
@@ -80,9 +87,11 @@ exports.uploadFiles = async (req, res, next) => {
       userId,
       ip: req.ip,
       fileCount: req.files.length,
-      maxFiles: MAX_FILES
+      maxFiles: MAX_FILES,
     });
-    return res.status(400).json({ message: `Maximum ${MAX_FILES} files per upload` });
+    return res
+      .status(400)
+      .json({ message: `Maximum ${MAX_FILES} files per upload` });
   }
 
   const results = [];
@@ -91,7 +100,7 @@ exports.uploadFiles = async (req, res, next) => {
     userId,
     ip: req.ip,
     fileCount: req.files.length,
-    totalBytes: req.files.reduce((sum, f) => sum + (f.size || 0), 0)
+    totalBytes: req.files.reduce((sum, f) => sum + (f.size || 0), 0),
   });
 
   try {
@@ -107,8 +116,8 @@ exports.uploadFiles = async (req, res, next) => {
           relativePath.replace(/\\/g, "/"),
           file.mimetype || null,
           file.size,
-          publicId
-        ]
+          publicId,
+        ],
       );
       const row = result.rows[0];
       const signedPath = createSignedFilePath(row.public_id);
@@ -119,7 +128,7 @@ exports.uploadFiles = async (req, res, next) => {
         size: row.size_bytes,
         publicId: row.public_id,
         url: signedPath,
-        createdAt: row.created_at
+        createdAt: row.created_at,
       });
 
       console.log("[uploads] Stored file", {
@@ -129,14 +138,14 @@ exports.uploadFiles = async (req, res, next) => {
         filename: row.filename,
         mimeType: row.mime_type,
         size: row.size_bytes,
-        storagePath: relativePath.replace(/\\/g, "/")
+        storagePath: relativePath.replace(/\\/g, "/"),
       });
     }
 
     console.log("[uploads] Upload complete", {
       userId,
       ip: req.ip,
-      uploadedCount: results.length
+      uploadedCount: results.length,
     });
 
     return res.status(201).json({ uploads: results });
@@ -144,7 +153,7 @@ exports.uploadFiles = async (req, res, next) => {
     console.error("[uploads] Upload failed", {
       userId,
       ip: req.ip,
-      error: err.message
+      error: err.message,
     });
     return next(err);
   }
@@ -157,7 +166,7 @@ exports.serveFile = async (req, res, next) => {
   if (!idParam || typeof idParam !== "string") {
     console.warn("[uploads] Invalid file id on download", {
       userId,
-      ip: req.ip
+      ip: req.ip,
     });
     return res.status(404).end();
   }
@@ -177,51 +186,60 @@ exports.serveFile = async (req, res, next) => {
       if (e && s) {
         const expiresAt = Number(e);
         if (Number.isNaN(expiresAt)) {
-          console.warn("[uploads] Missing or invalid signature for file download", {
-            userId,
-            ip: req.ip,
-            id: idParam
-          });
+          console.warn(
+            "[uploads] Missing or invalid signature for file download",
+            {
+              userId,
+              ip: req.ip,
+              id: idParam,
+            },
+          );
           return res.status(401).json({ message: "invalid file token" });
         }
         if (Date.now() > expiresAt) {
           console.info("[uploads] Signed URL expired", {
             userId,
             ip: req.ip,
-            id: idParam
+            id: idParam,
           });
           return res.status(410).json({ message: "File link expired" });
         }
         const payload = `${idParam}.${expiresAt}`;
-        const expected = crypto.createHmac("sha256", FILE_TOKEN_SECRET).update(payload).digest("base64url");
+        const expected = crypto
+          .createHmac("sha256", FILE_TOKEN_SECRET)
+          .update(payload)
+          .digest("base64url");
         if (expected !== s) {
           console.warn("[uploads] Signature mismatch for file download", {
             userId,
             ip: req.ip,
-            id: idParam
+            id: idParam,
           });
           return res.status(401).json({ message: "invalid file token" });
         }
 
         const result = await db.query(
           "SELECT id, filename, storage_path, mime_type, created_at, is_pinned FROM uploads WHERE public_id = $1",
-          [idParam]
+          [idParam],
         );
         row = result.rows[0];
       } else {
         // Unsigned access: only allowed for pinned uploads (e.g. profile avatars).
         const result = await db.query(
           "SELECT id, filename, storage_path, mime_type, created_at, is_pinned FROM uploads WHERE public_id = $1",
-          [idParam]
+          [idParam],
         );
         row = result.rows[0];
 
         if (!row || row.is_pinned !== true) {
-          console.warn("[uploads] Attempted unsigned access to non-pinned file", {
-            userId,
-            ip: req.ip,
-            id: idParam
-          });
+          console.warn(
+            "[uploads] Attempted unsigned access to non-pinned file",
+            {
+              userId,
+              ip: req.ip,
+              id: idParam,
+            },
+          );
           return res.status(404).json({ message: "File not found" });
         }
       }
@@ -229,7 +247,7 @@ exports.serveFile = async (req, res, next) => {
       // Legacy numeric IDs (no signature). Keep for backward compatibility.
       const legacyResult = await db.query(
         "SELECT id, filename, storage_path, mime_type, created_at, is_pinned FROM uploads WHERE id = $1",
-        [asInt]
+        [asInt],
       );
       row = legacyResult.rows[0];
     }
@@ -238,7 +256,7 @@ exports.serveFile = async (req, res, next) => {
       console.warn("[uploads] File not found on download", {
         userId,
         ip: req.ip,
-        id: idParam
+        id: idParam,
       });
       return res.status(404).json({ message: "File not found" });
     }
@@ -250,7 +268,7 @@ exports.serveFile = async (req, res, next) => {
         userId,
         ip: req.ip,
         uploadId: row.id,
-        id: idParam
+        id: idParam,
       });
       return res.status(410).json({ message: "File expired" });
     }
@@ -264,7 +282,7 @@ exports.serveFile = async (req, res, next) => {
         ip: req.ip,
         uploadId: row.id,
         id: idParam,
-        storagePath: row.storage_path
+        storagePath: row.storage_path,
       });
       return res.status(404).json({ message: "File not found" });
     }
@@ -276,10 +294,13 @@ exports.serveFile = async (req, res, next) => {
       id: idParam,
       filename: row.filename,
       mimeType: row.mime_type,
-      storagePath: row.storage_path
+      storagePath: row.storage_path,
     });
 
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(row.filename)}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(row.filename)}"`,
+    );
     if (row.mime_type) {
       res.setHeader("Content-Type", row.mime_type);
     }
@@ -290,7 +311,7 @@ exports.serveFile = async (req, res, next) => {
           ip: req.ip,
           uploadId: row.id,
           id: idParam,
-          error: err.message
+          error: err.message,
         });
         next(err);
       }
@@ -300,7 +321,7 @@ exports.serveFile = async (req, res, next) => {
       userId,
       ip: req.ip,
       id: idParam,
-      error: err.message
+      error: err.message,
     });
     return next(err);
   }
@@ -316,7 +337,7 @@ exports.cleanupExpiredUploads = async () => {
     const cutoff = new Date(Date.now() - UPLOAD_MAX_AGE_MS);
     const result = await db.query(
       "SELECT id, storage_path FROM uploads WHERE created_at < $1 AND (is_pinned IS NOT TRUE)",
-      [cutoff]
+      [cutoff],
     );
     for (const row of result.rows) {
       const filePath = path.join(UPLOADS_PATH, row.storage_path);

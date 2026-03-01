@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from "react";
 
 const GAMES = [
-  { id: "league", label: "League of Legends", placeholder: "GameName#TAG", description: "Used for Diana match embeds" }
+  {
+    id: "league",
+    label: "League of Legends",
+    placeholder: "GameName#TAG",
+    description: "Used for Diana match embeds",
+  },
 ];
 
 function GamerTagsModal({ isOpen, onClose, leagueUsername = "", onSave }) {
@@ -32,7 +37,7 @@ function GamerTagsModal({ isOpen, onClose, leagueUsername = "", onSave }) {
           paddingTop: "env(safe-area-inset-top)",
           paddingRight: "env(safe-area-inset-right)",
           paddingBottom: "env(safe-area-inset-bottom)",
-          paddingLeft: "env(safe-area-inset-left)"
+          paddingLeft: "env(safe-area-inset-left)",
         }}
       >
         <div
@@ -49,8 +54,18 @@ function GamerTagsModal({ isOpen, onClose, leagueUsername = "", onSave }) {
               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-800 hover:text-gray-200"
               aria-label="Close"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -69,7 +84,9 @@ function GamerTagsModal({ isOpen, onClose, leagueUsername = "", onSave }) {
                 <input
                   type="text"
                   value={game.id === "league" ? league : ""}
-                  onChange={(e) => game.id === "league" && setLeague(e.target.value)}
+                  onChange={(e) =>
+                    game.id === "league" && setLeague(e.target.value)
+                  }
                   className="w-full min-h-[44px] rounded-md border border-gray-700 bg-gray-900/80 px-3 py-2.5 text-base text-gray-100 outline-none placeholder-gray-500 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500/60 sm:min-h-0 sm:py-1.5 sm:text-xs"
                   placeholder={game.placeholder}
                 />
