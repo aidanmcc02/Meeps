@@ -37,6 +37,13 @@ function UserProfile({ profile, onSave, activity, editable = true, userStatus, o
   const [avatarChangeOpen, setAvatarChangeOpen] = useState(false);
   const [bannerChangeOpen, setBannerChangeOpen] = useState(false);
   const avatarFileInputRef = useRef(null);
+  const errorTimeoutMs = 30 * 1000;
+
+  useEffect(() => {
+    if (!avatarUploadError) return;
+    const timeoutId = setTimeout(() => setAvatarUploadError(null), errorTimeoutMs);
+    return () => clearTimeout(timeoutId);
+  }, [avatarUploadError, errorTimeoutMs]);
 
   useEffect(() => {
     if (!profile) return;

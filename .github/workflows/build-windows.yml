@@ -84,9 +84,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Optional: set these in repo Variables/Secrets to point the built app at your deployed backend.
           # If unset, the app uses http://localhost:4000 and ws://localhost:4000/ws (local dev).
-          VITE_BACKEND_HTTP_URL: ${{ vars.VITE_BACKEND_HTTP_URL }}
-          VITE_BACKEND_WS_URL: ${{ vars.VITE_BACKEND_WS_URL }}
-          VITE_DIANA_API_URL: ${{ vars.VITE_DIANA_API_URL }}
+          VITE_BACKEND_HTTP_URL: ${{ secrets.VITE_BACKEND_HTTP_URL }}
+          VITE_BACKEND_WS_URL: ${{ secrets.VITE_BACKEND_WS_URL }}
+          VITE_DIANA_API_URL: ${{ secrets.VITE_DIANA_API_URL }}
         with:
           tauriScript: npm run tauri
 

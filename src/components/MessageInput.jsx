@@ -46,6 +46,13 @@ function MessageInput({
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const errorTimeoutMs = 30 * 1000;
+
+  useEffect(() => {
+    if (!uploadError) return;
+    const timeoutId = setTimeout(() => setUploadError(null), errorTimeoutMs);
+    return () => clearTimeout(timeoutId);
+  }, [uploadError, errorTimeoutMs]);
 
   const mentionOptions = buildMentionOptions(presenceUsers, currentUser, profiles);
   const filteredOptions = mentionQuery

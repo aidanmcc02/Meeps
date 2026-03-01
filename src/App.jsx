@@ -3288,6 +3288,7 @@ function App() {
                   presenceUsers={presenceUsers}
                   currentUser={currentUser}
                   profiles={profiles}
+                  apiBase={apiBase}
                 />
               </div>
             </div>
