@@ -36,11 +36,9 @@ exports.subscribe = async (req, res, next) => {
     typeof keys.p256dh !== "string" ||
     typeof keys.auth !== "string"
   ) {
-    return res
-      .status(400)
-      .json({
-        message: "Invalid subscription: keys.p256dh and keys.auth required",
-      });
+    return res.status(400).json({
+      message: "Invalid subscription: keys.p256dh and keys.auth required",
+    });
   }
 
   try {
