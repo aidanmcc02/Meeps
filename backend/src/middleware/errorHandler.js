@@ -4,9 +4,8 @@ function notFound(req, res, _next) {
 }
 
 // Generic error handler
-// eslint-disable-next-line no-unused-vars
+
 function errorHandler(err, _req, res, _next) {
-  // eslint-disable-next-line no-console
   console.error(err);
 
   if (res.headersSent) {
@@ -17,4 +16,3 @@ function errorHandler(err, _req, res, _next) {
 }
 
 module.exports = { notFound, errorHandler };
-

@@ -11,7 +11,9 @@ const rootDir = path.join(__dirname, "..");
 const rootIcon = path.join(rootDir, "icon.png");
 
 if (!fs.existsSync(rootIcon)) {
-  console.error("icon.png not found in project root. Add your app icon as icon.png and run again.");
+  console.error(
+    "icon.png not found in project root. Add your app icon as icon.png and run again.",
+  );
   process.exit(1);
 }
 
@@ -21,4 +23,6 @@ execSync("npx tauri icon icon.png", { cwd: rootDir, stdio: "inherit" });
 console.log("Copying icon to public/ for PWA (iPhone)…");
 require("./generate-pwa-icons.js");
 
-console.log("Done. Rebuild the app (npm run tauri:build or npm run build:web) to use the new icon.");
+console.log(
+  "Done. Rebuild the app (npm run tauri:build or npm run build:web) to use the new icon.",
+);

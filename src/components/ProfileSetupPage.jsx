@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import GifPickerModal from "./GifPickerModal";
 
-const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
+const API_BASE =
+  import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
 function ProfileSetupPage({ user, onComplete }) {
   const [bannerUrl, setBannerUrl] = useState("");
@@ -11,12 +12,13 @@ function ProfileSetupPage({ user, onComplete }) {
   const [gifTarget, setGifTarget] = useState(null); // "banner" | "avatar" | null
 
   const displayName = user?.displayName || "Meeps User";
-  const initials = displayName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "MU";
+  const initials =
+    displayName
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "MU";
 
   const handlePickGif = (gif) => {
     const url = gif.url || gif.previewUrl;
@@ -36,8 +38,8 @@ function ProfileSetupPage({ user, onComplete }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           avatarUrl: avatarUrl || null,
-          bannerUrl: bannerUrl || null
-        })
+          bannerUrl: bannerUrl || null,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -59,11 +61,10 @@ function ProfileSetupPage({ user, onComplete }) {
     >
       <div className="w-full max-w-2xl mt-6 mb-4">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">
-            Set up your profile
-          </h1>
+          <h1 className="text-2xl font-bold text-white">Set up your profile</h1>
           <p className="text-gray-300 mt-1 text-sm">
-            Add a banner and avatar. Images and GIFs will show on your profile card, voice sidebar, and users tab.
+            Add a banner and avatar. Images and GIFs will show on your profile
+            card, voice sidebar, and users tab.
           </p>
         </div>
 
@@ -115,9 +116,7 @@ function ProfileSetupPage({ user, onComplete }) {
                 </div>
               </div>
 
-              {error && (
-                <p className="text-sm text-red-400">{error}</p>
-              )}
+              {error && <p className="text-sm text-red-400">{error}</p>}
 
               <button
                 type="submit"

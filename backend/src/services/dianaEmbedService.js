@@ -8,20 +8,42 @@ const { broadcastMessageUpdate } = require("../websocket/websocketServer");
 
 const MATCHES_CHANNEL = "matches";
 const DDRAGON_VERSION = "14.24.1";
-const CDRAGON_RANKED = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem";
-const RANK_TIERS = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger"];
+const CDRAGON_RANKED =
+  "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem";
+const RANK_TIERS = [
+  "iron",
+  "bronze",
+  "silver",
+  "gold",
+  "platinum",
+  "emerald",
+  "diamond",
+  "master",
+  "grandmaster",
+  "challenger",
+];
 const RESULT_COLORS = { win: 0x28a745, lose: 0xe74c3c, remake: 0xe67e22 };
 
 /** Extract League username from a stored embed (same logic as Diana payload extraction). */
 function extractLeagueUsernameFromEmbed(embed) {
   if (!embed || typeof embed !== "object") return null;
-  const direct = embed.summonerName || embed.gameName || embed.summoner_name || embed.game_name;
+  const direct =
+    embed.summonerName ||
+    embed.gameName ||
+    embed.summoner_name ||
+    embed.game_name;
   if (direct && typeof direct === "string") {
     const t = String(direct).trim();
     if (t) return t;
   }
   const fields = Array.isArray(embed.fields) ? embed.fields : [];
-  const summonerFieldNames = ["summoner", "player", "username", "riot", "account"];
+  const summonerFieldNames = [
+    "summoner",
+    "player",
+    "username",
+    "riot",
+    "account",
+  ];
   for (const f of fields) {
     const name = (f.name || "").toLowerCase().trim();
     const value = (f.value || "").trim();
@@ -38,7 +60,8 @@ function extractLeagueUsernameFromEmbed(embed) {
       const lastHyphen = id.lastIndexOf("-");
       if (lastHyphen > 0) {
         const after = id.slice(lastHyphen + 1);
-        if (/^[A-Za-z0-9]{2,6}$/.test(after)) id = id.slice(0, lastHyphen) + "#" + after;
+        if (/^[A-Za-z0-9]{2,6}$/.test(after))
+          id = id.slice(0, lastHyphen) + "#" + after;
       }
       if (id) return id;
     } catch (_) {}
@@ -60,7 +83,13 @@ function parseLegacyDianaContent(content, createdAt) {
   if (!trimmed) return null;
 
   const blocks = trimmed.split(/\n\n+/);
-  const embed = { title: null, description: null, url: null, fields: [], timestamp: createdAt };
+  const embed = {
+    title: null,
+    description: null,
+    url: null,
+    fields: [],
+    timestamp: createdAt,
+  };
   let summonerName = null;
 
   let i = 0;
@@ -71,7 +100,11 @@ function parseLegacyDianaContent(content, createdAt) {
       i++;
     }
   }
-  if (i < blocks.length && !blocks[i].match(/^\*\*/) && !blocks[i].match(/^\[.+\]\(.+\)$/)) {
+  if (
+    i < blocks.length &&
+    !blocks[i].match(/^\*\*/) &&
+    !blocks[i].match(/^\[.+\]\(.+\)$/)
+  ) {
     embed.description = blocks[i].trim();
     i++;
   }
@@ -91,13 +124,21 @@ function parseLegacyDianaContent(content, createdAt) {
       const value = fieldMatch[2].trim();
       if (name && value) {
         const nameLower = name.toLowerCase();
-        if ((nameLower.includes("summoner") || nameLower.includes("player") || nameLower.includes("username") || nameLower.includes("riot") || nameLower.includes("account")) && !nameLower.includes("champion")) {
+        if (
+          (nameLower.includes("summoner") ||
+            nameLower.includes("player") ||
+            nameLower.includes("username") ||
+            nameLower.includes("riot") ||
+            nameLower.includes("account")) &&
+          !nameLower.includes("champion")
+        ) {
           summonerName = value;
         }
         if (nameLower.includes("result") && !embed.colorHex) {
           const v = value.toLowerCase();
           if (v.includes("win")) embed.colorHex = RESULT_COLORS.win;
-          else if (v.includes("lose") || v.includes("loss")) embed.colorHex = RESULT_COLORS.lose;
+          else if (v.includes("lose") || v.includes("loss"))
+            embed.colorHex = RESULT_COLORS.lose;
           else if (v.includes("remake")) embed.colorHex = RESULT_COLORS.remake;
         }
         embed.fields.push({ name, value, inline: true });
@@ -105,11 +146,13 @@ function parseLegacyDianaContent(content, createdAt) {
     }
   }
 
-  const isRankChange = embed.title && /promotion|demotion/.test(embed.title.toLowerCase());
+  const isRankChange =
+    embed.title && /promotion|demotion/.test(embed.title.toLowerCase());
   if (embed.title) {
     const t = embed.title.toLowerCase();
     if (t.includes("promotion")) embed.colorHex = embed.colorHex ?? 0x28a745;
-    else if (t.includes("demotion")) embed.colorHex = embed.colorHex ?? 0xe74c3c;
+    else if (t.includes("demotion"))
+      embed.colorHex = embed.colorHex ?? 0xe74c3c;
   }
 
   let champUrl = null;
@@ -118,24 +161,40 @@ function parseLegacyDianaContent(content, createdAt) {
     const n = (f.name || "").toLowerCase();
     const v = f.value || "";
     if ((n.includes("champion") || n.includes("champ")) && v) {
-      const id = v.trim().replace(/[''.]/g, "").split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join("");
-      if (id) champUrl = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${id}.png`;
+      const id = v
+        .trim()
+        .replace(/[''.]/g, "")
+        .split(/\s+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join("");
+      if (id)
+        champUrl = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/champion/${id}.png`;
     }
-    if ((n.includes("rank change") || n.includes("rank update") || n.includes("rank")) && v) {
+    if (
+      (n.includes("rank change") ||
+        n.includes("rank update") ||
+        n.includes("rank")) &&
+      v
+    ) {
       const tier = v.trim().split(/\s+/)[0].toLowerCase();
-      if (RANK_TIERS.includes(tier)) rankUrl = `${CDRAGON_RANKED}/emblem-${tier}.png`;
+      if (RANK_TIERS.includes(tier))
+        rankUrl = `${CDRAGON_RANKED}/emblem-${tier}.png`;
     }
   }
-  embed.thumbnailUrl = isRankChange && rankUrl ? rankUrl : (champUrl || rankUrl);
+  embed.thumbnailUrl = isRankChange && rankUrl ? rankUrl : champUrl || rankUrl;
 
-  if (!embed.title && embed.fields.length === 0 && !embed.description) return null;
+  if (!embed.title && embed.fields.length === 0 && !embed.description)
+    return null;
   if (!summonerName) summonerName = extractLeagueUsernameFromEmbed(embed);
   return { embed, summonerName };
 }
 
 /** Normalize for matching: lowercase, trim, remove spaces (FM Stew vs FMStew both -> fmstew). */
 function normalizeForMatch(s) {
-  return String(s || "").trim().toLowerCase().replace(/\s+/g, "");
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
 }
 
 /** Check if embed's league username matches the user's league_username (case-insensitive, tag-optional, space-flexible). */
@@ -156,9 +215,10 @@ function embedMatchesUser(embed, userLeagueUsername) {
 }
 
 function leagueUsernameMatches(embedOrParsed, userLeagueUsername) {
-  const toMatch = embedOrParsed && typeof embedOrParsed === "object"
-    ? extractLeagueUsernameFromEmbed(embedOrParsed)
-    : embedOrParsed;
+  const toMatch =
+    embedOrParsed && typeof embedOrParsed === "object"
+      ? extractLeagueUsernameFromEmbed(embedOrParsed)
+      : embedOrParsed;
   if (!toMatch || !userLeagueUsername) return false;
   const embedNorm = String(toMatch).trim().toLowerCase();
   const userNorm = String(userLeagueUsername).trim().toLowerCase();
@@ -197,7 +257,12 @@ function inferMatchResult(embed) {
   }
   const title = (embed.title || "").toLowerCase();
   if (title.includes("promotion") || title.includes("win")) return "win";
-  if (title.includes("demotion") || title.includes("lose") || title.includes("loss")) return "lose";
+  if (
+    title.includes("demotion") ||
+    title.includes("lose") ||
+    title.includes("loss")
+  )
+    return "lose";
   return null;
 }
 
@@ -218,16 +283,18 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
 
   const seenSummoners = new Set();
   const usersResult = await db.query(
-    `SELECT league_username FROM users WHERE user_type = 'user' AND TRIM(COALESCE(league_username, '')) != ''`
+    `SELECT league_username FROM users WHERE user_type = 'user' AND TRIM(COALESCE(league_username, '')) != ''`,
   );
-  const allLeagueUsernames = usersResult.rows.map((r) => (r.league_username || "").trim()).filter(Boolean);
+  const allLeagueUsernames = usersResult.rows
+    .map((r) => (r.league_username || "").trim())
+    .filter(Boolean);
 
   try {
     const dbResult = await db.query(
       `SELECT id, channel, sender_name, sender_id, content, embed, created_at
        FROM messages
        WHERE channel = $1 AND sender_name = 'Diana'`,
-      [MATCHES_CHANNEL]
+      [MATCHES_CHANNEL],
     );
 
     for (const row of dbResult.rows) {
@@ -237,7 +304,8 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
 
       if (row.embed) {
         try {
-          embed = typeof row.embed === "string" ? JSON.parse(row.embed) : row.embed;
+          embed =
+            typeof row.embed === "string" ? JSON.parse(row.embed) : row.embed;
         } catch {
           embed = null;
         }
@@ -267,8 +335,12 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
 
       if (!embed) continue;
 
-      const summoner = extractLeagueUsernameFromEmbed(embed) || parseLegacyDianaContent(row.content, row.created_at)?.summonerName;
-      const matchesAnyUser = summoner ? summonerMatchesAny(summoner, allLeagueUsernames) : false;
+      const summoner =
+        extractLeagueUsernameFromEmbed(embed) ||
+        parseLegacyDianaContent(row.content, row.created_at)?.summonerName;
+      const matchesAnyUser = summoner
+        ? summonerMatchesAny(summoner, allLeagueUsernames)
+        : false;
 
       let updatedEmbed = { ...embed };
       let changed = false;
@@ -277,9 +349,9 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
         const matchResult = inferMatchResult(embed);
         const urlToUse =
           matchResult === "win"
-            ? (winGifUrl || bannerUrl)
+            ? winGifUrl || bannerUrl
             : matchResult === "lose"
-              ? (loseGifUrl || bannerUrl)
+              ? loseGifUrl || bannerUrl
               : bannerUrl;
         if (urlToUse) {
           updatedEmbed.bannerUrl = urlToUse;
@@ -298,10 +370,10 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
       if (!changed) continue;
 
       const embedJson = JSON.stringify(updatedEmbed);
-      await db.query(
-        "UPDATE messages SET embed = $2::jsonb WHERE id = $1",
-        [row.id, embedJson]
-      );
+      await db.query("UPDATE messages SET embed = $2::jsonb WHERE id = $1", [
+        row.id,
+        embedJson,
+      ]);
       result.updated++;
 
       broadcastMessageUpdate({
@@ -311,7 +383,7 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
         senderId: row.sender_id ?? undefined,
         content: row.content,
         embed: updatedEmbed,
-        createdAt: row.created_at
+        createdAt: row.created_at,
       });
     }
   } catch (err) {
@@ -320,4 +392,8 @@ async function backfillBannersForUser(leagueUsername, opts = {}) {
   return result;
 }
 
-module.exports = { backfillBannersForUser, extractLeagueUsernameFromEmbed, embedMatchesUser };
+module.exports = {
+  backfillBannersForUser,
+  extractLeagueUsernameFromEmbed,
+  embedMatchesUser,
+};

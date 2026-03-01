@@ -16,8 +16,13 @@ body.overlay-page {
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Segoe UI", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "Segoe UI",
+    sans-serif;
 }
 
 /* Hide scrollbars but keep scroll behavior */
@@ -56,18 +61,24 @@ body {
 
 /* Voice room: green glow around who is talking */
 .voice-speaking-glow {
-  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.6), 0 0 30px 12px rgba(52, 211, 153, 0.4),
+  box-shadow:
+    0 0 0 4px rgba(52, 211, 153, 0.6),
+    0 0 30px 12px rgba(52, 211, 153, 0.4),
     0 0 60px 20px rgba(52, 211, 153, 0.25);
   animation: voice-speaking-glow 1.8s ease-in-out infinite;
 }
 @keyframes voice-speaking-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.6), 0 0 30px 12px rgba(52, 211, 153, 0.4),
+    box-shadow:
+      0 0 0 4px rgba(52, 211, 153, 0.6),
+      0 0 30px 12px rgba(52, 211, 153, 0.4),
       0 0 60px 20px rgba(52, 211, 153, 0.25);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.8), 0 0 45px 18px rgba(52, 211, 153, 0.5),
+    box-shadow:
+      0 0 0 6px rgba(52, 211, 153, 0.8),
+      0 0 45px 18px rgba(52, 211, 153, 0.5),
       0 0 80px 28px rgba(52, 211, 153, 0.35);
   }
 }
@@ -94,7 +105,7 @@ body {
 }
 .splash-meep {
   position: absolute;
-  width:  clamp(120px, 16vw, 180px);
+  width: clamp(120px, 16vw, 180px);
   height: clamp(120px, 16vw, 180px);
   animation: splash-float-diagonal 3s cubic-bezier(0.33, 0, 0.2, 1) both;
   transform-origin: center center;
@@ -109,7 +120,7 @@ body {
 @keyframes splash-float-diagonal {
   0% {
     transform: translate(-20vw, 80vh) scale(var(--meep-scale, 1)) rotate(45deg);
-    opacity: 0.0;
+    opacity: 0;
   }
   8% {
     opacity: 1;
@@ -119,15 +130,15 @@ body {
   }
   100% {
     transform: translate(120vw, -80vh) scale(var(--meep-scale, 1)) rotate(45deg);
-    opacity: 0.0;
+    opacity: 0;
   }
 }
 @keyframes splash-squirm {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) scaleX(1) rotate(0deg);
   }
   50% {
     transform: translateY(-9px) scaleX(0.96) rotate(-3deg);
   }
 }
-

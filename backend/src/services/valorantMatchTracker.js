@@ -18,7 +18,9 @@ const MATCHES_CHANNEL_ID = "matches";
 let pollInterval = null;
 
 function isConfigured() {
-  const demo = process.env.VALORANT_DEMO_MODE === "1" || process.env.VALORANT_DEMO_MODE === "true";
+  const demo =
+    process.env.VALORANT_DEMO_MODE === "1" ||
+    process.env.VALORANT_DEMO_MODE === "true";
   return Boolean(process.env.RIOT_API_KEY) && !demo;
 }
 
@@ -28,7 +30,7 @@ async function getLinkedUsers() {
       `SELECT v.user_id, v.riot_puuid, v.game_name, v.tag_line, v.region,
               COALESCE(u.display_name, 'User ' || v.user_id) AS display_name
        FROM valorant_links v
-       JOIN users u ON u.id = v.user_id`
+       JOIN users u ON u.id = v.user_id`,
     );
     return result.rows;
   } catch (err) {
@@ -40,7 +42,7 @@ async function getLinkedUsers() {
 async function isMatchAlreadyPosted(matchId, puuid) {
   const result = await pool.query(
     "SELECT 1 FROM valorant_tracked_matches WHERE match_id = $1 AND puuid = $2",
-    [matchId, puuid]
+    [matchId, puuid],
   );
   return result.rows.length > 0;
 }
@@ -48,7 +50,7 @@ async function isMatchAlreadyPosted(matchId, puuid) {
 async function markMatchPosted(matchId, puuid) {
   await pool.query(
     "INSERT INTO valorant_tracked_matches (match_id, puuid) VALUES ($1, $2) ON CONFLICT (match_id, puuid) DO NOTHING",
-    [matchId, puuid]
+    [matchId, puuid],
   );
 }
 
@@ -63,10 +65,16 @@ function buildMatchMessageContent(summary) {
     lines.push(`![${summary.agentName}](${summary.agentIcon})`);
     lines.push("");
   }
-  lines.push(`**Rank:** ${summary.rankName}  ·  **Score:** ${summary.scoreline}`);
-  lines.push(`**K/D/A:** ${summary.kills}/${summary.deaths}/${summary.assists}  ·  **Combat score:** ${summary.score}`);
+  lines.push(
+    `**Rank:** ${summary.rankName}  ·  **Score:** ${summary.scoreline}`,
+  );
+  lines.push(
+    `**K/D/A:** ${summary.kills}/${summary.deaths}/${summary.assists}  ·  **Combat score:** ${summary.score}`,
+  );
   if (summary.rrChange != null) {
-    lines.push(`**RR:** ${summary.rrChange >= 0 ? "+" : ""}${summary.rrChange}`);
+    lines.push(
+      `**RR:** ${summary.rrChange >= 0 ? "+" : ""}${summary.rrChange}`,
+    );
   }
   return lines.join("\n");
 }
@@ -77,7 +85,11 @@ async function processLinkedUser(link) {
   try {
     history = await getMatchList(riot_puuid, region, QUEUE, 0, 10);
   } catch (err) {
-    console.warn("[Valorant Tracker] getMatchList failed for", link.game_name, err.message);
+    console.warn(
+      "[Valorant Tracker] getMatchList failed for",
+      link.game_name,
+      err.message,
+    );
     return;
   }
   if (!history || history.length === 0) return;
@@ -101,10 +113,18 @@ async function processLinkedUser(link) {
 
     try {
       const content = buildMatchMessageContent(summary);
-      await postMessageToChannel(MATCHES_CHANNEL_ID, user_id, display_name, content);
+      await postMessageToChannel(
+        MATCHES_CHANNEL_ID,
+        user_id,
+        display_name,
+        content,
+      );
       await markMatchPosted(matchId, riot_puuid);
     } catch (err) {
-      console.warn("[Valorant Tracker] postMessageToChannel failed", err.message);
+      console.warn(
+        "[Valorant Tracker] postMessageToChannel failed",
+        err.message,
+      );
     }
   }
 }
@@ -128,7 +148,11 @@ function startTracker() {
     return;
   }
   pollInterval = setInterval(pollOnce, POLL_INTERVAL_MS);
-  console.log("[Valorant Tracker] Started polling every", POLL_INTERVAL_MS / 1000, "seconds");
+  console.log(
+    "[Valorant Tracker] Started polling every",
+    POLL_INTERVAL_MS / 1000,
+    "seconds",
+  );
   pollOnce();
 }
 

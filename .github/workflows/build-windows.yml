@@ -5,6 +5,11 @@
 
 name: Build for Windows
 
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
 on:
   workflow_dispatch:
   push:
@@ -12,12 +17,87 @@ on:
   pull_request:
     branches: [main]
     paths-ignore:
-      - '**.md'
-      - '.gitignore'
+      - "**.md"
+      - ".gitignore"
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Audit production deps
+        run: npm audit --omit=dev
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint code
+        run: npm run lint:check
+
+      - name: Build
+        run: npm run build:check
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [gitleaks]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-windows]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+
   test:
     runs-on: ubuntu-latest
+    if: (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    needs: [build]
     services:
       postgres:
         image: postgres:15
@@ -63,6 +143,8 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,9 +166,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Optional: set these in repo Variables/Secrets to point the built app at your deployed backend.
           # If unset, the app uses http://localhost:4000 and ws://localhost:4000/ws (local dev).
-          VITE_BACKEND_HTTP_URL: ${{ vars.VITE_BACKEND_HTTP_URL }}
-          VITE_BACKEND_WS_URL: ${{ vars.VITE_BACKEND_WS_URL }}
-          VITE_DIANA_API_URL: ${{ vars.VITE_DIANA_API_URL }}
+          VITE_BACKEND_HTTP_URL: ${{ secrets.VITE_BACKEND_HTTP_URL }}
+          VITE_BACKEND_WS_URL: ${{ secrets.VITE_BACKEND_WS_URL }}
+          VITE_DIANA_API_URL: ${{ secrets.VITE_DIANA_API_URL }}
         with:
           tauriScript: npm run tauri
 
@@ -98,8 +180,8 @@ jobs:
 
   notify-builds:
     runs-on: ubuntu-latest
-    needs: [test, build-windows]
-    if: always() && (needs.test.result != 'cancelled' && needs.build-windows.result != 'cancelled')
+    needs: [test, build-windows, codeql]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && always() && (needs.test.result != 'cancelled' && needs.build-windows.result != 'cancelled' && needs.codeql.result != 'cancelled')
     # Use the same environment where VITE_BACKEND_HTTP_URL etc. are set (Settings → Actions → Environments)
     environment: production
     steps:

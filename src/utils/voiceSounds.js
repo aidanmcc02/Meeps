@@ -14,7 +14,10 @@ let audioContext = null;
 
 function isIOS() {
   if (typeof navigator === "undefined") return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
 }
 
 /** Initialize sound URLs. Call from App on mount. */
@@ -23,7 +26,7 @@ export function initSoundElements(baseUrl = import.meta.env?.BASE_URL || "/") {
   soundUrls = {
     message: base + "sounds/message.mp3",
     userJoined: base + "sounds/user-joined.mp3",
-    userLeave: base + "sounds/user-left.mp3"
+    userLeave: base + "sounds/user-left.mp3",
   };
   // On iOS, skip muted preload so the app doesn't show "audio playing" in the status bar
   if (isIOS()) return;
@@ -31,7 +34,9 @@ export function initSoundElements(baseUrl = import.meta.env?.BASE_URL || "/") {
     Object.values(soundUrls).forEach((url) => {
       const el = new Audio(url);
       el.volume = 0;
-      el.play().then(() => el.pause()).catch(() => {});
+      el.play()
+        .then(() => el.pause())
+        .catch(() => {});
     });
   }
 }
@@ -52,14 +57,16 @@ export function setUserHasInteracted() {
 
 function ensureAudioContext() {
   if (audioContext) {
-    if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
+    if (audioContext.state === "suspended")
+      audioContext.resume().catch(() => {});
     return audioContext;
   }
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
     audioContext = new Ctx();
-    if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
+    if (audioContext.state === "suspended")
+      audioContext.resume().catch(() => {});
     return audioContext;
   } catch (_e) {
     return null;
@@ -73,7 +80,11 @@ export function unlockNotificationElement(element) {
   userHasInteracted = true;
   try {
     if (element.volume !== undefined) element.volume = 0.7;
-    if (typeof element.play === "function") element.play().then(() => element.pause()).catch(() => {});
+    if (typeof element.play === "function")
+      element
+        .play()
+        .then(() => element.pause())
+        .catch(() => {});
   } catch (_e) {}
 }
 
@@ -104,7 +115,11 @@ function playBeep() {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.15);
     if (isIOS() && typeof ctx.close === "function") {
-      setTimeout(() => { try { ctx.close(); } catch (_) {} }, 200);
+      setTimeout(() => {
+        try {
+          ctx.close();
+        } catch (_) {}
+      }, 200);
     }
     return true;
   } catch (_e) {
@@ -133,7 +148,9 @@ export function unlockAudio() {
     Object.values(soundUrls).forEach((url) => {
       const el = new Audio(url);
       el.volume = 0;
-      el.play().then(() => el.pause()).catch(() => {});
+      el.play()
+        .then(() => el.pause())
+        .catch(() => {});
     });
   }
 }
@@ -145,7 +162,9 @@ export function preloadNotificationSound() {
       Object.values(soundUrls).forEach((url) => {
         const el = new Audio(url);
         el.volume = 0;
-        el.play().then(() => el.pause()).catch(() => {});
+        el.play()
+          .then(() => el.pause())
+          .catch(() => {});
       });
     }
   }

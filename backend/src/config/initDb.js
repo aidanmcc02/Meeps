@@ -17,7 +17,7 @@ async function ensureDianaBotUser() {
        display_name = EXCLUDED.display_name,
        user_type = EXCLUDED.user_type,
        updated_at = CURRENT_TIMESTAMP`,
-    [DIANA_EMAIL, hash.trim(), DIANA_DISPLAY_NAME]
+    [DIANA_EMAIL, hash.trim(), DIANA_DISPLAY_NAME],
   );
 }
 

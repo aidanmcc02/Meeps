@@ -8,13 +8,19 @@ exports.authenticate = (req, res, next) => {
 
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.substring("Bearer ".length);
-  } else if (req.query && typeof req.query.token === "string" && req.query.token) {
+  } else if (
+    req.query &&
+    typeof req.query.token === "string" &&
+    req.query.token
+  ) {
     // Allow JWT via query string for use-cases like <img src="..."> where headers cannot be set easily.
     token = req.query.token;
   }
 
   if (!token) {
-    return res.status(401).json({ message: "missing or invalid authorization token" });
+    return res
+      .status(401)
+      .json({ message: "missing or invalid authorization token" });
   }
 
   try {
@@ -25,4 +31,3 @@ exports.authenticate = (req, res, next) => {
     return res.status(401).json({ message: "invalid or expired token" });
   }
 };
-

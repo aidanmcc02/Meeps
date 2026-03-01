@@ -18,7 +18,7 @@ function init() {
     webpush.setVapidDetails(
       "mailto:meeps@example.com",
       vapidPublicKey,
-      vapidPrivateKey
+      vapidPrivateKey,
     );
     initialized = true;
   }
@@ -71,7 +71,8 @@ async function sendMessagePushToUsers(userIds, payload) {
   const title = "Meeps";
   const rawBody = typeof body === "string" ? body : "";
   const plainPreview = stripMarkdown(rawBody).slice(0, 80);
-  const bodyText = plainPreview + (plainPreview.length >= 80 ? "…" : "") || "New message";
+  const bodyText =
+    plainPreview + (plainPreview.length >= 80 ? "…" : "") || "New message";
   const notificationBody = `${sender || "Someone"}: ${bodyText}`;
 
   const pushPayload = JSON.stringify({
@@ -79,7 +80,7 @@ async function sendMessagePushToUsers(userIds, payload) {
     body: notificationBody,
     icon: "/apple-touch-icon.png",
     tag: `message-${channel || "general"}`,
-    data: { url: "/" }
+    data: { url: "/" },
   });
 
   for (const userId of userIds) {
@@ -88,15 +89,15 @@ async function sendMessagePushToUsers(userIds, payload) {
       // device (e.g. iPhone with both Safari and PWA subscriptions).
       const result = await db.query(
         "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1",
-        [userId]
+        [userId],
       );
       for (const row of result.rows) {
         const subscription = {
           endpoint: row.endpoint,
           keys: {
             p256dh: row.p256dh,
-            auth: row.auth
-          }
+            auth: row.auth,
+          },
         };
         try {
           await webpush.sendNotification(subscription, pushPayload);
@@ -104,7 +105,7 @@ async function sendMessagePushToUsers(userIds, payload) {
           if (err.statusCode === 410 || err.statusCode === 404) {
             await db.query(
               "DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2",
-              [userId, row.endpoint]
+              [userId, row.endpoint],
             );
           }
         }
@@ -118,5 +119,5 @@ async function sendMessagePushToUsers(userIds, payload) {
 module.exports = {
   getPublicKey,
   isConfigured,
-  sendMessagePushToUsers
+  sendMessagePushToUsers,
 };

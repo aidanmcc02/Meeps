@@ -13,7 +13,7 @@ async function getAttachmentsForMessage(messageId) {
        JOIN uploads u ON u.id = ma.upload_id
        WHERE ma.message_id = $1 AND u.created_at > $2
        ORDER BY ma.upload_id`,
-      [messageId, new Date(Date.now() - UPLOAD_MAX_AGE_MS)]
+      [messageId, new Date(Date.now() - UPLOAD_MAX_AGE_MS)],
     );
     return result.rows.map((r) => ({
       id: r.id,
@@ -21,7 +21,7 @@ async function getAttachmentsForMessage(messageId) {
       filename: r.filename,
       mimeType: r.mime_type,
       size: r.size_bytes,
-      url: createSignedFilePath(r.public_id)
+      url: createSignedFilePath(r.public_id),
     }));
   } catch (_) {
     return [];
@@ -42,7 +42,7 @@ function removeSocketFromVoiceRoom(socket, roomId, userId) {
   const userSockets = roomMap.get(userId);
   if (!userSockets) return;
   userSockets.delete(socket);
-    if (userSockets.size === 0) {
+  if (userSockets.size === 0) {
     roomMap.delete(userId);
     const members = voiceRooms.get(roomId);
     if (members) {
@@ -93,13 +93,16 @@ function startWebSocketServer(httpServer) {
       const now = Date.now();
       for (const [, entry] of presenceByUserId.entries()) {
         if (entry.status === "offline") continue;
-        if (now - entry.lastActivity >= IDLE_AFTER_MS && entry.status !== "idle") {
+        if (
+          now - entry.lastActivity >= IDLE_AFTER_MS &&
+          entry.status !== "idle"
+        ) {
           entry.status = "idle";
           presenceByUserId.set(entry.id, entry);
           broadcastPresenceUpdate({
             id: entry.id,
             displayName: entry.displayName,
-            status: entry.status
+            status: entry.status,
           });
         }
       }
@@ -165,7 +168,7 @@ function startWebSocketServer(httpServer) {
           broadcastPresenceUpdate({
             id: entry.id,
             displayName: entry.displayName,
-            status: entry.status
+            status: entry.status,
           });
         }
 
@@ -210,16 +213,23 @@ async function handleIncomingChatMessage(parsed, wss) {
     createdAt: new Date().toISOString(),
     attachments: [],
     replyTo: undefined,
-    reactions: {}
+    reactions: {},
   };
 
   const contentToSave = content || (attachmentIds.length > 0 ? " " : "");
   try {
-    console.log("Saving message to database:", { channel, sender, senderId, content: contentToSave, attachmentIds, replyToId });
+    console.log("Saving message to database:", {
+      channel,
+      sender,
+      senderId,
+      content: contentToSave,
+      attachmentIds,
+      replyToId,
+    });
     try {
       const result = await db.query(
         "INSERT INTO messages (channel, sender_name, sender_id, content, created_at, reply_to_id) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING id, created_at, sender_id, reply_to_id",
-        [channel, sender, senderId || null, contentToSave, replyToId || null]
+        [channel, sender, senderId || null, contentToSave, replyToId || null],
       );
       const row = result.rows[0];
       const messageId = row.id;
@@ -229,12 +239,12 @@ async function handleIncomingChatMessage(parsed, wss) {
         for (const uploadId of attachmentIds) {
           const ok = await db.query(
             "SELECT id FROM uploads WHERE id = $1 AND created_at > $2",
-            [uploadId, threeDaysAgo]
+            [uploadId, threeDaysAgo],
           );
           if (ok.rows.length > 0) {
             await db.query(
               "INSERT INTO message_attachments (message_id, upload_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-              [messageId, uploadId]
+              [messageId, uploadId],
             );
           }
         }
@@ -245,12 +255,16 @@ async function handleIncomingChatMessage(parsed, wss) {
       if (row.reply_to_id) {
         const replyRow = await db.query(
           "SELECT id, sender_name, content FROM messages WHERE id = $1",
-          [row.reply_to_id]
+          [row.reply_to_id],
         );
         if (replyRow.rows[0]) {
           const r = replyRow.rows[0];
           const c = r.content || "";
-          replyTo = { id: r.id, sender: r.sender_name, content: c.length > 100 ? c.slice(0, 97) + "..." : c };
+          replyTo = {
+            id: r.id,
+            sender: r.sender_name,
+            content: c.length > 100 ? c.slice(0, 97) + "..." : c,
+          };
         }
       }
       savedMessage = {
@@ -263,14 +277,17 @@ async function handleIncomingChatMessage(parsed, wss) {
         attachments: savedMessage.attachments,
         replyToId: row.reply_to_id ?? undefined,
         replyTo,
-        reactions: {}
+        reactions: {},
       };
       console.log("Message saved successfully:", savedMessage);
     } catch (insertErr) {
-      if (insertErr.code === "42703" && insertErr.message?.includes("reply_to_id")) {
+      if (
+        insertErr.code === "42703" &&
+        insertErr.message?.includes("reply_to_id")
+      ) {
         const result = await db.query(
           "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
-          [channel, sender, senderId || null, contentToSave]
+          [channel, sender, senderId || null, contentToSave],
         );
         const row = result.rows[0];
         savedMessage = {
@@ -281,12 +298,12 @@ async function handleIncomingChatMessage(parsed, wss) {
           content: contentToSave,
           createdAt: row.created_at,
           attachments: await getAttachmentsForMessage(row.id).catch(() => []),
-          reactions: {}
+          reactions: {},
         };
       } else if (insertErr.code === "42P01") {
         const result = await db.query(
           "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, created_at, sender_id",
-          [channel, sender, senderId || null, content]
+          [channel, sender, senderId || null, content],
         );
         const row = result.rows[0];
         savedMessage = {
@@ -297,12 +314,15 @@ async function handleIncomingChatMessage(parsed, wss) {
           content: contentToSave,
           createdAt: row.created_at,
           attachments: [],
-          reactions: {}
+          reactions: {},
         };
-      } else if (insertErr.code === "42703" || insertErr.message?.includes("sender_id")) {
+      } else if (
+        insertErr.code === "42703" ||
+        insertErr.message?.includes("sender_id")
+      ) {
         const result = await db.query(
           "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, created_at",
-          [channel, sender, contentToSave]
+          [channel, sender, contentToSave],
         );
         const row = result.rows[0];
         savedMessage = {
@@ -313,7 +333,7 @@ async function handleIncomingChatMessage(parsed, wss) {
           content: contentToSave,
           createdAt: row.created_at,
           attachments: [],
-          reactions: {}
+          reactions: {},
         };
         console.log("Message saved (legacy schema):", savedMessage);
       } else {
@@ -327,7 +347,7 @@ async function handleIncomingChatMessage(parsed, wss) {
 
   const outbound = JSON.stringify({
     type: "message",
-    payload: savedMessage
+    payload: savedMessage,
   });
 
   console.log("Broadcasting message to", wss.clients.size, "clients");
@@ -343,20 +363,28 @@ async function handleIncomingChatMessage(parsed, wss) {
       const allPushUserIds = await getUserIdsWithPushSubscriptionsNotDnd();
       const connectedIds = new Set(socketsByUserId.keys());
       const toNotify = allPushUserIds.filter(
-        (id) => Number(id) !== Number(senderId) && !connectedIds.has(Number(id))
+        (id) =>
+          Number(id) !== Number(senderId) && !connectedIds.has(Number(id)),
       );
       if (toNotify.length > 0) {
-        const bodyPreview = content || (attachmentIds.length > 0 ? "sent an attachment" : "New message");
+        const bodyPreview =
+          content ||
+          (attachmentIds.length > 0 ? "sent an attachment" : "New message");
         pushService
           .sendMessagePushToUsers(toNotify, {
             channel,
             sender,
-            body: bodyPreview
+            body: bodyPreview,
           })
-          .catch((err) => console.error("[push] sendMessagePushToUsers error:", err.message));
+          .catch((err) =>
+            console.error("[push] sendMessagePushToUsers error:", err.message),
+          );
       }
     } catch (err) {
-      console.error("[push] getUserIdsWithPushSubscriptions error:", err.message);
+      console.error(
+        "[push] getUserIdsWithPushSubscriptions error:",
+        err.message,
+      );
     }
   }
 }
@@ -368,12 +396,14 @@ async function handleIncomingChatMessage(parsed, wss) {
 async function getUserIdsWithPushSubscriptionsNotDnd() {
   try {
     const result = await db.query(
-      "SELECT DISTINCT ps.user_id FROM push_subscriptions ps JOIN users u ON u.id = ps.user_id WHERE (u.do_not_disturb IS NOT TRUE OR u.do_not_disturb IS NULL)"
+      "SELECT DISTINCT ps.user_id FROM push_subscriptions ps JOIN users u ON u.id = ps.user_id WHERE (u.do_not_disturb IS NOT TRUE OR u.do_not_disturb IS NULL)",
     );
     return result.rows.map((r) => Number(r.user_id));
   } catch (_) {
     try {
-      const result = await db.query("SELECT DISTINCT user_id FROM push_subscriptions");
+      const result = await db.query(
+        "SELECT DISTINCT user_id FROM push_subscriptions",
+      );
       return result.rows.map((r) => Number(r.user_id));
     } catch (_2) {
       return [];
@@ -383,9 +413,11 @@ async function getUserIdsWithPushSubscriptionsNotDnd() {
 
 async function handleMessageEdit(parsed, socket, wss) {
   const messageId = parsed.messageId != null ? Number(parsed.messageId) : null;
-  const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+  const content =
+    typeof parsed.content === "string" ? parsed.content.trim() : "";
   const userId = socket.userId != null ? Number(socket.userId) : null;
-  const senderName = typeof parsed.senderName === "string" ? parsed.senderName.trim() : null;
+  const senderName =
+    typeof parsed.senderName === "string" ? parsed.senderName.trim() : null;
 
   if (!messageId || !content) return;
 
@@ -394,13 +426,16 @@ async function handleMessageEdit(parsed, socket, wss) {
     try {
       getResult = await db.query(
         "SELECT id, sender_id, sender_name FROM messages WHERE id = $1",
-        [messageId]
+        [messageId],
       );
     } catch (selectErr) {
-      if (selectErr.code === "42703" || selectErr.message?.includes("sender_id")) {
+      if (
+        selectErr.code === "42703" ||
+        selectErr.message?.includes("sender_id")
+      ) {
         getResult = await db.query(
           "SELECT id, sender_name FROM messages WHERE id = $1",
-          [messageId]
+          [messageId],
         );
       } else {
         throw selectErr;
@@ -410,20 +445,26 @@ async function handleMessageEdit(parsed, socket, wss) {
     if (!row) return;
     const rowSenderId = row.sender_id != null ? Number(row.sender_id) : null;
     const ownedByUserId = rowSenderId !== null && rowSenderId === userId;
-    const ownedBySenderName = (rowSenderId === null || row.sender_id === undefined) && senderName && row.sender_name === senderName;
+    const ownedBySenderName =
+      (rowSenderId === null || row.sender_id === undefined) &&
+      senderName &&
+      row.sender_name === senderName;
     if (!ownedByUserId && !ownedBySenderName) return;
 
     let result;
     try {
       result = await db.query(
         "UPDATE messages SET content = $2 WHERE id = $1 RETURNING id, channel, sender_name, sender_id, content, created_at",
-        [messageId, content]
+        [messageId, content],
       );
     } catch (updateErr) {
-      if (updateErr.code === "42703" || updateErr.message?.includes("sender_id")) {
+      if (
+        updateErr.code === "42703" ||
+        updateErr.message?.includes("sender_id")
+      ) {
         result = await db.query(
           "UPDATE messages SET content = $2 WHERE id = $1 RETURNING id, channel, sender_name, content, created_at",
-          [messageId, content]
+          [messageId, content],
         );
       } else {
         throw updateErr;
@@ -436,7 +477,7 @@ async function handleMessageEdit(parsed, socket, wss) {
       sender: updated.sender_name,
       senderId: updated.sender_id ?? undefined,
       content: updated.content,
-      createdAt: updated.created_at
+      createdAt: updated.created_at,
     };
     const outbound = JSON.stringify({ type: "message:updated", payload });
     for (const client of wss.clients) {
@@ -464,24 +505,26 @@ async function handleMessageReaction(parsed, socket, wss) {
   if (!messageId || !emoji || !userId) return;
 
   try {
-    const msgCheck = await db.query("SELECT id FROM messages WHERE id = $1", [messageId]);
+    const msgCheck = await db.query("SELECT id FROM messages WHERE id = $1", [
+      messageId,
+    ]);
     if (msgCheck.rows.length === 0) return;
 
     if (add) {
       await db.query(
         "INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING",
-        [messageId, userId, emoji]
+        [messageId, userId, emoji],
       );
     } else {
       await db.query(
         "DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
-        [messageId, userId, emoji]
+        [messageId, userId, emoji],
       );
     }
 
     const reactResult = await db.query(
       "SELECT user_id, emoji FROM message_reactions WHERE message_id = $1",
-      [messageId]
+      [messageId],
     );
     const reactions = {};
     for (const r of reactResult.rows) {
@@ -491,20 +534,22 @@ async function handleMessageReaction(parsed, socket, wss) {
 
     const outbound = JSON.stringify({
       type: "message:reactions",
-      payload: { messageId, reactions }
+      payload: { messageId, reactions },
     });
     for (const client of wss.clients) {
       if (client.readyState === client.OPEN) client.send(outbound);
     }
   } catch (err) {
-    if (err.code !== "42P01") console.error("Message reaction failed:", err.message);
+    if (err.code !== "42P01")
+      console.error("Message reaction failed:", err.message);
   }
 }
 
 async function handleMessageDelete(parsed, socket, wss) {
   const messageId = parsed.messageId != null ? Number(parsed.messageId) : null;
   const userId = socket.userId != null ? Number(socket.userId) : null;
-  const senderName = typeof parsed.senderName === "string" ? parsed.senderName.trim() : null;
+  const senderName =
+    typeof parsed.senderName === "string" ? parsed.senderName.trim() : null;
 
   if (!messageId) return;
 
@@ -513,13 +558,16 @@ async function handleMessageDelete(parsed, socket, wss) {
     try {
       getResult = await db.query(
         "SELECT id, sender_id, sender_name FROM messages WHERE id = $1",
-        [messageId]
+        [messageId],
       );
     } catch (selectErr) {
-      if (selectErr.code === "42703" || selectErr.message?.includes("sender_id")) {
+      if (
+        selectErr.code === "42703" ||
+        selectErr.message?.includes("sender_id")
+      ) {
         getResult = await db.query(
           "SELECT id, sender_name FROM messages WHERE id = $1",
-          [messageId]
+          [messageId],
         );
       } else {
         throw selectErr;
@@ -529,13 +577,16 @@ async function handleMessageDelete(parsed, socket, wss) {
     if (!row) return;
     const rowSenderId = row.sender_id != null ? Number(row.sender_id) : null;
     const ownedByUserId = rowSenderId !== null && rowSenderId === userId;
-    const ownedBySenderName = (rowSenderId === null || row.sender_id === undefined) && senderName && row.sender_name === senderName;
+    const ownedBySenderName =
+      (rowSenderId === null || row.sender_id === undefined) &&
+      senderName &&
+      row.sender_name === senderName;
     if (!ownedByUserId && !ownedBySenderName) return;
 
     await db.query("DELETE FROM messages WHERE id = $1", [messageId]);
     const outbound = JSON.stringify({
       type: "message:deleted",
-      payload: { id: messageId }
+      payload: { id: messageId },
     });
     for (const client of wss.clients) {
       if (client.readyState === client.OPEN) client.send(outbound);
@@ -574,7 +625,7 @@ function handlePresenceHello(socket, payload) {
     id: userId,
     displayName,
     status,
-    lastActivity: now
+    lastActivity: now,
   };
 
   presenceByUserId.set(userId, entry);
@@ -584,14 +635,14 @@ function handlePresenceHello(socket, payload) {
     id: p.id,
     displayName: p.displayName,
     status: p.status,
-    ...(p.activity != null ? { activity: p.activity } : {})
+    ...(p.activity != null ? { activity: p.activity } : {}),
   }));
 
   socket.send(
     JSON.stringify({
       type: "presence:state",
-      payload: snapshot
-    })
+      payload: snapshot,
+    }),
   );
 
   // Broadcast this user's presence to everyone
@@ -599,7 +650,7 @@ function handlePresenceHello(socket, payload) {
     id: entry.id,
     displayName: entry.displayName,
     status: entry.status,
-    ...(entry.activity != null ? { activity: entry.activity } : {})
+    ...(entry.activity != null ? { activity: entry.activity } : {}),
   });
 }
 
@@ -615,7 +666,8 @@ function normalizeActivity(activity) {
       : activity.type === "game"
         ? "game"
         : "app";
-  const details = typeof activity.details === "string" ? activity.details.trim() : undefined;
+  const details =
+    typeof activity.details === "string" ? activity.details.trim() : undefined;
   return { type, name, ...(details ? { details } : {}) };
 }
 
@@ -633,14 +685,14 @@ function handlePresenceActivity(socket, payload) {
       displayName: payload.displayName || "Meeps User",
       status: "online",
       lastActivity: now,
-      ...(activity != null ? { activity } : {})
+      ...(activity != null ? { activity } : {}),
     };
     presenceByUserId.set(userId, entry);
     broadcastPresenceUpdate({
       id: entry.id,
       displayName: entry.displayName,
       status: entry.status,
-      ...(entry.activity != null ? { activity: entry.activity } : {})
+      ...(entry.activity != null ? { activity: entry.activity } : {}),
     });
     return;
   }
@@ -662,7 +714,7 @@ function handlePresenceActivity(socket, payload) {
     const payload = {
       id: existing.id,
       displayName: existing.displayName,
-      status: existing.status
+      status: existing.status,
     };
     if (existing.activity != null) payload.activity = existing.activity;
     else if (activityChanged) payload.activity = null;
@@ -684,7 +736,7 @@ function handlePresenceStatus(socket, payload) {
     id: entry.id,
     displayName: entry.displayName,
     status: entry.status,
-    ...(entry.activity != null ? { activity: entry.activity } : {})
+    ...(entry.activity != null ? { activity: entry.activity } : {}),
   });
 }
 
@@ -741,7 +793,7 @@ function getVoiceRoomParticipants(roomId) {
     const presence = presenceByUserId.get(userId);
     participants.push({
       id: userId,
-      displayName: presence ? presence.displayName : `User ${userId}`
+      displayName: presence ? presence.displayName : `User ${userId}`,
     });
   }
   return participants;
@@ -757,8 +809,8 @@ function broadcastVoiceParticipants(roomId) {
     payload: {
       roomId,
       participants,
-      hostUserId: hostUserId != null ? hostUserId : undefined
-    }
+      hostUserId: hostUserId != null ? hostUserId : undefined,
+    },
   });
 
   for (const client of wssInstance.clients) {
@@ -788,9 +840,9 @@ function handleVoiceGetParticipants(socket, parsed) {
         payload: {
           roomId,
           participants,
-          hostUserId: hostUserId != null ? hostUserId : undefined
-        }
-      })
+          hostUserId: hostUserId != null ? hostUserId : undefined,
+        },
+      }),
     );
   }
 }
@@ -813,8 +865,8 @@ function handleVoiceSignal(message) {
       roomId,
       fromUserId,
       signalType,
-      data
-    }
+      data,
+    },
   });
 
   for (const socket of sockets.values()) {
@@ -829,7 +881,7 @@ function broadcastProfileUpdate(profile) {
 
   const outbound = JSON.stringify({
     type: "profileUpdated",
-    payload: profile
+    payload: profile,
   });
 
   for (const client of wssInstance.clients) {
@@ -844,7 +896,7 @@ function broadcastPresenceUpdate(presence) {
 
   const outbound = JSON.stringify({
     type: "presence:updated",
-    payload: presence
+    payload: presence,
   });
 
   for (const client of wssInstance.clients) {
@@ -874,7 +926,6 @@ function broadcastMessageUpdate(payload) {
   }
 }
 
-
 /**
  * Insert a message into a channel and broadcast to all clients (e.g. Valorant match updates).
  * @param {string} channel - Channel id (e.g. "matches")
@@ -884,14 +935,26 @@ function broadcastMessageUpdate(payload) {
  * @param {object} [embed] - Optional Diana-style embed payload (title, description, url, colorHex, thumbnailUrl, fields, footer, timestamp)
  * @returns {Promise<object|null>} Saved message or null
  */
-async function postMessageToChannel(channel, senderId, senderName, content, embed = null) {
+async function postMessageToChannel(
+  channel,
+  senderId,
+  senderName,
+  content,
+  embed = null,
+) {
   const embedJson = embed ? JSON.stringify(embed) : null;
   try {
     const result = await db.query(
       `INSERT INTO messages (channel, sender_name, sender_id, content, embed, created_at)
        VALUES ($1, $2, $3, $4, $5::jsonb, CURRENT_TIMESTAMP)
        RETURNING id, channel, sender_name, sender_id, content, embed, created_at`,
-      [channel, senderName || "Meeps", senderId || null, content || "", embedJson]
+      [
+        channel,
+        senderName || "Meeps",
+        senderId || null,
+        content || "",
+        embedJson,
+      ],
     );
     const row = result.rows[0];
     if (!row) return null;
@@ -903,7 +966,7 @@ async function postMessageToChannel(channel, senderId, senderName, content, embe
       content: row.content,
       embed: row.embed ?? undefined,
       createdAt: row.created_at,
-      attachments: []
+      attachments: [],
     };
     broadcastMessagePayload(payload);
     return payload;
@@ -911,7 +974,7 @@ async function postMessageToChannel(channel, senderId, senderName, content, embe
     if (err.code === "42703" || err.message?.includes("embed")) {
       const result = await db.query(
         "INSERT INTO messages (channel, sender_name, sender_id, content, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, sender_id, content, created_at",
-        [channel, senderName || "Meeps", senderId || null, content || ""]
+        [channel, senderName || "Meeps", senderId || null, content || ""],
       );
       const row = result.rows[0];
       if (!row) return null;
@@ -922,7 +985,7 @@ async function postMessageToChannel(channel, senderId, senderName, content, embe
         senderId: row.sender_id ?? undefined,
         content: row.content,
         createdAt: row.created_at,
-        attachments: []
+        attachments: [],
       };
       broadcastMessagePayload(payload);
       return payload;
@@ -930,7 +993,7 @@ async function postMessageToChannel(channel, senderId, senderName, content, embe
     if (err.code === "42703" || err.message?.includes("sender_id")) {
       const result = await db.query(
         "INSERT INTO messages (channel, sender_name, content, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id, channel, sender_name, content, created_at",
-        [channel, senderName || "Meeps", content || ""]
+        [channel, senderName || "Meeps", content || ""],
       );
       const row = result.rows[0];
       if (!row) return null;
@@ -941,7 +1004,7 @@ async function postMessageToChannel(channel, senderId, senderName, content, embe
         senderId: undefined,
         content: row.content,
         createdAt: row.created_at,
-        attachments: []
+        attachments: [],
       };
       broadcastMessagePayload(payload);
       return payload;
@@ -955,5 +1018,5 @@ module.exports = {
   broadcastProfileUpdate,
   broadcastMessagePayload,
   broadcastMessageUpdate,
-  postMessageToChannel
+  postMessageToChannel,
 };

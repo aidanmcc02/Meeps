@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-const API_BASE = import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
+const API_BASE =
+  import.meta.env.VITE_BACKEND_HTTP_URL || "http://localhost:4000";
 
-function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPosition = "center", activity }) {
+function UserProfileModal({
+  isOpen,
+  onClose,
+  user,
+  initialProfile,
+  anchorPosition = "center",
+  activity,
+}) {
   const [profile, setProfile] = useState(initialProfile || null);
   const [loading, setLoading] = useState(false);
 
@@ -34,13 +42,15 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
 
   if (!isOpen) return null;
 
-  const displayName = profile?.displayName || user?.displayName || user?.name || "Meeps User";
-  const initials = displayName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "MU";
+  const displayName =
+    profile?.displayName || user?.displayName || user?.name || "Meeps User";
+  const initials =
+    displayName
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "MU";
 
   const isBottomLeft = anchorPosition === "bottom-left";
   const wrapperClass = isBottomLeft
@@ -104,14 +114,22 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
                   {displayName}
                 </h3>
 
-                {activity?.name && profile?.activityLoggingEnabled !== false && (
-                  <p
-                    className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate"
-                    title={activity.type === "hidden" ? activity.name : (activity.details || activity.name)}
-                  >
-                    {activity.type === "hidden" ? activity.name : (activity.type === "game" ? "Playing " : "In ") + activity.name}
-                  </p>
-                )}
+                {activity?.name &&
+                  profile?.activityLoggingEnabled !== false && (
+                    <p
+                      className="mt-1 text-sm text-gray-500 dark:text-gray-400 truncate"
+                      title={
+                        activity.type === "hidden"
+                          ? activity.name
+                          : activity.details || activity.name
+                      }
+                    >
+                      {activity.type === "hidden"
+                        ? activity.name
+                        : (activity.type === "game" ? "Playing " : "In ") +
+                          activity.name}
+                    </p>
+                  )}
 
                 {profile.bio && (
                   <div className="mt-4">
@@ -124,30 +142,34 @@ function UserProfileModal({ isOpen, onClose, user, initialProfile, anchorPositio
                   </div>
                 )}
 
-                {Array.isArray(profile.achievements) && profile.achievements.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                      Achievements
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {profile.achievements.map((ach, idx) => (
-                        <span
-                          key={idx}
-                          className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200"
-                        >
-                          {ach}
-                        </span>
-                      ))}
+                {Array.isArray(profile.achievements) &&
+                  profile.achievements.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                        Achievements
+                      </h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {profile.achievements.map((ach, idx) => (
+                          <span
+                            key={idx}
+                            className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200"
+                          >
+                            {ach}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
             </>
           )}
 
           {!loading && !profile && user && (
             <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-              <p>Could not load profile for {user.displayName || user.name || "this user"}.</p>
+              <p>
+                Could not load profile for{" "}
+                {user.displayName || user.name || "this user"}.
+              </p>
             </div>
           )}
         </div>

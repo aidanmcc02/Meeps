@@ -41,7 +41,7 @@ function GifPickerModal({ isOpen, onClose, onSelectGif, apiBase }) {
 
     try {
       const res = await fetch(
-        `${apiBase}/api/search-gifs?query=${encodeURIComponent(trimmed)}`
+        `${apiBase}/api/search-gifs?query=${encodeURIComponent(trimmed)}`,
       );
       if (!res.ok) {
         setError("Failed to fetch GIFs. Please try again.");
@@ -72,7 +72,7 @@ function GifPickerModal({ isOpen, onClose, onSelectGif, apiBase }) {
           paddingTop: "env(safe-area-inset-top)",
           paddingBottom: "env(safe-area-inset-bottom)",
           paddingLeft: "env(safe-area-inset-left)",
-          paddingRight: "env(safe-area-inset-right)"
+          paddingRight: "env(safe-area-inset-right)",
         }}
       >
         <div className="flex flex-shrink-0 items-center justify-between gap-2 px-4 pt-3 pb-2">
@@ -89,7 +89,10 @@ function GifPickerModal({ isOpen, onClose, onSelectGif, apiBase }) {
           </button>
         </div>
 
-        <form onSubmit={handleSearch} className="flex flex-shrink-0 gap-2 px-4 pb-3">
+        <form
+          onSubmit={handleSearch}
+          className="flex flex-shrink-0 gap-2 px-4 pb-3"
+        >
           <input
             type="text"
             value={query}
@@ -131,12 +134,12 @@ function GifPickerModal({ isOpen, onClose, onSelectGif, apiBase }) {
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {results.map((gif) => (
-            <button
-              key={gif.id}
-              type="button"
-              onClick={() => handleSelect(gif)}
-              className="touch-manipulation group relative aspect-square w-full min-h-0 overflow-hidden rounded-xl border border-transparent bg-gray-100 hover:border-indigo-500 hover:bg-indigo-50 active:scale-[0.98] dark:bg-gray-800 dark:hover:bg-gray-700"
-            >
+              <button
+                key={gif.id}
+                type="button"
+                onClick={() => handleSelect(gif)}
+                className="touch-manipulation group relative aspect-square w-full min-h-0 overflow-hidden rounded-xl border border-transparent bg-gray-100 hover:border-indigo-500 hover:bg-indigo-50 active:scale-[0.98] dark:bg-gray-800 dark:hover:bg-gray-700"
+              >
                 <img
                   src={gif.previewUrl || gif.url}
                   alt={gif.title || "GIF"}
@@ -154,4 +157,3 @@ function GifPickerModal({ isOpen, onClose, onSelectGif, apiBase }) {
 }
 
 export default GifPickerModal;
-

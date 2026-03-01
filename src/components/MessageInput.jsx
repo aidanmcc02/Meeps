@@ -6,7 +6,9 @@ function slugFromName(name) {
 }
 
 function buildMentionOptions(presenceUsers, currentUser, profiles) {
-  const options = [{ slug: "everyone", displayName: "everyone", type: "everyone" }];
+  const options = [
+    { slug: "everyone", displayName: "everyone", type: "everyone" },
+  ];
   const seen = new Set(["everyone"]);
   const add = (displayName, id) => {
     const slug = slugFromName(displayName);
@@ -33,7 +35,7 @@ function MessageInput({
   currentUser,
   profiles,
   disabled,
-  apiBase
+  apiBase,
 }) {
   const textareaRef = useRef(null);
   const containerRef = useRef(null);
@@ -46,13 +48,24 @@ function MessageInput({
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const errorTimeoutMs = 30 * 1000;
 
-  const mentionOptions = buildMentionOptions(presenceUsers, currentUser, profiles);
+  useEffect(() => {
+    if (!uploadError) return;
+    const timeoutId = setTimeout(() => setUploadError(null), errorTimeoutMs);
+    return () => clearTimeout(timeoutId);
+  }, [uploadError, errorTimeoutMs]);
+
+  const mentionOptions = buildMentionOptions(
+    presenceUsers,
+    currentUser,
+    profiles,
+  );
   const filteredOptions = mentionQuery
     ? mentionOptions.filter(
         (o) =>
           o.slug.toLowerCase().startsWith(mentionQuery.toLowerCase()) ||
-          o.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+          o.displayName.toLowerCase().includes(mentionQuery.toLowerCase()),
       )
     : mentionOptions;
   const hasOptions = filteredOptions.length > 0;
@@ -107,16 +120,17 @@ function MessageInput({
         body: formData,
         headers: token
           ? {
-              Authorization: `Bearer ${token}`
+              Authorization: `Bearer ${token}`,
             }
-          : undefined
+          : undefined,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const msg = data.message || res.statusText || `Upload failed: ${res.status}`;
+        const msg =
+          data.message || res.statusText || `Upload failed: ${res.status}`;
         if (res.status === 404) {
           setUploadError(
-            "Upload endpoint not found (404). Restart the backend if running locally, or redeploy on Railway to enable file uploads."
+            "Upload endpoint not found (404). Restart the backend if running locally, or redeploy on Railway to enable file uploads.",
           );
         } else {
           setUploadError(msg);
@@ -127,7 +141,7 @@ function MessageInput({
       const uploads = data.uploads || [];
       setPendingAttachments((prev) => [
         ...prev,
-        ...uploads.map((u) => ({ id: u.id, filename: u.filename, url: u.url }))
+        ...uploads.map((u) => ({ id: u.id, filename: u.filename, url: u.url })),
       ]);
     } catch (err) {
       setUploadError(err.message || "Upload failed (network error)");
@@ -208,9 +222,13 @@ function MessageInput({
         setSelectedIndex((i) => (i + 1) % filteredOptions.length);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((i) => (i - 1 + filteredOptions.length) % filteredOptions.length);
+        setSelectedIndex(
+          (i) => (i - 1 + filteredOptions.length) % filteredOptions.length,
+        );
       } else if (e.key === "Enter" || e.key === "Tab") {
-        const isCompleteMention = mentionOptions.some((o) => o.slug === mentionQuery);
+        const isCompleteMention = mentionOptions.some(
+          (o) => o.slug === mentionQuery,
+        );
         if (!isCompleteMention) {
           const opt = filteredOptions[selectedIndex];
           if (opt) {
@@ -224,17 +242,23 @@ function MessageInput({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [showMentions, hasOptions, filteredOptions, selectedIndex, mentionQuery, mentionOptions]);
+  }, [
+    showMentions,
+    hasOptions,
+    filteredOptions,
+    selectedIndex,
+    mentionQuery,
+    mentionOptions,
+  ]);
 
-  const canSend = (value?.trim() || pendingAttachments.length > 0) && !uploading;
+  const canSend =
+    (value?.trim() || pendingAttachments.length > 0) && !uploading;
 
   return (
     <div
       ref={containerRef}
       className={`px-3 py-2 sm:px-4 sm:py-3 min-w-0 ${
-        isDragging
-          ? "bg-indigo-50/60 dark:bg-indigo-900/20"
-          : ""
+        isDragging ? "bg-indigo-50/60 dark:bg-indigo-900/20" : ""
       }`}
       onDragOver={(e) => {
         e.preventDefault();
@@ -262,7 +286,9 @@ function MessageInput({
               key={a.id}
               className="inline-flex items-center gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs"
             >
-              <span className="truncate max-w-[120px]" title={a.filename}>{a.filename}</span>
+              <span className="truncate max-w-[120px]" title={a.filename}>
+                {a.filename}
+              </span>
               <button
                 type="button"
                 onClick={() => removePendingAttachment(a.id)}
@@ -276,11 +302,15 @@ function MessageInput({
         </div>
       )}
       {uploadError && (
-        <p className="text-xs text-red-500 dark:text-red-400 mb-1">{uploadError}</p>
+        <p className="text-xs text-red-500 dark:text-red-400 mb-1">
+          {uploadError}
+        </p>
       )}
       {replyTo && (
         <div className="flex items-center gap-2 mb-2 pl-1 text-xs text-gray-600 dark:text-gray-400 border-l-2 border-indigo-500 dark:border-indigo-400">
-          <span className="font-medium text-indigo-600 dark:text-indigo-400">{replyTo.sender}</span>
+          <span className="font-medium text-indigo-600 dark:text-indigo-400">
+            {replyTo.sender}
+          </span>
           <span className="truncate flex-1 min-w-0" title={replyTo.content}>
             {replyTo.content}
           </span>
@@ -314,7 +344,10 @@ function MessageInput({
             onPaste={handlePaste}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
-                const completingMention = showMentions && hasOptions && !mentionOptions.some((o) => o.slug === mentionQuery);
+                const completingMention =
+                  showMentions &&
+                  hasOptions &&
+                  !mentionOptions.some((o) => o.slug === mentionQuery);
                 if (completingMention) {
                   e.preventDefault();
                   insertMention(filteredOptions[selectedIndex].slug);
@@ -353,7 +386,9 @@ function MessageInput({
                     <span className="font-medium">@everyone</span>
                   ) : (
                     <>
-                      <span className="text-indigo-600 dark:text-indigo-400 font-medium">@</span>
+                      <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                        @
+                      </span>
                       <span>{opt.displayName}</span>
                     </>
                   )}

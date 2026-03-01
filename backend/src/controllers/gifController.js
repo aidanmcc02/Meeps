@@ -29,7 +29,7 @@ exports.searchGifs = async (req, res, next) => {
   if (!GIPHY_API_KEY) {
     return res.status(500).json({
       message:
-        "GIPHY_API_KEY is not configured on the server. Set it in your environment."
+        "GIPHY_API_KEY is not configured on the server. Set it in your environment.",
     });
   }
 
@@ -40,7 +40,7 @@ exports.searchGifs = async (req, res, next) => {
 
   try {
     const url = `${GIPHY_API_URL}?api_key=${encodeURIComponent(
-      GIPHY_API_KEY
+      GIPHY_API_KEY,
     )}&q=${encodeURIComponent(query)}&limit=24&rating=pg-13&lang=en`;
 
     // Requires Node 18+ for global fetch
@@ -66,7 +66,7 @@ exports.searchGifs = async (req, res, next) => {
           url: fixed.url,
           previewUrl: preview.url || fixed.url,
           width: Number(fixed.width) || null,
-          height: Number(fixed.height) || null
+          height: Number(fixed.height) || null,
         };
       });
 
@@ -77,4 +77,3 @@ exports.searchGifs = async (req, res, next) => {
     return next(err);
   }
 };
-

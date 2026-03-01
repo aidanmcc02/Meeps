@@ -4,7 +4,7 @@ const statusColor = {
   online: "bg-emerald-500",
   idle: "bg-amber-400",
   offline: "bg-gray-500",
-  do_not_disturb: "bg-red-500"
+  do_not_disturb: "bg-red-500",
 };
 
 function statusLabel(status) {
@@ -21,7 +21,8 @@ function UserList({ users, onUserClick, profiles = {} }) {
         const status = user.status || "offline";
         const name = user.displayName || user.name || "Meeps User";
         const profile = user.id != null ? profiles[user.id] : null;
-        const showActivity = profile?.activityLoggingEnabled !== false && user.activity?.name;
+        const showActivity =
+          profile?.activityLoggingEnabled !== false && user.activity?.name;
         const isHidingActivity = user.activity?.type === "hidden";
         const avatarUrl = profile?.avatarUrl || null;
         const bannerUrl = profile?.bannerUrl || null;
@@ -93,9 +94,16 @@ function UserList({ users, onUserClick, profiles = {} }) {
                 {showActivity && (
                   <span
                     className="text-[10px] opacity-70 truncate w-full mt-0.5"
-                    title={isHidingActivity ? user.activity.name : (user.activity.details || user.activity.name)}
+                    title={
+                      isHidingActivity
+                        ? user.activity.name
+                        : user.activity.details || user.activity.name
+                    }
                   >
-                    {isHidingActivity ? user.activity.name : (user.activity.type === "game" ? "Playing " : "In ") + user.activity.name}
+                    {isHidingActivity
+                      ? user.activity.name
+                      : (user.activity.type === "game" ? "Playing " : "In ") +
+                        user.activity.name}
                   </span>
                 )}
               </div>

@@ -61,7 +61,7 @@ async function riotRequest(method, url, options = {}) {
     url,
     headers: {
       "X-Riot-Token": RIOT_API_KEY,
-      "Accept": "application/json",
+      Accept: "application/json",
       ...options.headers,
     },
     timeout: 15000,
@@ -89,7 +89,7 @@ async function getAccountByRiotId(gameName, tagLine, defaultRegion = "eu") {
   const encodedTag = encodeURIComponent(tagLine);
   const data = await riotRequest(
     "GET",
-    `${base}/riot/account/v1/accounts/by-riot-id/${encodedName}/${encodedTag}`
+    `${base}/riot/account/v1/accounts/by-riot-id/${encodedName}/${encodedTag}`,
   );
   return {
     puuid: data.puuid,
@@ -102,11 +102,17 @@ async function getAccountByRiotId(gameName, tagLine, defaultRegion = "eu") {
 /**
  * Get match list for a player (recent matches).
  */
-async function getMatchList(puuid, region, queue = "competitive", start = 0, end = 15) {
+async function getMatchList(
+  puuid,
+  region,
+  queue = "competitive",
+  start = 0,
+  end = 15,
+) {
   const base = getValorantBase(region);
   const data = await riotRequest(
     "GET",
-    `${base}/val/match/v1/matchlists/by-puuid/${puuid}?startIndex=${start}&endIndex=${end}&queue=${queue}`
+    `${base}/val/match/v1/matchlists/by-puuid/${puuid}?startIndex=${start}&endIndex=${end}&queue=${queue}`,
   );
   return data?.history || [];
 }
@@ -152,7 +158,9 @@ function getRankName(tier) {
 async function getRankIconUrl(tier) {
   if (rankIconCache && rankIconCache[tier]) return rankIconCache[tier];
   try {
-    const { data } = await axios.get(`${VALORANT_API_BASE}/competitivetiers`, { timeout: 5000 });
+    const { data } = await axios.get(`${VALORANT_API_BASE}/competitivetiers`, {
+      timeout: 5000,
+    });
     const tiers = data.data?.[data.data.length - 1]?.tiers || [];
     if (!rankIconCache) rankIconCache = {};
     for (const t of tiers) {
@@ -189,7 +197,8 @@ async function getMatchPlayerSummary(match, puuid) {
 
   const redWins = red.roundsWon ?? 0;
   const blueWins = blue.roundsWon ?? 0;
-  const playerWon = (player.teamId === "Red" && redWins > blueWins) ||
+  const playerWon =
+    (player.teamId === "Red" && redWins > blueWins) ||
     (player.teamId === "Blue" && blueWins > redWins);
   const scoreline = `${redWins}-${blueWins}`;
 
@@ -226,7 +235,7 @@ async function getContent(region, locale = "en-US") {
   const base = getValorantBase(region);
   return riotRequest(
     "GET",
-    `${base}/val/content/v1/contents?locale=${encodeURIComponent(locale)}`
+    `${base}/val/content/v1/contents?locale=${encodeURIComponent(locale)}`,
   );
 }
 
@@ -237,7 +246,7 @@ async function getLeaderboard(region, actId) {
   const base = getValorantBase(region);
   return riotRequest(
     "GET",
-    `${base}/val/ranked/v1/leaderboards/by-act/${actId}`
+    `${base}/val/ranked/v1/leaderboards/by-act/${actId}`,
   );
 }
 

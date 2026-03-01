@@ -15,7 +15,9 @@ exports.register = async (req, res, next) => {
   }
 
   try {
-    const existing = await db.query("SELECT id FROM users WHERE email = $1", [email]);
+    const existing = await db.query("SELECT id FROM users WHERE email = $1", [
+      email,
+    ]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ message: "email already registered" });
     }
@@ -23,7 +25,7 @@ exports.register = async (req, res, next) => {
     const hashed = await bcrypt.hash(password, 10);
     const result = await db.query(
       "INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id, email, display_name",
-      [email, hashed, displayName || null]
+      [email, hashed, displayName || null],
     );
 
     const user = result.rows[0];
@@ -34,8 +36,8 @@ exports.register = async (req, res, next) => {
       user: {
         id: user.id,
         email: user.email,
-        displayName: user.display_name
-      }
+        displayName: user.display_name,
+      },
     });
   } catch (err) {
     return next(err);
@@ -52,7 +54,7 @@ exports.login = async (req, res, next) => {
   try {
     const result = await db.query(
       "SELECT id, email, password_hash, display_name FROM users WHERE email = $1",
-      [email]
+      [email],
     );
 
     if (result.rows.length === 0) {
@@ -73,11 +75,10 @@ exports.login = async (req, res, next) => {
       user: {
         id: user.id,
         email: user.email,
-        displayName: user.display_name
-      }
+        displayName: user.display_name,
+      },
     });
   } catch (err) {
     return next(err);
   }
 };
-

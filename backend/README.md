@@ -91,7 +91,7 @@ You can later extend this to handle rooms, presence, and typing indicators.
 
 The app has a **Neon** tab to view Valorant rank and match history for linked players. When a linked user finishes a competitive game, a message is posted to the **#Matchs** text channel (win/loss, agent image, rank, K/D/A).
 
-**Setup:** Set `RIOT_API_KEY` in `.env`. Use a **Production** key from [developer.riotgames.com](https://developer.riotgames.com/) with **Valorant** enabled (dev keys `RGAPI-...` expire in 24h and often get 403 for match data). **With a temp/dev key:** set `VALORANT_DEMO_MODE=1` to always use mock stats, or leave unset and we’ll automatically return sample stats when Riot returns 403 so the Neon tab still works. Tracker posts to #Matchs every 2 min (skips when using demo/mock). **Linking:** From Neon tab or API (POST/GET/DELETE /api/valorant/*, auth required).
+**Setup:** Set `RIOT_API_KEY` in `.env`. Use a **Production** key from [developer.riotgames.com](https://developer.riotgames.com/) with **Valorant** enabled (dev keys `RGAPI-...` expire in 24h and often get 403 for match data). **With a temp/dev key:** set `VALORANT_DEMO_MODE=1` to always use mock stats, or leave unset and we’ll automatically return sample stats when Riot returns 403 so the Neon tab still works. Tracker posts to #Matchs every 2 min (skips when using demo/mock). **Linking:** From Neon tab or API (POST/GET/DELETE /api/valorant/\*, auth required).
 
 1. **Riot API key** — [developer.riotgames.com](https://developer.riotgames.com/) → create an app and get an API key (Valorant product).
 2. **Environment** (root `.env` or backend `.env`):
@@ -108,7 +108,6 @@ The app has a **Neon** tab to view Valorant rank and match history for linked pl
    - Copy the `Postgres Connection URL` (e.g. `postgresql://user:password@host:5432/database`).
 
 3. **Set environment variables in Railway** for your backend service:
-
    - `DATABASE_URL` — paste the Postgres connection URL from the previous step.
    - `NODE_ENV` — `production`
    - `PORT` — `4000` (or whatever port you configure).
@@ -117,18 +116,18 @@ The app has a **Neon** tab to view Valorant rank and match history for linked pl
    When `DATABASE_URL` is set, the backend will use it instead of the individual `PG*` variables and will enable SSL in production mode.
 
 4. **Deploy the backend** (via GitHub integration or `railway up`):
-
    - Ensure your Railway service runs the command:
 
      ```bash
      npm install && npm start
      ```
 
-5. **Migrations on Railway**: The backend runs migrations automatically on each deploy via `preDeployCommand` in `backend/railway.json`. 
+5. **Migrations on Railway**: The backend runs migrations automatically on each deploy via `preDeployCommand` in `backend/railway.json`.
 
    **Important**: Ensure the backend service has its **root directory set to `backend`** in Railway dashboard (Settings → Service → Root Directory). Otherwise, Railway won't find `railway.json` and migrations won't run automatically.
 
    **Check if migrations ran**:
+
    ```sql
    SELECT * FROM schema_migrations ORDER BY applied_at;
    ```
@@ -149,4 +148,3 @@ Uploaded files are stored on disk and **auto-deleted after 3 days**. On Railway 
 3. Alternatively use the provided env **`RAILWAY_VOLUME_MOUNT_PATH`** and set `UPLOADS_PATH=$RAILWAY_VOLUME_MOUNT_PATH` so uploads persist across deploys.
 
 Without a volume, uploads work but are lost on redeploy. A cleanup job runs every hour to remove files older than 3 days.
-

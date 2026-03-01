@@ -8,7 +8,8 @@ const PAGE_SIZE = 100; // per text channel
 // GET /api/messages?channel=general&before=123 (optional: load messages older than id 123)
 exports.listMessages = async (req, res, next) => {
   const channel = req.query.channel || "general";
-  const beforeId = req.query.before != null ? parseInt(req.query.before, 10) : null;
+  const beforeId =
+    req.query.before != null ? parseInt(req.query.before, 10) : null;
   const isOlderPage = Number.isInteger(beforeId) && beforeId > 0;
 
   try {
@@ -21,7 +22,7 @@ exports.listMessages = async (req, res, next) => {
            WHERE channel = $1 AND id < $2
            ORDER BY id DESC
            LIMIT $3`,
-          [channel, beforeId, PAGE_SIZE]
+          [channel, beforeId, PAGE_SIZE],
         );
         result.rows.reverse();
       } else {
@@ -35,15 +36,15 @@ exports.listMessages = async (req, res, next) => {
              LIMIT $2
            ) sub
            ORDER BY created_at ASC`,
-          [channel, PAGE_SIZE]
+          [channel, PAGE_SIZE],
         );
       }
     } catch (selectErr) {
-      const needsLegacy = selectErr.code === "42703" && (
-        selectErr.message?.includes("sender_id") ||
-        selectErr.message?.includes("embed") ||
-        selectErr.message?.includes("reply_to_id")
-      );
+      const needsLegacy =
+        selectErr.code === "42703" &&
+        (selectErr.message?.includes("sender_id") ||
+          selectErr.message?.includes("embed") ||
+          selectErr.message?.includes("reply_to_id"));
       if (needsLegacy) {
         if (isOlderPage) {
           result = await db.query(
@@ -52,7 +53,7 @@ exports.listMessages = async (req, res, next) => {
              WHERE channel = $1 AND id < $2
              ORDER BY id DESC
              LIMIT $3`,
-            [channel, beforeId, PAGE_SIZE]
+            [channel, beforeId, PAGE_SIZE],
           );
           result.rows.reverse();
         } else {
@@ -66,7 +67,7 @@ exports.listMessages = async (req, res, next) => {
                LIMIT $2
              ) sub
              ORDER BY created_at ASC`,
-            [channel, PAGE_SIZE]
+            [channel, PAGE_SIZE],
           );
         }
       } else {
@@ -84,7 +85,7 @@ exports.listMessages = async (req, res, next) => {
       createdAt: row.created_at,
       replyToId: row.reply_to_id ?? undefined,
       attachments: [],
-      reactions: {}
+      reactions: {},
     }));
 
     try {
@@ -97,7 +98,7 @@ exports.listMessages = async (req, res, next) => {
            JOIN uploads u ON u.id = ma.upload_id
            WHERE ma.message_id = ANY($1::int[]) AND u.created_at > $2
            ORDER BY ma.message_id, ma.upload_id`,
-          [ids, cutoff]
+          [ids, cutoff],
         );
         const byMessage = {};
         for (const r of attachResult.rows) {
@@ -108,7 +109,7 @@ exports.listMessages = async (req, res, next) => {
             filename: r.filename,
             mimeType: r.mime_type,
             size: r.size_bytes,
-            url: createSignedFilePath(r.public_id)
+            url: createSignedFilePath(r.public_id),
           });
         }
         messages.forEach((m) => {
@@ -120,20 +121,23 @@ exports.listMessages = async (req, res, next) => {
     }
 
     // Reply previews for messages that have reply_to_id
-    const replyToIds = [...new Set(messages.map((m) => m.replyToId).filter(Boolean))];
+    const replyToIds = [
+      ...new Set(messages.map((m) => m.replyToId).filter(Boolean)),
+    ];
     let replyPreviewById = {};
     if (replyToIds.length > 0) {
       try {
         const replyResult = await db.query(
           `SELECT id, sender_name, content FROM messages WHERE id = ANY($1::int[])`,
-          [replyToIds]
+          [replyToIds],
         );
         for (const r of replyResult.rows) {
           const content = r.content || "";
           replyPreviewById[r.id] = {
             id: r.id,
             sender: r.sender_name,
-            content: content.length > 100 ? content.slice(0, 97) + "..." : content
+            content:
+              content.length > 100 ? content.slice(0, 97) + "..." : content,
           };
         }
       } catch (_) {}
@@ -148,12 +152,13 @@ exports.listMessages = async (req, res, next) => {
     try {
       const reactResult = await db.query(
         `SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id = ANY($1::int[])`,
-        [messages.map((m) => m.id)]
+        [messages.map((m) => m.id)],
       );
       const byMessage = {};
       for (const r of reactResult.rows) {
         if (!byMessage[r.message_id]) byMessage[r.message_id] = {};
-        if (!byMessage[r.message_id][r.emoji]) byMessage[r.message_id][r.emoji] = [];
+        if (!byMessage[r.message_id][r.emoji])
+          byMessage[r.message_id][r.emoji] = [];
         byMessage[r.message_id][r.emoji].push(r.user_id);
       }
       messages.forEach((m) => {
@@ -168,4 +173,3 @@ exports.listMessages = async (req, res, next) => {
     return next(err);
   }
 };
-

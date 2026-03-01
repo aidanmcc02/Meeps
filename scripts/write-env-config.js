@@ -20,6 +20,6 @@ if (dianaUrl) config.VITE_DIANA_API_URL = dianaUrl.replace(/\/$/, "");
 
 fs.writeFileSync(
   path.join(publicDir, "config.json"),
-  JSON.stringify(config, null, 0)
+  JSON.stringify(config, null, 0),
 );
 console.log("Wrote public/config.json with backend URL from env");

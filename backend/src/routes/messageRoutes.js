@@ -6,4 +6,3 @@ const router = express.Router();
 router.get("/messages", messageController.listMessages);
 
 module.exports = router;
-

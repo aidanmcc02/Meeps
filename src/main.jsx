@@ -17,9 +17,24 @@ class AppErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: "480px" }}>
-          <h1 style={{ color: "#b91c1c", marginBottom: "0.5rem" }}>Something went wrong</h1>
-          <pre style={{ background: "#fef2f2", padding: "1rem", overflow: "auto", fontSize: "12px" }}>
+        <div
+          style={{
+            padding: "2rem",
+            fontFamily: "system-ui",
+            maxWidth: "480px",
+          }}
+        >
+          <h1 style={{ color: "#b91c1c", marginBottom: "0.5rem" }}>
+            Something went wrong
+          </h1>
+          <pre
+            style={{
+              background: "#fef2f2",
+              padding: "1rem",
+              overflow: "auto",
+              fontSize: "12px",
+            }}
+          >
             {this.state.error?.message ?? String(this.state.error)}
           </pre>
         </div>
@@ -36,5 +51,5 @@ ReactDOM.createRoot(rootElement).render(
     <AppErrorBoundary>
       <App />
     </AppErrorBoundary>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

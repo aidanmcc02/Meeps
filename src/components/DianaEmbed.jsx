@@ -26,7 +26,7 @@ const CHAMPION_NAME_TO_ID = {
   "bel'veth": "Belveth",
   "kog'maw": "KogMaw",
   "vel'koz": "Velkoz",
-  "renata glasc": "Renata"
+  "renata glasc": "Renata",
 };
 
 /** Convert champion display name to Data Dragon id for icon URL */
@@ -58,10 +58,22 @@ function EmbedThumbnail({ src, className = "" }) {
 }
 
 /** Community Dragon base for rank emblems */
-const CDRAGON_RANKED = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem";
+const CDRAGON_RANKED =
+  "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem";
 
 /** Valid rank tiers for emblem filenames */
-const RANK_TIERS = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger"];
+const RANK_TIERS = [
+  "iron",
+  "bronze",
+  "silver",
+  "gold",
+  "platinum",
+  "emerald",
+  "diamond",
+  "master",
+  "grandmaster",
+  "challenger",
+];
 
 /** Build rank emblem URL from tier (e.g. "Gold", "Platinum 1" -> gold, platinum) */
 export function getRankEmblemUrl(tierOrRankStr) {
@@ -93,7 +105,13 @@ export function parseLegacyDianaMarkdown(content, createdAt) {
   if (!trimmed) return null;
 
   const blocks = trimmed.split(/\n\n+/);
-  const embed = { title: null, description: null, url: null, fields: [], timestamp: createdAt };
+  const embed = {
+    title: null,
+    description: null,
+    url: null,
+    fields: [],
+    timestamp: createdAt,
+  };
 
   let i = 0;
 
@@ -107,7 +125,11 @@ export function parseLegacyDianaMarkdown(content, createdAt) {
   }
 
   // Second block: description (no **, not a link)
-  if (i < blocks.length && !blocks[i].match(/^\*\*/) && !blocks[i].match(/^\[.+\]\(.+\)$/)) {
+  if (
+    i < blocks.length &&
+    !blocks[i].match(/^\*\*/) &&
+    !blocks[i].match(/^\[.+\]\(.+\)$/)
+  ) {
     embed.description = blocks[i].trim();
     i++;
   }
@@ -131,14 +153,23 @@ export function parseLegacyDianaMarkdown(content, createdAt) {
         if (name.toLowerCase().includes("result") && !embed.colorHex) {
           const v = value.toLowerCase();
           if (v.includes("win")) embed.colorHex = RESULT_COLORS.win;
-          else if (v.includes("lose") || v.includes("loss")) embed.colorHex = RESULT_COLORS.lose;
+          else if (v.includes("lose") || v.includes("loss"))
+            embed.colorHex = RESULT_COLORS.lose;
           else if (v.includes("remake")) embed.colorHex = RESULT_COLORS.remake;
         }
         embed.fields.push({ name, value, inline: true });
-        if ((name.toLowerCase().includes("champion") || name.toLowerCase().includes("champ")) && value) {
+        if (
+          (name.toLowerCase().includes("champion") ||
+            name.toLowerCase().includes("champ")) &&
+          value
+        ) {
           embed._championUrl = embed._championUrl ?? getChampionIconUrl(value);
         }
-        if ((name.toLowerCase().includes("rank change") || name.toLowerCase().includes("rank update")) && value) {
+        if (
+          (name.toLowerCase().includes("rank change") ||
+            name.toLowerCase().includes("rank update")) &&
+          value
+        ) {
           embed._rankUrl = embed._rankUrl ?? getRankEmblemUrl(value);
         }
         if (name.toLowerCase().includes("rank") && value && !embed._rankUrl) {
@@ -148,19 +179,24 @@ export function parseLegacyDianaMarkdown(content, createdAt) {
     }
   }
 
-  const isRankChange = embed.title && /promotion|demotion/.test(embed.title.toLowerCase());
+  const isRankChange =
+    embed.title && /promotion|demotion/.test(embed.title.toLowerCase());
   if (embed.title) {
     const t = embed.title.toLowerCase();
     if (t.includes("promotion")) embed.colorHex = embed.colorHex ?? 0x28a745;
-    else if (t.includes("demotion")) embed.colorHex = embed.colorHex ?? 0xe74c3c;
+    else if (t.includes("demotion"))
+      embed.colorHex = embed.colorHex ?? 0xe74c3c;
   }
-  embed.thumbnailUrl = embed.thumbnailUrl ?? (isRankChange && embed._rankUrl
-    ? embed._rankUrl
-    : (embed._championUrl ?? embed._rankUrl));
+  embed.thumbnailUrl =
+    embed.thumbnailUrl ??
+    (isRankChange && embed._rankUrl
+      ? embed._rankUrl
+      : (embed._championUrl ?? embed._rankUrl));
   delete embed._championUrl;
   delete embed._rankUrl;
 
-  if (!embed.title && embed.fields.length === 0 && !embed.description) return null;
+  if (!embed.title && embed.fields.length === 0 && !embed.description)
+    return null;
   return embed;
 }
 
@@ -181,12 +217,13 @@ function DianaEmbed({ embed }) {
     footer,
     text,
     timestamp,
-    bannerUrl
+    bannerUrl,
   } = embed;
 
   const borderColor = (() => {
     if (colorHex == null) return "#6366f1";
-    if (typeof colorHex === "string" && colorHex.startsWith("#")) return colorHex;
+    if (typeof colorHex === "string" && colorHex.startsWith("#"))
+      return colorHex;
     if (typeof colorHex === "string") return `#${colorHex.replace(/^#/, "")}`;
     const hex = Number(colorHex).toString(16).padStart(6, "0");
     return `#${hex}`;
@@ -200,7 +237,7 @@ function DianaEmbed({ embed }) {
       month: "short",
       day: "numeric",
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
     });
   };
 
@@ -211,7 +248,7 @@ function DianaEmbed({ embed }) {
     ? {
         backgroundImage: `url(${bannerUrl})`,
         backgroundSize: "cover",
-        backgroundPosition: "center"
+        backgroundPosition: "center",
       }
     : {};
 
@@ -221,7 +258,7 @@ function DianaEmbed({ embed }) {
       style={{
         borderLeftWidth: "5px",
         borderLeftColor: borderColor,
-        ...bgStyle
+        ...bgStyle,
       }}
     >
       <div
@@ -243,14 +280,22 @@ function DianaEmbed({ embed }) {
                   className="inline-flex items-center gap-1.5 text-base font-bold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors px-2 py-0.5 -mx-2 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
                   style={{ color: "inherit" }}
                 >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} className="inline [&_p]:inline [&_*]:inline">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="inline [&_p]:inline [&_*]:inline"
+                  >
                     {title}
                   </ReactMarkdown>
-                  <span className="text-indigo-500 dark:text-indigo-400 text-sm opacity-90">↗</span>
+                  <span className="text-indigo-500 dark:text-indigo-400 text-sm opacity-90">
+                    ↗
+                  </span>
                 </a>
               ) : (
                 <span className="text-base font-bold text-gray-900 dark:text-white">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} className="inline [&_p]:inline [&_*]:inline">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="inline [&_p]:inline [&_*]:inline"
+                  >
                     {title}
                   </ReactMarkdown>
                 </span>
@@ -273,12 +318,18 @@ function DianaEmbed({ embed }) {
               {inlineFields.map((f, i) => (
                 <div key={i} className="min-w-0">
                   <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 block truncate">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} className="inline [&_p]:inline [&_*]:inline text-inherit">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      className="inline [&_p]:inline [&_*]:inline text-inherit"
+                    >
                       {f.name || ""}
                     </ReactMarkdown>
                   </span>
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} className="inline [&_p]:inline [&_*]:inline text-inherit">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      className="inline [&_p]:inline [&_*]:inline text-inherit"
+                    >
                       {f.value || ""}
                     </ReactMarkdown>
                   </span>
@@ -290,14 +341,23 @@ function DianaEmbed({ embed }) {
           {blockFields.length > 0 && (
             <div className="space-y-1.5">
               {blockFields.map((f, i) => (
-                <div key={i} className="py-1 border-t border-gray-100 dark:border-gray-700/80 first:border-t-0 first:pt-0">
+                <div
+                  key={i}
+                  className="py-1 border-t border-gray-100 dark:border-gray-700/80 first:border-t-0 first:pt-0"
+                >
                   <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 block mb-0.5">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} className="inline [&_p]:inline [&_*]:inline text-inherit">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      className="inline [&_p]:inline [&_*]:inline text-inherit"
+                    >
                       {f.name || ""}
                     </ReactMarkdown>
                   </span>
                   <span className="text-sm text-gray-800 dark:text-gray-200">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} className="inline [&_p]:inline [&_*]:inline text-inherit">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      className="inline [&_p]:inline [&_*]:inline text-inherit"
+                    >
                       {f.value || ""}
                     </ReactMarkdown>
                   </span>

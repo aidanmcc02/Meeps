@@ -18,8 +18,8 @@ const app = express();
 
 app.use(
   cors({
-    origin: "*"
-  })
+    origin: "*",
+  }),
 );
 app.use(express.json());
 app.use(morgan("dev"));
@@ -30,7 +30,12 @@ app.get("/health", (req, res) => {
 
 // Upload routes registered explicitly so POST /api/upload always matches (avoids router mount path issues)
 // Require authentication for upload. Downloads are protected by short‑lived, signed URLs.
-app.post("/api/upload", authenticate, uploadController.getMulterUpload(), uploadController.uploadFiles);
+app.post(
+  "/api/upload",
+  authenticate,
+  uploadController.getMulterUpload(),
+  uploadController.uploadFiles,
+);
 app.get("/api/files/:id", uploadController.serveFile);
 
 app.use("/api", authRoutes);
@@ -46,20 +51,24 @@ app.use("/api", valorantRoutes);
 // Debug: Print all registered routes
 function routeMethodLabel(route) {
   if (route.method) return route.method.toUpperCase();
-  if (route.methods && typeof route.methods === 'object') {
-    return Object.keys(route.methods).join(',').toUpperCase();
+  if (route.methods && typeof route.methods === "object") {
+    return Object.keys(route.methods).join(",").toUpperCase();
   }
-  return '?';
+  return "?";
 }
 console.log("Registered routes:");
 app._router.stack.forEach((middleware) => {
   if (middleware.route) {
-    console.log(`Route: ${routeMethodLabel(middleware.route)} ${middleware.route.path}`);
-  } else if (middleware.name === 'router') {
+    console.log(
+      `Route: ${routeMethodLabel(middleware.route)} ${middleware.route.path}`,
+    );
+  } else if (middleware.name === "router") {
     console.log(`Router mounted at: ${middleware.regexp}`);
     middleware.handle.stack.forEach((handler) => {
       if (handler.route) {
-        console.log(`  Route: ${routeMethodLabel(handler.route)} ${handler.route.path}`);
+        console.log(
+          `  Route: ${routeMethodLabel(handler.route)} ${handler.route.path}`,
+        );
       }
     });
   }
@@ -69,4 +78,3 @@ app.use(notFound);
 app.use(errorHandler);
 
 module.exports = app;
-
