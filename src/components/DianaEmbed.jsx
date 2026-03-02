@@ -61,6 +61,33 @@ function EmbedThumbnail({ src, className = "" }) {
 const CDRAGON_RANKED =
   "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/ranked-emblem";
 
+/** Community Dragon base for TFT champion square icons */
+const TFT_CDRAGON_SPLASH =
+  "https://raw.communitydragon.org/pbe/game/assets/ux/tft/championsplashes";
+
+/** TFT placement badge styles */
+const TFT_PLACEMENT_STYLES = {
+  1: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 ring-1 ring-amber-400/50",
+  2: "bg-gray-100 text-gray-800 dark:bg-gray-700/50 dark:text-gray-200 ring-1 ring-gray-400/40",
+  3: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-300 ring-1 ring-amber-500/40",
+  4: "bg-slate-100 text-slate-800 dark:bg-slate-700/50 dark:text-slate-200 ring-1 ring-slate-400/40",
+};
+
+/** Map TFT character_id to CDragon icon URL */
+function getTftChampionIconUrl(characterId) {
+  if (!characterId || typeof characterId !== "string") return null;
+  const normalized = characterId.trim();
+  const match = normalized.match(/^TFT(\d+)_(.+)$/i);
+  if (match) {
+    const [, set, name] = match;
+    const nameSlug = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return `${TFT_CDRAGON_SPLASH}/tft${set}_${nameSlug}_square.png`;
+  }
+  const slug = normalized.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!slug) return null;
+  return `${TFT_CDRAGON_SPLASH}/tft11_${slug}_square.png`;
+}
+
 /** Valid rank tiers for emblem filenames */
 const RANK_TIERS = [
   "iron",
@@ -218,7 +245,13 @@ function DianaEmbed({ embed }) {
     text,
     timestamp,
     bannerUrl,
+    embedType,
+    placement,
+    champions = [],
+    traits = [],
   } = embed;
+
+  const isTft = embedType === "tft" || (title && String(title).includes("TFT"));
 
   const borderColor = (() => {
     if (colorHex == null) return "#6366f1";
@@ -271,7 +304,17 @@ function DianaEmbed({ embed }) {
         )}
         <div className={`flex-1 min-w-0 ${thumbnailUrl ? "pr-20" : ""}`}>
           {title && (
-            <div className="mb-1">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              {isTft && placement != null && (
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold ${
+                    TFT_PLACEMENT_STYLES[placement] ??
+                    "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200 ring-1 ring-rose-400/50"
+                  }`}
+                >
+                  #{placement}
+                </span>
+              )}
               {url ? (
                 <a
                   href={url}
@@ -311,6 +354,81 @@ function DianaEmbed({ embed }) {
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
               {text}
             </p>
+          )}
+
+          {isTft && champions.length > 0 && (
+            <div className="mb-3">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 block mb-1.5">
+                Final board
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {champions.map((champ, idx) => {
+                  const charId =
+                    typeof champ === "string" && champ.includes("TFT")
+                      ? champ
+                      : null;
+                  const name =
+                    typeof champ === "string" && !champ.includes("TFT")
+                      ? champ
+                      : null;
+                  const iconUrl = charId
+                    ? getTftChampionIconUrl(charId)
+                    : getTftChampionIconUrl(name ?? champ);
+                  const displayName = charId
+                    ? (charId.match(/_([A-Za-z0-9]+)$/)?.[1] ?? charId)
+                    : (name ?? String(champ));
+                  return (
+                    <div
+                      key={`${champ}-${idx}`}
+                      className="flex flex-col items-center"
+                      title={displayName}
+                    >
+                      <div className="relative h-9 w-9 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                        {iconUrl ? (
+                          <img
+                            src={iconUrl}
+                            alt={displayName}
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = "none";
+                              e.target.nextSibling?.classList.remove("hidden");
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br from-amber-100 to-amber-200 text-[10px] font-bold text-amber-800 dark:from-amber-900/50 dark:to-amber-800/50 dark:text-amber-200 ${
+                            iconUrl ? "hidden" : ""
+                          }`}
+                        >
+                          {String(displayName).slice(0, 2).toUpperCase()}
+                        </div>
+                      </div>
+                      <span className="mt-0.5 max-w-[2.5rem] truncate text-[10px] text-gray-600 dark:text-gray-400">
+                        {displayName}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isTft && traits.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {traits
+                .map((t) =>
+                  typeof t === "object" ? (t?.name ?? t?.id ?? "") : t,
+                )
+                .filter(Boolean)
+                .map((name, i) => (
+                  <span
+                    key={i}
+                    className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-600 dark:text-gray-200"
+                  >
+                    {name}
+                  </span>
+                ))}
+            </div>
           )}
 
           {inlineFields.length > 0 && (

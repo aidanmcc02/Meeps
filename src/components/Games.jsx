@@ -106,6 +106,55 @@ const TFT_PLACEMENT_ROW_STYLES = {
 const TFT_BOTTOM_ROW =
   "border-rose-200 bg-rose-50/60 dark:border-rose-900/60 dark:bg-rose-900/20";
 
+/** Community Dragon base for TFT champion square icons (PBE has latest sets) */
+const TFT_CDRAGON_SPLASH =
+  "https://raw.communitydragon.org/pbe/game/assets/ux/tft/championsplashes";
+
+/** Map TFT character_id (e.g. TFT11_Ahri) to CDragon filename (e.g. tft11_ahri_square.png) */
+function getTftChampionIconUrl(characterId) {
+  if (!characterId || typeof characterId !== "string") return null;
+  const normalized = characterId.trim();
+  const match = normalized.match(/^TFT(\d+)_(.+)$/i);
+  if (match) {
+    const [, set, name] = match;
+    const nameSlug = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return `${TFT_CDRAGON_SPLASH}/tft${set}_${nameSlug}_square.png`;
+  }
+  return null;
+}
+
+/** Extract champion identifiers from match for board display */
+function getConquerorChampions(match) {
+  const units = match?.units ?? match?.champions;
+  if (Array.isArray(units) && units.length > 0) {
+    return units
+      .map((u) =>
+        typeof u === "string" ? u : (u?.character_id ?? u?.characterId),
+      )
+      .filter(Boolean);
+  }
+  const comp = match?.comp ?? match?.composition ?? "";
+  if (typeof comp === "string" && comp.trim()) {
+    return comp
+      .split(/[,;|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(comp)) return comp.filter(Boolean);
+  return [];
+}
+
+/** Try to build icon URL from champion name (fallback when no character_id) */
+function getTftChampionIconFromName(name) {
+  if (!name || typeof name !== "string") return null;
+  const slug = name
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase();
+  if (!slug) return null;
+  return `${TFT_CDRAGON_SPLASH}/tft11_${slug}_square.png`;
+}
+
 function ConquerorMatchCard({ match }) {
   const timestamp = formatTimestamp(match?.gameEndTime || match?.gameCreation);
   const placement = match?.placement ?? match?.place ?? 0;
@@ -121,33 +170,128 @@ function ConquerorMatchCard({ match }) {
       : match?.gameMode === "double_up"
         ? "Double Up"
         : "Normal";
+  const durationSeconds = match?.gameDuration ?? match?.duration;
+  const durationLabel = formatDuration(durationSeconds);
+  const level = match?.level ?? match?.lastRound;
+  const traits = match?.traits ?? match?.activeTraits;
+  const traitsList = Array.isArray(traits)
+    ? traits
+    : typeof traits === "string"
+      ? traits
+          .split(/[,;]/)
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+  const matchUrl = match?.url ?? match?.matchUrl;
+  const champions = getConquerorChampions(match);
+  const compText = match?.comp ?? match?.composition ?? "";
 
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${rowStyle}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
+    <div
+      className={`rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md ${rowStyle}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">
             {gameName}
             {tagLine && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
                 {" "}
                 {tagLine}
               </span>
             )}
           </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {gameMode}
-            {timestamp ? ` · ${timestamp}` : ""}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+            <span>{gameMode}</span>
+            {durationLabel !== "—" && <span>· {durationLabel}</span>}
+            {timestamp && <span>· {timestamp}</span>}
+          </div>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold ${placementStyle}`}
-        >
-          #{placement}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {matchUrl && (
+            <a
+              href={matchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-gray-300 bg-white/90 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800/90 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              View match
+            </a>
+          )}
+          <span
+            className={`rounded-full px-3 py-1 text-sm font-bold ${placementStyle}`}
+          >
+            #{placement}
+          </span>
+        </div>
       </div>
 
+      {champions.length > 0 ? (
+        <div className="mt-3">
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Final board
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {champions.map((champ, idx) => {
+              const charId =
+                typeof champ === "string" && champ.includes("TFT")
+                  ? champ
+                  : null;
+              const name =
+                typeof champ === "string" && !champ.includes("TFT")
+                  ? champ
+                  : null;
+              const iconUrl = charId
+                ? getTftChampionIconUrl(charId)
+                : getTftChampionIconFromName(name ?? champ);
+              const displayName = charId
+                ? (charId.match(/_([A-Za-z0-9]+)$/)?.[1] ?? charId)
+                : (name ?? String(champ));
+              return (
+                <div
+                  key={`${champ}-${idx}`}
+                  className="group relative flex flex-col items-center"
+                  title={displayName}
+                >
+                  <div className="relative h-10 w-10 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 shadow-sm ring-1 ring-black/5 dark:border-gray-600 dark:bg-gray-800">
+                    {iconUrl ? (
+                      <img
+                        src={iconUrl}
+                        alt={displayName}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                          e.target.nextSibling?.classList.remove("hidden");
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br from-amber-100 to-amber-200 text-xs font-bold text-amber-800 dark:from-amber-900/50 dark:to-amber-800/50 dark:text-amber-200 ${iconUrl ? "hidden" : ""}`}
+                    >
+                      {String(displayName).slice(0, 2).toUpperCase()}
+                    </div>
+                  </div>
+                  <span className="mt-0.5 max-w-[3rem] truncate text-[10px] text-gray-600 dark:text-gray-400">
+                    {displayName}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {level != null && (
+          <div className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/60">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Level
+            </div>
+            <div className="mt-0.5 text-sm font-medium text-gray-800 dark:text-gray-200">
+              {level}
+            </div>
+          </div>
+        )}
         <div className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/60">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
             Mode
@@ -156,12 +300,31 @@ function ConquerorMatchCard({ match }) {
             {gameMode}
           </div>
         </div>
+        {traitsList.length > 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/60 sm:col-span-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Traits
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {traitsList.map((t, i) => (
+                <span
+                  key={i}
+                  className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                >
+                  {typeof t === "object"
+                    ? (t?.name ?? t?.id ?? JSON.stringify(t))
+                    : t}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/60 sm:col-span-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
             Comp
           </div>
           <div className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">
-            {match?.comp ?? match?.composition ?? "—"}
+            {compText || "—"}
           </div>
         </div>
       </div>
