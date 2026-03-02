@@ -128,12 +128,17 @@ function getConquerorChampions(match) {
   const units = match?.units ?? match?.champions;
   if (Array.isArray(units) && units.length > 0) {
     return units
-      .map((u) => (typeof u === "string" ? u : u?.character_id ?? u?.characterId))
+      .map((u) =>
+        typeof u === "string" ? u : (u?.character_id ?? u?.characterId),
+      )
       .filter(Boolean);
   }
   const comp = match?.comp ?? match?.composition ?? "";
   if (typeof comp === "string" && comp.trim()) {
-    return comp.split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+    return comp
+      .split(/[,;|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   if (Array.isArray(comp)) return comp.filter(Boolean);
   return [];
@@ -172,14 +177,19 @@ function ConquerorMatchCard({ match }) {
   const traitsList = Array.isArray(traits)
     ? traits
     : typeof traits === "string"
-      ? traits.split(/[,;]/).map((t) => t.trim()).filter(Boolean)
+      ? traits
+          .split(/[,;]/)
+          .map((t) => t.trim())
+          .filter(Boolean)
       : [];
   const matchUrl = match?.url ?? match?.matchUrl;
   const champions = getConquerorChampions(match);
   const compText = match?.comp ?? match?.composition ?? "";
 
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md ${rowStyle}`}>
+    <div
+      className={`rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md ${rowStyle}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">
@@ -223,10 +233,17 @@ function ConquerorMatchCard({ match }) {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {champions.map((champ, idx) => {
-              const charId = typeof champ === "string" && champ.includes("TFT") ? champ : null;
-              const name = typeof champ === "string" && !champ.includes("TFT") ? champ : null;
-              const iconUrl =
-                charId ? getTftChampionIconUrl(charId) : getTftChampionIconFromName(name ?? champ);
+              const charId =
+                typeof champ === "string" && champ.includes("TFT")
+                  ? champ
+                  : null;
+              const name =
+                typeof champ === "string" && !champ.includes("TFT")
+                  ? champ
+                  : null;
+              const iconUrl = charId
+                ? getTftChampionIconUrl(charId)
+                : getTftChampionIconFromName(name ?? champ);
               const displayName = charId
                 ? (charId.match(/_([A-Za-z0-9]+)$/)?.[1] ?? charId)
                 : (name ?? String(champ));
@@ -294,7 +311,9 @@ function ConquerorMatchCard({ match }) {
                   key={i}
                   className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
                 >
-                  {typeof t === "object" ? t?.name ?? t?.id ?? JSON.stringify(t) : t}
+                  {typeof t === "object"
+                    ? (t?.name ?? t?.id ?? JSON.stringify(t))
+                    : t}
                 </span>
               ))}
             </div>

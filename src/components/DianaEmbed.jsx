@@ -376,7 +376,7 @@ function DianaEmbed({ embed }) {
                     : getTftChampionIconUrl(name ?? champ);
                   const displayName = charId
                     ? (charId.match(/_([A-Za-z0-9]+)$/)?.[1] ?? charId)
-                    : name ?? String(champ);
+                    : (name ?? String(champ));
                   return (
                     <div
                       key={`${champ}-${idx}`}
@@ -416,7 +416,9 @@ function DianaEmbed({ embed }) {
           {isTft && traits.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1">
               {traits
-                .map((t) => (typeof t === "object" ? t?.name ?? t?.id ?? "" : t))
+                .map((t) =>
+                  typeof t === "object" ? (t?.name ?? t?.id ?? "") : t,
+                )
                 .filter(Boolean)
                 .map((name, i) => (
                   <span

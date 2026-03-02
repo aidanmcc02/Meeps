@@ -88,18 +88,26 @@ function buildMatchEmbed(body, bannerUrl = null) {
   if (bannerUrl) embed.bannerUrl = bannerUrl;
   const units = body.units ?? body.champions;
   if (Array.isArray(units) && units.length > 0) {
-    embed.champions = units.map((u) =>
-      typeof u === "string" ? u : u?.character_id ?? u?.characterId,
-    ).filter(Boolean);
+    embed.champions = units
+      .map((u) =>
+        typeof u === "string" ? u : (u?.character_id ?? u?.characterId),
+      )
+      .filter(Boolean);
   } else if (comp && typeof comp === "string") {
-    embed.champions = comp.split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+    embed.champions = comp
+      .split(/[,;|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   const traits = body.traits ?? body.activeTraits;
   if (traits) {
     embed.traits = Array.isArray(traits)
       ? traits
       : typeof traits === "string"
-        ? traits.split(/[,;]/).map((t) => t.trim()).filter(Boolean)
+        ? traits
+            .split(/[,;]/)
+            .map((t) => t.trim())
+            .filter(Boolean)
         : [];
   }
   return embed;
