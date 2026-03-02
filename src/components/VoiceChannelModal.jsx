@@ -258,7 +258,30 @@ function VoiceChannelModal({
             {channel.name}
           </h1>
           {isJoined && voicePingMs != null && (
-            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/90 shrink-0">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shrink-0 ${
+                voicePingMs < 80
+                  ? "bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/40"
+                  : voicePingMs < 150
+                    ? "bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/40"
+                    : "bg-rose-500/20 text-rose-200 ring-1 ring-rose-400/40"
+              }`}
+              title="Voice connection latency"
+            >
+              <svg
+                className="h-3.5 w-3.5 opacity-90"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"
+                />
+              </svg>
               {voicePingMs} ms
             </span>
           )}

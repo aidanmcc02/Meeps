@@ -72,6 +72,8 @@ function buildMatchEmbed(body, bannerUrl = null) {
     placement === 1 ? 0x28a745 : placement <= 4 ? 0x17a2b8 : 0xe74c3c;
 
   const embed = {
+    embedType: "tft",
+    placement: typeof placement === "number" ? placement : null,
     title: riotId ? `${riotId} — TFT ${modeLabel}` : `TFT ${modeLabel} Match`,
     description: riotId
       ? `${riotId} placed ${placementStr} in a ${modeLabel} game.`
@@ -84,6 +86,22 @@ function buildMatchEmbed(body, bannerUrl = null) {
     timestamp: body.timestamp ?? new Date().toISOString(),
   };
   if (bannerUrl) embed.bannerUrl = bannerUrl;
+  const units = body.units ?? body.champions;
+  if (Array.isArray(units) && units.length > 0) {
+    embed.champions = units.map((u) =>
+      typeof u === "string" ? u : u?.character_id ?? u?.characterId,
+    ).filter(Boolean);
+  } else if (comp && typeof comp === "string") {
+    embed.champions = comp.split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+  }
+  const traits = body.traits ?? body.activeTraits;
+  if (traits) {
+    embed.traits = Array.isArray(traits)
+      ? traits
+      : typeof traits === "string"
+        ? traits.split(/[,;]/).map((t) => t.trim()).filter(Boolean)
+        : [];
+  }
   return embed;
 }
 
