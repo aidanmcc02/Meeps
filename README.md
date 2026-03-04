@@ -154,3 +154,5 @@ To send mention notifications when the app is closed, the backend must use **VAP
 | Frontend | React, Vite, Tailwind CSS |
 | Desktop  | Tauri (Rust)              |
 | Web/PWA  | vite-plugin-pwa           |
+
+Update
